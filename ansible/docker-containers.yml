@@ -1,0 +1,50 @@
+- name: Set up Docker containers for CI/CD tools
+  hosts: local
+  become: true
+
+  tasks:
+    - name: Ensure Docker SDK for Python is present
+      pip:
+        name: docker
+
+    - name: Start Nexus container
+      docker_container:
+        name: nexus
+        image: sonatype/nexus3
+        ports:
+          - "8081:8081"
+
+    - name: Start SonarQube container
+      docker_container:
+        name: sonarqube
+        image: sonarqube
+        ports:
+          - "9000:9000"
+        env:
+          SONARQUBE_JDBC_URL: jdbc:postgresql://localhost/sonar
+          SONARQUBE_JDBC_USERNAME: sonar
+          SONARQUBE_JDBC_PASSWORD: sonar
+
+    - name: Start Prometheus container
+      docker_container:
+        name: prometheus
+        image: prom/prometheus
+        ports:
+          - "9090:9090"
+
+    - name: Start Grafana container
+      docker_container:
+        name: grafana
+        image: grafana/grafana
+        ports:
+          - "3000:3000"
+
+    - name: Start MySQL container
+      docker_container:
+        name: mysql
+        image: mysql:latest
+        ports:
+          - "3306:3306"
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+
