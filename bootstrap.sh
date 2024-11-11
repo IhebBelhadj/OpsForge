@@ -71,6 +71,7 @@ sudo usermod -aG docker jenkins
 # Start Jenkins service and enable it to start at boot
 sudo systemctl start jenkins
 sudo systemctl enable jenkins
+sudo systemctl restart jenkins
 
 echo "Waiting for Jenkins to initialize..."
 sleep 30
@@ -78,3 +79,15 @@ sleep 30
 #Output the initial admin password for Jenkins setup
 echo "Jenkins initial admin password:"
 sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+
+# This is the script that will be run when the VM starts
+# Copy start.env.sh to the home directory of the vagrant user
+cp /vagrant/start.env.sh /home/vagrant/start.env.sh
+
+# Make the script executable
+chmod +x /home/vagrant/start.env.sh
+
+# Set permissions for the vagrant user
+chown vagrant:vagrant /home/vagrant/start.env.sh
+sudo -u vagrant /home/vagrant/start.env.sh
+echo "Bootstrap script completed."
