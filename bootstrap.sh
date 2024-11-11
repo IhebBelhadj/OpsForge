@@ -61,7 +61,8 @@ sudo apt-get install -y ansible
 sudo apt-get install -y python3-pip
 
 # Run the Ansible playbook
-ansible-playbook -i /vagrant/ansible/hosts /vagrant/ansible/docker_containers.yml
+# I added the -VVV flag to increase verbosity for debugging purposes
+ansible-playbook -i /vagrant/ansible/hosts /vagrant/ansible/docker_containers.yml -vvv
 
 # Start Jenkins service and enable it to start at boot
 sudo systemctl start jenkins
