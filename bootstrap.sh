@@ -64,6 +64,10 @@ sudo apt-get install -y python3-pip
 # I added the -VVV flag to increase verbosity for debugging purposes
 ansible-playbook -i /vagrant/ansible/hosts /vagrant/ansible/docker_containers.yml -vvv
 
+# Install maven for Jenkins
+sudo apt-get install -y maven
+# add docker permissions to jenkins
+sudo usermod -aG docker jenkins
 # Start Jenkins service and enable it to start at boot
 sudo systemctl start jenkins
 sudo systemctl enable jenkins
