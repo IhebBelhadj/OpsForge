@@ -62,7 +62,7 @@ sudo apt-get install -y python3-pip
 
 # Run the Ansible playbook
 # I added the -VVV flag to increase verbosity for debugging purposes
-ansible-playbook -i /vagrant/ansible/hosts /vagrant/ansible/docker_containers.yml -vvv
+ansible-playbook -i /vagrant/ansible/hosts /vagrant/ansible/docker_containers.yml -v
 
 # Install maven for Jenkins
 sudo apt-get install -y maven

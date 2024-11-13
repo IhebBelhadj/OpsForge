@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    environment:
+      MYSQL_DATABASE: stationSki
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+
+    ports:
+      - "3306:3306"
+    networks:
+      - app_network
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  app:
+    image: ihebbelhadjesprit/gestion-station-ski:latest
+    container_name: app
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: 
+      DB_NAME: stationSki
+    ports:
+      - "8089:8089"
+    networks:
+      - app_network
+    depends_on:
+      - mysql
+
+networks:
+  app_network:
+
+volumes:
+  mysql_data:

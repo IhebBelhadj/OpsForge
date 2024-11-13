@@ -7,23 +7,51 @@
       pip:
         name: docker
 
+    - name: Create Docker network
+      docker_network:
+        name: ci_cd_network
+        state: present
+
     - name: Start Nexus container
       docker_container:
         name: nexus
         image: sonatype/nexus3
         ports:
           - "8081:8081"
+        networks:
+          - name: ci_cd_network
+
+    - name: Start PostgreSQL container for SonarQube
+      docker_container:
+        name: db
+        image: postgres:12
+        env:
+          POSTGRES_USER: sonar
+          POSTGRES_PASSWORD: sonar
+        volumes:
+          - postgresql:/var/lib/postgresql
+          - postgresql_data:/var/lib/postgresql/data
+        state: started
+        networks:
+          - name: ci_cd_network
 
     - name: Start SonarQube container
       docker_container:
         name: sonarqube
-        image: sonarqube
+        image: sonarqube:community
+        env:
+          SONAR_JDBC_URL: jdbc:postgresql://db:5432/sonar
+          SONAR_JDBC_USERNAME: sonar
+          SONAR_JDBC_PASSWORD: sonar
+        volumes:
+          - sonarqube_data:/opt/sonarqube/data
+          - sonarqube_extensions:/opt/sonarqube/extensions
+          - sonarqube_logs:/opt/sonarqube/logs
         ports:
           - "9000:9000"
-        env:
-          SONARQUBE_JDBC_URL: jdbc:postgresql://localhost/sonar
-          SONARQUBE_JDBC_USERNAME: sonar
-          SONARQUBE_JDBC_PASSWORD: sonar
+        state: started
+        networks:
+          - name: ci_cd_network
 
     - name: Start Prometheus container
       docker_container:
@@ -31,6 +59,10 @@
         image: prom/prometheus
         ports:
           - "9090:9090"
+        volumes:
+          - prometheus_config:/etc/prometheus
+        networks:
+          - name: ci_cd_network
 
     - name: Start Grafana container
       docker_container:
@@ -38,6 +70,8 @@
         image: grafana/grafana
         ports:
           - "3000:3000"
+        networks:
+          - name: ci_cd_network
 
     - name: Start MySQL container
       docker_container:
@@ -47,4 +81,18 @@
           - "3306:3306"
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        networks:
+          - name: ci_cd_network
+
+    - name: Ensure Docker volumes for persistence
+      docker_volume:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - sonarqube_data
+        - sonarqube_extensions
+        - sonarqube_logs
+        - postgresql
+        - postgresql_data
+        - prometheus_config
 

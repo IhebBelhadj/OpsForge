@@ -1,0 +1,17 @@
+# Vagrantfile for Kubernetes App Server
+Vagrant.configure("2") do |config|
+  config.vm.define "k8s-app-server" do |app_server|
+    app_server.vm.box = "bento/ubuntu-22.04"
+    app_server.vm.hostname = "k8s-app-server"
+    app_server.vm.network "private_network", ip: "192.168.56.20"
+    # Provisioning steps for Kubernetes here
+    app_server.vm.provider "virtualbox" do |vb|
+      vb.memory = "2096"
+      vb.cpus = 2
+    end
+
+    app_server.vm.provision "shell", path: "server.bootstrap.sh"
+
+  end
+end
+

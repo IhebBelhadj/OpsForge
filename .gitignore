@@ -5,5 +5,5 @@
 /.git/
 
 # Ignore the .vagrant directory
-/.vagrant/
+**/.vagrant/
 
