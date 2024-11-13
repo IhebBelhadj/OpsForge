@@ -25,5 +25,8 @@ sudo apt-get install -y webhook
 # Copy the webhook configuration file
 cat /vagrant/conf/webhook.conf.json >/etc/webhook.conf.json
 
+# adding permission to hook script execution
+chmod +x /vagrant/scripts/pull_image.sh
+
 sudo webhook -hooks /etc/webhook.conf.json -port 9000 &
 echo "Provisioning complete! Webhook listening on port 9000"
