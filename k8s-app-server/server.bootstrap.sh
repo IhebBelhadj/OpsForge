@@ -17,5 +17,13 @@ sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-
 sudo chmod +x /usr/local/bin/docker-compose
 
 # Run Docker Compose to start the containers
-cd /vagrant
-docker-compose up -d
+# cd /vagrant
+# docker-compose up -d
+#
+# Install Webhook
+sudo apt-get install -y webhook
+# Copy the webhook configuration file
+cat /vagrant/conf/webhook.conf.json >/etc/webhook.conf.json
+
+sudo webhook -hooks /etc/webhook.conf.json -port 9000 &
+echo "Provisioning complete! Webhook listening on port 9000"

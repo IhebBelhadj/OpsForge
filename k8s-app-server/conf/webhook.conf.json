@@ -1,0 +1,22 @@
+[
+  {
+    "id": "pull-latest-image",
+    "execute-command": "/vagrant/scripts/pull_image.sh",
+    "command-working-directory": "/vagrant",
+    "response-message": "Pulling latest Docker image...",
+    "trigger-rule": {
+      "and": [
+        {
+          "match": {
+            "type": "value",
+            "value": "my_secure_token",
+            "parameter": {
+              "source": "url",
+              "name": "token"
+            }
+          }
+        }
+      ]
+    }
+  }
+]
