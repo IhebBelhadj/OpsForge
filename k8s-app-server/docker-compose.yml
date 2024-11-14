@@ -24,12 +24,14 @@ services:
       DB_USER: root
       DB_PASSWORD: 
       DB_NAME: stationSki
+      SERVER_PORT: 8080
     ports:
-      - "8089:8089"
+      - "8080:8080"
     networks:
       - app_network
     depends_on:
       - mysql
+    command: tail -f /dev/null
 
 networks:
   app_network:
