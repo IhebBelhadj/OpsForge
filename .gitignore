@@ -7,3 +7,5 @@
 # Ignore the .vagrant directory
 **/.vagrant/
 
+vm_hosts.txt
+
