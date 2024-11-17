@@ -27,7 +27,7 @@ OpsForge is a local DevOps infrastructure setup designed to automate the build, 
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/OpsForge.git
+   git clone https://github.com/IhebBelhadj/OpsForge.git
 
    ```
 2. **Launch the VM cluster**
