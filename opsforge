@@ -1,0 +1,630 @@
+#!/usr/bin/env python3
+"""OpsForge lab CLI: provisions and drives the multi-site WAN lab (see docs/PLAN.md)."""
+
+import argparse
+import grp
+import ipaddress
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import jsonschema
+import yaml
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "lab"))
+import render  # noqa: E402
+
+TOPOLOGY = ROOT / "topology.yml"
+SCHEMA = ROOT / "lab" / "topology.schema.json"
+
+REQUIRED_MODULES = ("br_netfilter", "overlay", "nf_conntrack", "wireguard", "sch_netem", "sch_htb")
+# Minimum values; must match lab/host/sysctl.conf
+REQUIRED_SYSCTLS = {
+    "net.ipv4.ip_forward": 1,
+    "fs.inotify.max_user_instances": 1024,
+    "fs.inotify.max_user_watches": 524288,
+}
+# Address space the lab must not reuse: incusbr0 (lab/host/incus-preseed.yaml),
+# Docker's default bridge, K3s default pod and service CIDRs.
+RESERVED_NETS = {
+    "incusbr0": ipaddress.ip_network("10.99.0.0/24"),
+    "docker0": ipaddress.ip_network("172.17.0.0/16"),
+    "k3s pods": ipaddress.ip_network("10.42.0.0/16"),
+    "k3s services": ipaddress.ip_network("10.43.0.0/16"),
+}
+SMOKE_IMAGE = "images:debian/13"
+SMOKE_NAME = "opsforge-smoke"
+GIB = 1024**3
+
+
+class Report:
+    """Collects check results and prints them as OK/WARN/FAIL lines."""
+
+    def __init__(self):
+        self.failed = False
+
+    def ok(self, msg):
+        print(f"  \033[32mOK\033[0m    {msg}")
+
+    def warn(self, msg):
+        print(f"  \033[33mWARN\033[0m  {msg}")
+
+    def fail(self, msg):
+        print(f"  \033[31mFAIL\033[0m  {msg}")
+        self.failed = True
+
+
+def incus(*args, check=True):
+    return subprocess.run(["incus", *args], capture_output=True, text=True, check=check)
+
+
+def load_topology(path=TOPOLOGY):
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
+def topology_errors(topo):
+    """Schema validation plus cross-reference and address-plan checks the schema can't express."""
+    schema = json.loads(SCHEMA.read_text())
+    validator = jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker())
+    errors = [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}" for e in validator.iter_errors(topo)]
+    if errors:
+        return errors
+
+    sites = topo["sites"]
+    transit = ipaddress.ip_network(topo["transit"])
+    nets = {"transit": transit}
+    public_ips = {}
+    for name, site in sites.items():
+        vpc = ipaddress.ip_network(site["vpc"])
+        nets[f"site {name} vpc"] = vpc
+        ip = ipaddress.ip_address(site["public_ip"])
+        if ip not in transit:
+            errors.append(f"sites/{name}: public_ip {ip} is outside transit {transit}")
+        if ip in public_ips.values():
+            errors.append(f"sites/{name}: public_ip {ip} is already used")
+        public_ips[name] = ip
+
+    named = list(nets.items()) + list(RESERVED_NETS.items())
+    for i, (a_name, a) in enumerate(named):
+        for b_name, b in named[i + 1 :]:
+            if a.overlaps(b) and not (a_name in RESERVED_NETS and b_name in RESERVED_NETS):
+                errors.append(f"{a_name} {a} overlaps {b_name} {b}")
+
+    seen_pairs = set()
+    for link in topo["links"]:
+        a, b = link.split("-")
+        for end in (a, b):
+            if end not in sites:
+                errors.append(f"links/{link}: unknown site '{end}'")
+        if a == b:
+            errors.append(f"links/{link}: a site cannot link to itself")
+        pair = frozenset((a, b))
+        if pair in seen_pairs:
+            errors.append(f"links/{link}: duplicate link between {a} and {b}")
+        seen_pairs.add(pair)
+
+    core = render.core_address(topo)
+    if core in public_ips.values():
+        errors.append(f"transit: {core} is reserved for {render.WAN_CORE}, not usable as a site public_ip")
+
+    reserved_names = {render.WAN_CORE} | {render.gateway_name(s) for s in sites}
+    exposed = set()
+    for name, node in topo["nodes"].items():
+        if node["site"] not in sites:
+            errors.append(f"nodes/{name}: unknown site '{node['site']}'")
+            continue
+        if name in reserved_names:
+            errors.append(f"nodes/{name}: name is reserved for a lab router")
+        for spec in node.get("expose", []):
+            public, private, proto = render.parse_expose(spec)
+            if not (0 < public < 65536 and 0 < private < 65536):
+                errors.append(f"nodes/{name}: expose {spec}: ports must be 1-65535")
+            if (node["site"], public, proto) in exposed:
+                errors.append(f"nodes/{name}: expose {spec}: {public}/{proto} already forwarded on site {node['site']}")
+            exposed.add((node["site"], public, proto))
+    if not errors:
+        for name, addr in render.node_addresses(topo).items():
+            site = topo["nodes"][name]["site"]
+            vpc = ipaddress.ip_network(sites[site]["vpc"])
+            if addr.ip not in vpc or addr.ip == vpc.broadcast_address:
+                errors.append(f"nodes/{name}: site {site} VPC {vpc} has no address left for it")
+    servers = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"]
+    if len(servers) > 1:
+        errors.append(f"nodes: only one k3s-server is supported per cluster, found {servers}")
+    return errors
+
+
+def cmd_validate(args):
+    topo = load_topology(args.topology)
+    errors = topology_errors(topo)
+    if errors:
+        print(f"{args.topology}: {len(errors)} error(s)")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+    print(f"{args.topology}: OK ({len(topo['sites'])} sites, {len(topo['links'])} links, {len(topo['nodes'])} nodes)")
+    return 0
+
+
+def read_sysctl(key):
+    try:
+        return int(Path("/proc/sys", *key.split(".")).read_text().split()[0])
+    except (OSError, ValueError):
+        return None
+
+
+def mem_available_gib():
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        if line.startswith("MemAvailable:"):
+            return int(line.split()[1]) * 1024 / GIB
+    return 0.0
+
+
+def cmd_preflight(args):
+    r = Report()
+
+    print("Incus")
+    if not shutil.which("incus"):
+        r.fail("incus not installed (run: sudo ./scripts/host-setup.sh)")
+    else:
+        r.ok("incus installed")
+        try:
+            gid = grp.getgrnam("incus-admin").gr_gid
+            # newgrp makes it the primary group, which getgroups() may omit
+            in_group = gid == os.getegid() or gid in os.getgroups()
+        except KeyError:
+            in_group = False
+        if os.geteuid() == 0 or in_group:
+            r.ok("current session is in incus-admin")
+        else:
+            r.fail("current session not in incus-admin (log out/in or run 'newgrp incus-admin')")
+        res = incus("query", "/1.0", check=False)
+        if res.returncode != 0:
+            r.fail(f"incus daemon not reachable: {res.stderr.strip()}")
+        elif incus("storage", "show", "default", check=False).returncode != 0:
+            r.fail("storage pool 'default' missing (run: sudo ./scripts/host-setup.sh)")
+        else:
+            driver = json.loads(incus("query", "/1.0/storage-pools/default").stdout).get("driver")
+            r.ok(f"daemon reachable, storage pool 'default' ({driver})")
+
+    print("Kernel")
+    for mod in REQUIRED_MODULES:
+        (r.ok if Path("/sys/module", mod).exists() else r.fail)(f"module {mod}")
+    for key, minimum in REQUIRED_SYSCTLS.items():
+        value = read_sysctl(key)
+        if value is not None and value >= minimum:
+            r.ok(f"{key} = {value}")
+        else:
+            r.fail(f"{key} = {value}, need >= {minimum}")
+    subuid = Path("/etc/subuid")
+    if subuid.exists() and any(line.startswith("root:") for line in subuid.read_text().splitlines()):
+        r.ok("/etc/subuid has a root mapping")
+    else:
+        r.fail("/etc/subuid has no root mapping")
+
+    print("Host")
+    docker_active = subprocess.run(["systemctl", "is-active", "-q", "docker.service"]).returncode == 0
+    if not docker_active:
+        r.ok("Docker not running (no FORWARD conflict)")
+    elif subprocess.run(["systemctl", "is-active", "-q", "opsforge-docker-user.service"]).returncode == 0:
+        r.ok("Docker running, opsforge-docker-user.service active")
+    else:
+        r.fail("Docker running without opsforge-docker-user.service: lab traffic will be dropped")
+    free = shutil.disk_usage("/var/lib").free / GIB
+    (r.ok if free >= 10 else r.warn)(f"{free:.1f} GiB free on /var/lib (recommend >= 10)")
+    avail = mem_available_gib()
+    (r.ok if avail >= 3 else r.warn)(f"{avail:.1f} GiB RAM available (recommend >= 3)")
+    for tool in ("shellcheck", "yamllint", "ansible-lint"):
+        (r.ok if shutil.which(tool) else r.warn)(f"{tool} {'installed' if shutil.which(tool) else 'missing (make check)'}")
+
+    print("Topology")
+    errors = topology_errors(load_topology())
+    (r.fail if errors else r.ok)(f"topology.yml {'has ' + str(len(errors)) + ' error(s): ./opsforge validate' if errors else 'valid'}")
+
+    print("\nPreflight " + ("\033[31mFAILED\033[0m" if r.failed else "\033[32mpassed\033[0m"))
+    return 1 if r.failed else 0
+
+
+def instance_state(name):
+    return json.loads(incus("query", f"/1.0/instances/{name}/state").stdout)
+
+
+def cmd_smoke(args):
+    """Phase 0 acceptance: a container boots, gets an address and reaches the internet."""
+    incus("delete", "--force", SMOKE_NAME, check=False)
+    print(f"Launching {SMOKE_IMAGE} as {SMOKE_NAME} (first run downloads the image)...")
+    res = incus("launch", SMOKE_IMAGE, SMOKE_NAME, "--ephemeral", check=False)
+    if res.returncode != 0:
+        print(res.stderr.strip())
+        return 1
+    try:
+        addr = None
+        for _ in range(60):
+            nets = instance_state(SMOKE_NAME).get("network") or {}
+            addrs = [a["address"] for a in nets.get("eth0", {}).get("addresses", []) if a["family"] == "inet"]
+            if addrs:
+                addr = addrs[0]
+                break
+            time.sleep(1)
+        if not addr:
+            print("FAIL: no IPv4 address on eth0 after 60s (check incusbr0 / host firewall)")
+            return 1
+        print(f"  eth0 {addr}")
+
+        # DNS via incusbr0's dnsmasq + TCP forwarded through the host: exactly what Docker's FORWARD DROP breaks
+        probe = "exec 3<>/dev/tcp/deb.debian.org/80 && echo reachable"
+        res = incus("exec", SMOKE_NAME, "--", "timeout", "10", "bash", "-c", probe, check=False)
+        if res.returncode != 0:
+            print("FAIL: container cannot reach deb.debian.org:80 (DNS or forwarding blocked)")
+            return 1
+        print("  outbound TCP + DNS OK")
+
+        time.sleep(5)  # let boot-time services settle before measuring
+        mem = instance_state(SMOKE_NAME)["memory"]["usage"] / 1024**2
+        print(f"  idle memory: {mem:.0f} MiB")
+        print("Smoke test passed")
+        return 0
+    finally:
+        incus("delete", "--force", SMOKE_NAME, check=False)
+
+
+class LabError(Exception):
+    pass
+
+
+def exists(api_path):
+    return incus("query", api_path, check=False).returncode == 0
+
+
+def run_in(name, *cmd):
+    return incus("exec", name, "--", *cmd, check=False)
+
+
+def push_file(name, path, content, mode):
+    subprocess.run(
+        ["incus", "file", "push", "--create-dirs", "--mode", mode, "-", f"{name}{path}"],
+        input=content, text=True, capture_output=True, check=True,
+    )
+
+
+def wait_for(cond, timeout, what):
+    for _ in range(timeout):
+        if cond():
+            return
+        time.sleep(1)
+    raise LabError(f"timed out after {timeout}s: {what}")
+
+
+def lab_instances():
+    """Lab instances (tagged user.opsforge.role by `up`), with their state."""
+    return [i for i in json.loads(incus("list", "--format", "json").stdout) if "user.opsforge.role" in i["config"]]
+
+
+def load_valid_topology():
+    topo = load_topology()
+    errors = topology_errors(topo)
+    if errors:
+        raise LabError(f"{TOPOLOGY} is invalid, run ./opsforge validate ({len(errors)} error(s))")
+    return topo
+
+
+def upstream_dns():
+    """incusbr0's resolver: wan-core forwards the lab's DNS there."""
+    return incus("network", "get", "incusbr0", "ipv4.address").stdout.strip().split("/")[0]
+
+
+def ensure_router_image():
+    if exists(f"/1.0/images/aliases/{render.ROUTER_IMAGE}"):
+        return
+    print(f"Building image {render.ROUTER_IMAGE} from {render.ALPINE_IMAGE} (one-time)...")
+    build = "opsforge-build"
+    incus("delete", "--force", build, check=False)
+    incus("launch", render.ALPINE_IMAGE, build)
+    try:
+        wait_for(lambda: run_in(build, "nslookup", "dl-cdn.alpinelinux.org").returncode == 0, 60, "build container DNS")
+        incus("exec", build, "--", "sh", "-c", render.ROUTER_BUILD)
+        incus("stop", build)
+        incus("publish", build, "--alias", render.ROUTER_IMAGE, "description=OpsForge router: Alpine + tc/nftables")
+    finally:
+        incus("delete", "--force", build, check=False)
+
+
+def create_instance(inst):
+    config = inst.config | {"user.opsforge.role": inst.role, "user.opsforge.site": inst.site or ""}
+    incus("create", inst.image, inst.name, "--profile", render.PROFILE, *[f"--config={k}={v}" for k, v in config.items()])
+    for dev, net in inst.nics.items():
+        incus("config", "device", "add", inst.name, dev, "nic", f"network={net}", f"name={dev}")
+    for path, (content, mode) in inst.files.items():
+        push_file(inst.name, path, content, mode)
+
+
+def cmd_up(args):
+    topo = load_valid_topology()
+    missing = [m for m in REQUIRED_MODULES if not Path("/sys/module", m).exists()]
+    if missing:
+        raise LabError(f"kernel modules not loaded: {', '.join(missing)} (see ./opsforge preflight)")
+    networks, instances = render.plan(topo, upstream_dns())
+    ensure_router_image()
+
+    if not exists(f"/1.0/profiles/{render.PROFILE}"):
+        # Root disk only: lab instances get their NICs explicitly, never incusbr0 from the default profile
+        incus("profile", "create", render.PROFILE)
+        incus("profile", "device", "add", render.PROFILE, "root", "disk", "path=/", "pool=default")
+    for net in networks:
+        if not exists(f"/1.0/networks/{net}"):
+            # No host address: the host must not route between, or into, lab networks
+            incus("network", "create", net, "ipv4.address=none", "ipv6.address=none")
+
+    created = []
+    for inst in instances:
+        if exists(f"/1.0/instances/{inst.name}"):
+            print(f"  {inst.name}: exists, left unchanged (opsforge down to rebuild)")
+            continue
+        print(f"  {inst.name}: creating ({inst.role}, {inst.address})")
+        create_instance(inst)
+        created.append(inst)
+    for inst in created:
+        incus("start", inst.name)
+    for inst in created:
+        if inst.image == render.ROUTER_IMAGE:
+            wait_for(
+                lambda: run_in(inst.name, "test", "-e", render.READY_FLAG).returncode == 0,
+                60,
+                f"{inst.name} configuration (see: incus exec {inst.name} -- cat {render.START_LOG})",
+            )
+    print(f"Lab up: {len(instances)} instances. Next: ./opsforge status, ./opsforge verify")
+    return 0
+
+
+def cmd_down(args):
+    for inst in lab_instances():
+        print(f"  deleting {inst['name']}")
+        incus("delete", "--force", inst["name"])
+    for net in json.loads(incus("network", "list", "--format", "json").stdout):
+        if net["managed"] and net["name"].startswith("of-"):
+            print(f"  deleting network {net['name']}")
+            incus("network", "delete", net["name"])
+    if exists(f"/1.0/profiles/{render.PROFILE}"):
+        incus("profile", "delete", render.PROFILE)
+    if args.purge and exists(f"/1.0/images/aliases/{render.ROUTER_IMAGE}"):
+        print(f"  deleting image {render.ROUTER_IMAGE}")
+        incus("image", "delete", render.ROUTER_IMAGE)
+    print("Lab down")
+    return 0
+
+
+def read_link_state():
+    res = incus("file", "pull", f"{render.WAN_CORE}/etc/opsforge/links.json", "-", check=False)
+    if res.returncode != 0:
+        raise LabError(f"cannot read link state from {render.WAN_CORE} (is the lab up?)")
+    return json.loads(res.stdout)
+
+
+def describe_link(link):
+    return " ".join(f"{k}={link[k]}" for k in ("rtt", "jitter", "loss", "rate") if k in link)
+
+
+def cmd_status(args):
+    insts = lab_instances()
+    if not insts:
+        print("Lab is down (./opsforge up)")
+        return 0
+    total = 0
+    print(f"{'NAME':<12} {'ROLE':<11} {'SITE':<5} {'STATE':<8} {'MEMORY':>8}  IPV4")
+    for inst in sorted(insts, key=lambda i: (i["config"]["user.opsforge.site"], i["name"])):
+        state = inst.get("state") or {}
+        mem = (state.get("memory") or {}).get("usage", 0) / 1024**2
+        total += mem
+        ips = [
+            f"{a['address']} ({dev})"
+            for dev, nic in (state.get("network") or {}).items()
+            if dev != "lo"
+            for a in nic["addresses"]
+            if a["family"] == "inet"
+        ]
+        cfg = inst["config"]
+        print(
+            f"{inst['name']:<12} {cfg['user.opsforge.role']:<11} {cfg['user.opsforge.site'] or '-':<5} "
+            f"{inst['status']:<8} {mem:>5.0f} MiB  {', '.join(ips)}"
+        )
+    print(f"{'total':<39} {total:>5.0f} MiB")
+    print("\nLinks (live)")
+    for name, link in sorted(read_link_state()["links"].items()):
+        print(f"  {name:<12} {describe_link(link)}")
+    return 0
+
+
+def apply_link_state(state):
+    push_file(render.WAN_CORE, "/etc/opsforge/links.json", json.dumps(state, indent=2) + "\n", "0644")
+    push_file(render.WAN_CORE, "/etc/opsforge/links.sh", render.render_links_sh(state), "0755")
+    res = run_in(render.WAN_CORE, "/etc/opsforge/links.sh")
+    if res.returncode != 0:
+        raise LabError(f"applying link conditions failed:\n{res.stderr.strip()}")
+
+
+def cmd_link(args):
+    state = read_link_state()
+    ends = set(args.link.split("-"))
+    name = next((n for n in state["links"] if set(n.split("-")) == ends), None)
+    if name is None:
+        raise LabError(f"no link {args.link}; links: {', '.join(sorted(state['links']))}")
+    changes = {k: getattr(args, k) for k in ("rtt", "jitter", "loss", "rate") if getattr(args, k) is not None}
+    if not changes:
+        print(f"{name}: {describe_link(state['links'][name])}")
+        return 0
+    link = state["links"][name] | changes
+    link_schema = json.loads(SCHEMA.read_text())
+    link_schema = link_schema["properties"]["links"]["additionalProperties"] | {"$defs": link_schema["$defs"]}
+    try:
+        jsonschema.validate(link, link_schema)
+    except jsonschema.ValidationError as e:
+        raise LabError(f"invalid value: {e.message}") from None
+    state["links"][name] = link
+    apply_link_state(state)
+    print(f"{name}: {describe_link(link)} (live only; ./opsforge up from scratch resets to topology.yml)")
+    return 0
+
+
+def check_latency(r, topo, links, probe):
+    print("Latency (ping from one site to the other site's public IP; jitter is reported as mdev)")
+    for name, link in sorted(links.items()):
+        a, b = name.split("-")
+        src, dst = probe[b], topo["sites"][a]["public_ip"]
+        out = run_in(src, "ping", "-q", "-c", "20", "-i", "0.2", dst).stdout
+        m = re.search(r"= [\d.]+/([\d.]+)/[\d.]+/([\d.]+) ms", out)
+        if not m:
+            r.fail(f"{name}: {src} cannot ping {a}'s public IP {dst}")
+            continue
+        avg, mdev = float(m[1]), float(m[2])
+        want = render.time_us(link["rtt"]) / 1000
+        tol = max(3.0, want * 0.1)
+        msg = f"{name}: {src} -> {dst}  rtt {avg:.1f} ms (want {want:.0f} ± {tol:.0f}), mdev {mdev:.1f} ms"
+        msg += f" (jitter {link.get('jitter', '0ms')})"
+        (r.ok if abs(avg - want) <= tol else r.fail)(msg)
+
+
+def check_isolation(r, topo, probe):
+    print("Isolation (private VPC addresses must be unreachable from other sites)")
+    addrs = render.node_addresses(topo)
+    targets = {s: str(render.gateway_address(site).ip) for s, site in topo["sites"].items()}
+    for node, addr in reversed(addrs.items()):
+        targets[topo["nodes"][node]["site"]] = str(addr.ip)
+    for src_site, src in probe.items():
+        for dst_site, ip in targets.items():
+            if dst_site == src_site:
+                continue
+            reached = run_in(src, "ping", "-c", "1", "-W", "2", ip).returncode == 0
+            (r.fail if reached else r.ok)(f"{src} -> {ip} (site {dst_site}) {'REACHABLE' if reached else 'blocked'}")
+
+
+def check_internet(r, topo, probe):
+    print("Internet (DNS through wan-core, TCP out through the site gateway)")
+    for site, src in probe.items():
+        if src == render.gateway_name(site):
+            continue
+        cmd = "exec 3<>/dev/tcp/deb.debian.org/80"
+        ok = run_in(src, "timeout", "10", "bash", "-c", cmd).returncode == 0
+        (r.ok if ok else r.fail)(f"{src} reaches deb.debian.org:80")
+
+
+def check_bandwidth(r, topo, links):
+    print("Bandwidth (UDP iperf3 between gateways, offered at 2x the link rate)")
+    for name, link in sorted(links.items()):
+        if "rate" not in link:
+            continue
+        a, b = name.split("-")
+        server, client = render.gateway_name(a), render.gateway_name(b)
+        rate = render.rate_bps(link["rate"])
+        run_in(server, "nft", "add rule inet opsforge verify meta l4proto { tcp, udp } th dport 5201 accept")
+        try:
+            run_in(server, "iperf3", "-s", "-1", "-D")
+            time.sleep(0.5)
+            res = run_in(
+                client, "iperf3", "-c", topo["sites"][a]["public_ip"], "-u", "-b", str(2 * rate), "-t", "5", "-J"
+            )
+            try:
+                got = json.loads(res.stdout)["end"]["sum_received"]["bits_per_second"]
+            except (ValueError, KeyError):
+                r.fail(f"{name}: iperf3 {client} -> {server} failed: {res.stdout[-300:]}{res.stderr.strip()}")
+                continue
+        finally:
+            run_in(server, "nft", "flush chain inet opsforge verify")
+            run_in(server, "pkill", "iperf3")
+        # netem drops `loss` before the rate limiter, so the received rate can sit slightly below it
+        msg = f"{name}: {client} -> {server}  {got / 1e6:.1f} Mbit/s received (rate {link['rate']})"
+        (r.ok if 0.85 * rate <= got <= 1.05 * rate else r.fail)(msg)
+
+
+def cmd_verify(args):
+    """Phase 1 acceptance: latency, isolation, internet and bandwidth match topology + live link state."""
+    topo = load_valid_topology()
+    links = read_link_state()["links"]
+    # One probe host per site: its first node, or the gateway if the site has none
+    probe = {s: render.gateway_name(s) for s in topo["sites"]}
+    for node, n in reversed(topo["nodes"].items()):
+        probe[n["site"]] = node
+    r = Report()
+    check_latency(r, topo, links, probe)
+    check_isolation(r, topo, probe)
+    check_internet(r, topo, probe)
+    if not args.quick:
+        check_bandwidth(r, topo, links)
+    print("\nVerify " + ("\033[31mFAILED\033[0m" if r.failed else "\033[32mpassed\033[0m"))
+    return 1 if r.failed else 0
+
+
+def cmd_render(args):
+    topo = load_valid_topology()
+    networks, instances = render.plan(topo, upstream_dns() if shutil.which("incus") else "<incusbr0>")
+    print(f"networks: {', '.join(networks)}")
+    for inst in instances:
+        print(f"\n=== {inst.name} ({inst.role}, {inst.image}) {inst.config}")
+        print(f"    nics: {', '.join(f'{dev} -> {net}' for dev, net in inst.nics.items())}")
+        for path, (content, mode) in inst.files.items():
+            print(f"--- {path} ({mode})\n{content}")
+    return 0
+
+
+# Commands planned in docs/PLAN.md, with the phase that implements them.
+PLANNED = {
+    "ssh": ("open a shell on a node", 2),
+    "partition": ("cut a site off the WAN", 6),
+    "heal": ("restore all links", 6),
+    "flap": ("periodically drop a link", 6),
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="opsforge", description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("validate", help="validate topology.yml")
+    p.add_argument("topology", nargs="?", default=TOPOLOGY, type=Path)
+    p.set_defaults(func=cmd_validate)
+    sub.add_parser("preflight", help="check the host is ready to run the lab").set_defaults(func=cmd_preflight)
+    sub.add_parser("smoke", help="launch a throwaway container to prove Incus networking works").set_defaults(
+        func=cmd_smoke
+    )
+    sub.add_parser("up", help="create the lab from topology.yml").set_defaults(func=cmd_up)
+    p = sub.add_parser("down", help="destroy the lab")
+    p.add_argument("--purge", action="store_true", help=f"also delete the cached {render.ROUTER_IMAGE} image")
+    p.set_defaults(func=cmd_down)
+    sub.add_parser("status", help="show instances, memory and live link conditions").set_defaults(func=cmd_status)
+    p = sub.add_parser("link", help="show or change a WAN link's conditions live, e.g. link a-b --rtt 200ms")
+    p.add_argument("link", help="site pair, e.g. a-b")
+    p.add_argument("--rtt", help="round-trip time, e.g. 80ms")
+    p.add_argument("--jitter", help="RTT standard deviation, e.g. 10ms (0ms disables)")
+    p.add_argument("--loss", help="per-direction packet loss, e.g. 0.5%% (0%% disables)")
+    p.add_argument("--rate", help="per-direction bandwidth, e.g. 20mbit")
+    p.set_defaults(func=cmd_link)
+    p = sub.add_parser("verify", help="check latency, isolation, internet and bandwidth against the live links")
+    p.add_argument("--quick", action="store_true", help="skip the bandwidth test")
+    p.set_defaults(func=cmd_verify)
+    sub.add_parser("render", help="print the generated networks, instances and config files").set_defaults(
+        func=cmd_render
+    )
+    for name, (desc, phase) in PLANNED.items():
+        p = sub.add_parser(name, help=f"{desc} (Phase {phase}, not implemented)")
+        p.add_argument("args", nargs=argparse.REMAINDER)
+        p.set_defaults(func=lambda a, n=name, ph=phase: sys.exit(f"opsforge {n}: not implemented yet (Phase {ph})"))
+
+    args = parser.parse_args()
+    try:
+        return args.func(args)
+    except LabError as e:
+        print(f"opsforge {args.command}: {e}", file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError as e:
+        print(f"opsforge {args.command}: '{' '.join(e.cmd)}' failed:\n{(e.stderr or '').strip()}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

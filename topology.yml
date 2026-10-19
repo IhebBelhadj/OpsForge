@@ -1,0 +1,24 @@
+# OpsForge lab topology: single source of truth for sites, WAN links and nodes (docs/PLAN.md §3).
+# Validate with: ./opsforge validate
+
+# Simulated "internet" between site gateways (TEST-NET-3, never routed on the real internet)
+transit: 203.0.113.0/24
+
+sites:
+  a: { vpc: 10.10.0.0/24, public_ip: 203.0.113.10 }
+  b: { vpc: 10.20.0.0/24, public_ip: 203.0.113.20 }
+  c: { vpc: 10.30.0.0/24, public_ip: 203.0.113.30 }
+
+# rtt is round-trip (applied as rtt/2 each way); loss and rate apply per direction
+links:
+  a-b: { rtt: 40ms, jitter: 5ms, loss: 0.1%, rate: 100mbit }
+  a-c: { rtt: 120ms, jitter: 15ms, loss: 1%, rate: 20mbit }
+  b-c: { rtt: 90ms, jitter: 10ms, loss: 0.5%, rate: 50mbit }
+
+nodes:
+  a-cp1: { site: a, role: k3s-server, cpu: 2, memory: 1536MiB }
+  b-w1: { site: b, role: k3s-agent, cpu: 1, memory: 768MiB }
+  c-w1: { site: c, role: k3s-agent, cpu: 1, memory: 768MiB }
+
+profiles:
+  ci: false

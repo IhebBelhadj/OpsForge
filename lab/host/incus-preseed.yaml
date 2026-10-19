@@ -1,0 +1,27 @@
+# Incus initial config, applied by scripts/host-setup.sh (@POOL_SIZE@ is substituted).
+# incusbr0 is the management/default network; lab networks (of-*) are created from topology.yml.
+config: {}
+networks:
+  - name: incusbr0
+    type: bridge
+    config:
+      ipv4.address: 10.99.0.1/24
+      ipv4.nat: "true"
+      ipv6.address: none
+storage_pools:
+  # btrfs on a sparse loop file: copy-on-write clones, so N nodes from one image cost ~1x disk
+  - name: default
+    driver: btrfs
+    config:
+      size: "@POOL_SIZE@"
+profiles:
+  - name: default
+    devices:
+      root:
+        type: disk
+        path: /
+        pool: default
+      eth0:
+        type: nic
+        name: eth0
+        network: incusbr0

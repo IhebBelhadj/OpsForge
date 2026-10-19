@@ -1,70 +1,52 @@
-# Project: OpsForge
+# OpsForge
 
-### Overview
-OpsForge is a local DevOps infrastructure setup designed to automate the build, test, and deployment processes for applications using Vagrant, Jenkins, and Kubernetes. This setup integrates CI/CD best practices, artifact management, and real-time monitoring for efficient deployment workflows and app server management.
+A multi-site WAN lab on one Linux host. OpsForge provisions a distributed environment spread over simulated
+distant sites (think multi-cloud / multi-region), connected through a simulated internet with configurable
+latency, jitter, packet loss and bandwidth. Use it to build, run and break distributed systems under realistic
+network conditions, with a minimal RAM footprint.
 
-### Features
-- **Automated CI/CD Pipeline**: Triggered by Git webhooks, the pipeline automates building, testing, and deployment using Jenkins.
-- **Kubernetes App Clusters**: Deployed on a Kubernetes cluster, app servers are updated dynamically to pull the latest Docker images.
-- **Monitoring & Visualization**: Integrated with Prometheus and Grafana for real-time performance monitoring and visualization.
-- **Artifact Management**: Uses Nexus for efficient artifact and dependency management.
-- **Code Quality Analysis**: SonarQube integration for continuous code quality checks.
+Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
+(network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-### Architecture
-- **Vagrant**: Manages virtual machines for the CI/CD environment.
-- **Jenkins**: Core CI/CD orchestrator, configured to automate builds and trigger deployments.
-- **SonarQube**: Performs code quality analysis and enforces coding standards.
-- **Nexus**: Serves as a local repository to cache dependencies and artifacts.
-- **Kubernetes**: Manages clusters for app servers, enabling container orchestration and scalability.
-- **Prometheus & Grafana**: Provides monitoring, logging, and visualization of resource metrics.
+> **Status:** Phase 0 of [the plan](docs/PLAN.md): host setup and CLI skeleton.
 
-### Prerequisites
-- **Vagrant** and **VirtualBox** installed on your local machine.
-- **Docker** installed for building and managing Docker images.
-- **Kubernetes** cluster configured within the VMs.
+## Requirements
 
-### Installation
+- Linux host (developed on Arch Linux; `scripts/host-setup.sh` uses pacman)
+- ~3 GB free RAM and ~35 GB free disk (the lab uses 5–20 GB depending on phase)
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/IhebBelhadj/OpsForge.git
+## Quick start
 
-   ```
-2. **Launch the VM cluster**
- ```bash
-   cd OpsForge
-   chmod +x init.sh
-   ./init.sh
-   ```
+```bash
+sudo ./scripts/host-setup.sh   # one-time: Incus, kernel modules, sysctls, Docker coexistence
+newgrp incus-admin             # or log out and back in
+./opsforge preflight           # check the host is ready
+./opsforge smoke               # launch a throwaway container and test networking
+```
 
-3. Acess services in VMs
-> **_NOTE:_**  The IP addresses and ports  for the services
-> CI/CD server IP : `192.168.56.10`
-##### service ports table 
-| Service               | Container Name    | Host Port | Container Port |
-|-----------------------|-------------------|-----------|----------------|
-| Nexus                 | nexus             | 8081      | 8081           |
-| PostgreSQL (SonarQube)| db                | (No port exposed) | (No port exposed) |
-| SonarQube             | sonarqube         | 9000      | 9000           |
-| Prometheus            | prometheus        | 9090      | 9090           |
-| Grafana               | grafana           | 3000      | 3000           |
-| MySQL                 | mysql             | 3306      | 3306           |
+## Measured footprint
 
-> App server IP address: `192.168.56.20`
+| Phase | What runs | RAM (idle) | Disk |
+|---|---|---|---|
+| 0 | 1 × Debian 13 container (`opsforge smoke`) | 113 MiB | 101 MiB image, 441 MiB pool |
 
-4. **Setup Jenkins pipeline**
-* Access Jenkins at http://<Jenkins_VM_IP>:8080.
-* Configure the Jenkinsfile to specify your repository and webhook triggers.
-* Configure jenkins credentials
+## Topology
 
-### Usage
-* Push code to the Git repository to trigger the CI/CD pipeline.
-* View live application logs and metrics through Grafana dashboards.
+Everything is defined in [`topology.yml`](topology.yml): sites (each a private VPC behind a gateway with a
+public IP), WAN links between sites, and nodes.
 
-### Future improvements
-* Add automated scaling policies in Kubernetes.
-* Integrate additional security measures, such as TLS for network communication.
-* Implement automated backups for Nexus repository and Jenkins configuration.
-* Adding other agents to jenkins server
-* Automating Jenkins setup on VM provision
-* Making the infrastructure project agnostic so that you can you it with any application project you have 
+```yaml
+links:
+  a-b: { rtt: 40ms, jitter: 5ms, loss: 0.1%, rate: 100mbit }
+  a-c: { rtt: 120ms, jitter: 15ms, loss: 1%, rate: 20mbit }
+```
+
+Validate it with `./opsforge validate`.
+
+## Development
+
+```bash
+make check   # shellcheck, yamllint, Python syntax, topology validation
+```
+
+See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.

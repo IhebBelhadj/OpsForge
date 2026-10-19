@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpsForge lab topology",
+  "type": "object",
+  "required": ["transit", "sites", "links", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "transit": { "$ref": "#/$defs/cidr" },
+    "sites": {
+      "type": "object",
+      "minProperties": 2,
+      "propertyNames": { "$comment": "short: becomes part of interface names (of-<site>, max 15 chars)", "pattern": "^[a-z][a-z0-9]{0,5}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["vpc", "public_ip"],
+        "additionalProperties": false,
+        "properties": {
+          "vpc": { "$ref": "#/$defs/cidr" },
+          "public_ip": { "type": "string", "format": "ipv4" }
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]{0,5}-[a-z][a-z0-9]{0,5}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["rtt"],
+        "additionalProperties": false,
+        "properties": {
+          "rtt": { "$ref": "#/$defs/duration" },
+          "jitter": { "$ref": "#/$defs/duration" },
+          "loss": { "type": "string", "pattern": "^\\d+(\\.\\d+)?%$" },
+          "rate": { "type": "string", "pattern": "^\\d+(kbit|mbit|gbit)$" }
+        }
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,30}[a-z0-9]$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["site", "role"],
+        "additionalProperties": false,
+        "properties": {
+          "site": { "type": "string" },
+          "role": { "enum": ["k3s-server", "k3s-agent", "ci", "plain"] },
+          "cpu": { "type": "integer", "minimum": 1, "maximum": 16 },
+          "memory": { "type": "string", "pattern": "^\\d+(MiB|GiB)$" },
+          "expose": {
+            "$comment": "port forwards on the site gateway's public IP: <public>[:<private>][/tcp|udp]",
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^\\d{1,5}(:\\d{1,5})?(/(tcp|udp))?$" }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ci": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "cidr": { "type": "string", "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$" },
+    "duration": { "type": "string", "pattern": "^\\d+(\\.\\d+)?(us|ms|s)$" }
+  }
+}

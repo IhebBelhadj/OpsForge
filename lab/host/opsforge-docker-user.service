@@ -1,0 +1,14 @@
+[Unit]
+Description=OpsForge: let Incus bridge traffic through Docker's FORWARD drop policy
+After=docker.service
+# Re-run whenever Docker restarts (it rebuilds its chains)
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/opsforge/docker-user-rules.sh add
+ExecStop=/usr/local/libexec/opsforge/docker-user-rules.sh del
+
+[Install]
+WantedBy=docker.service

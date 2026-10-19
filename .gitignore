@@ -1,11 +1,1 @@
-# Ignore the app directory
-/app/
-
-# Ignore the .git directory
-/.git/
-
-# Ignore the .vagrant directory
-**/.vagrant/
-
-vm_hosts.txt
-
+__pycache__/
