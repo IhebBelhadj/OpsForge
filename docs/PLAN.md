@@ -52,12 +52,35 @@ gateways and is the single place where link conditions are applied.
                         "internet" transit 203.0.113.0/24
 ```
 
+### Wiring (as built in Phase 1)
+- Per site: a VPC bridge `of-<site>` (gateway `.1`, nodes `.11`, `.12`, … in `topology.yml` order) and a
+  point-to-point uplink bridge `of-<site>-wan` between the gateway and `wan-core`. Gateways hold their public
+  IP as a `/32` with `wan-core` (first host of `transit`) as an on-link next hop, so they can never reach each
+  other directly: every inter-site packet crosses `wan-core`. A single shared transit bridge would have let
+  gateways ARP each other and bypass the shaping.
+- No lab bridge has a host address (`ipv4.address=none`): the host neither routes between VPCs nor into them.
+  Instances use the `opsforge` profile (root disk only), never `incusbr0` from the default profile.
+- `wan-core` is the "internet": its `eth0` sits on `incusbr0` for real internet access (masqueraded). It drops
+  forwarding to private ranges (other VPCs, the host's LANs, `incusbr0`) like the real internet does, and
+  answers DNS on its transit address by DNAT to the `incusbr0` resolver, so no DNS daemon is needed.
+- Routers (`wan-core`, gateways) run one generated boot script (`/etc/local.d/opsforge.start`, log in
+  `/var/log/opsforge.log`) from a cached image `opsforge-router-1` (Alpine + `iproute2-tc`, `nftables`,
+  `iperf3`, built once by `opsforge up`). Nodes get a static systemd-networkd file.
+- The tc/nft modules this needs beyond `REQUIRED_MODULES` (`cls_u32`, `nft_ct`, `nft_nat`, …) are autoloaded
+  by the kernel on first use, including from inside unprivileged containers.
+
 ### Link-condition model (important detail)
 - netem only shapes **egress**. On `wan-core`, each interface facing site X gets an HTB root with one
-  class per peer site, classified by **source** gateway IP, each with a netem leaf.
+  class per peer site, classified by **source** gateway IP, each with a netem leaf. Unclassified traffic
+  (real internet, `wan-core` itself) is not shaped.
 - `topology.yml` specifies **RTT**; the generator applies `rtt/2` delay in each direction so `ping`
   matches the configured value. Loss is applied per direction (documented: round-trip loss ≈ 2×).
-- Bandwidth (`rate`) is applied per direction.
+- `jitter` is the RTT standard deviation (what `ping` reports as `mdev`): each direction gets `jitter/√2`
+  with a normal distribution.
+- Bandwidth (`rate`) is applied per direction by netem's `rate`, which also keeps packets in order (plain
+  netem jitter reorders packets and wrecks TCP). Links without a rate get 10gbit for the same reason.
+- `opsforge link` changes are live only: the state lives in `wan-core:/etc/opsforge/links.json` and survives a
+  `wan-core` restart, but `opsforge down && up` resets to `topology.yml`.
 
 ### Memory budget (Incus, idle; to be verified by measurement each phase)
 
@@ -75,11 +98,11 @@ gateways and is the single place where link conditions are applied.
 
 ```
 topology.yml              # single source of truth: sites, links, nodes, profiles
-opsforge                  # CLI entry point (Python 3): up/down/status/ssh/link/partition/heal/flap
+opsforge                  # CLI entry point (Python 3): up/down/status/verify/link/ssh/partition/heal/flap
 lab/
-  render.py               # topology.yml -> incus resources, tc/nft scripts, ansible inventory
-  schema.json             # topology.yml validation
-  templates/              # tc, nftables, wireguard, dnsmasq templates
+  render.py               # topology.yml -> incus resources, tc/nft scripts (inline), later ansible inventory
+  topology.schema.json    # topology.yml validation
+  host/                   # files installed on the host by scripts/host-setup.sh
 ansible/
   inventory/              # generated (gitignored)
   site.yml                # top-level playbook
@@ -113,7 +136,7 @@ Each phase ends with: acceptance checks passing, a measured RAM snapshot (`incus
 and reaches the internet through Docker's firewall, and `make check` runs green.
 
 ### Phase 1: Topology and simulated WAN
-- [ ] Define `topology.yml` and its schema:
+- [x] Define `topology.yml` and its schema:
   ```yaml
   sites:
     a: { vpc: 10.10.0.0/24, public_ip: 203.0.113.10 }
@@ -130,15 +153,21 @@ and reaches the internet through Docker's firewall, and `make check` runs green.
   profiles:
     ci: false
   ```
-- [ ] `render.py` creates: one isolated Incus network per VPC (no host NAT/DHCP leakage), the transit
-      network, gateways, `wan-core`, and node containers from minimal images with CPU/memory limits.
-- [ ] Gateways: SNAT VPC → public IP, default-deny inbound, explicit port forwards when declared.
-- [ ] `wan-core`: HTB + netem per site pair as described in §3.
-- [ ] `opsforge link <a-b> --rtt/--loss/--rate` re-applies conditions live, without recreating anything.
+- [x] `lab/render.py` creates: one isolated Incus network per VPC (no host NAT/DHCP leakage), one uplink
+      network per site (see §3 Wiring), gateways, `wan-core`, and node containers from minimal images with
+      CPU/memory limits. `opsforge render` prints everything it generates.
+- [x] Gateways: SNAT VPC → public IP, default-deny inbound (ping allowed), port forwards declared per node
+      with `expose: ["<public>[:<private>][/tcp|udp]"]`.
+- [x] `wan-core`: HTB + netem per site pair as described in §3.
+- [x] `opsforge link <a-b> --rtt/--jitter/--loss/--rate` re-applies conditions live, without recreating anything.
+- [x] `opsforge up/down/status/verify`; `verify` runs the acceptance checks below against the live link state.
+- [x] Measured (2026-10-19): idle lab 312 MiB (`wan-core` 9 MiB, gateways 6 MiB each, Debian nodes ~96 MiB
+      each); router image 5.8 MiB, pool 504 MiB used; `up` takes ~10 s with cached images.
 
-**Done when:**
+**Done when** (all verified 2026-10-19 by `./opsforge verify`, plus a manual `expose` test):
 - `ping` b-w1 → a-gw public IP ≈ 40 ms RTT, c-w1 → a ≈ 120 ms, with configured jitter.
-- `iperf3` between sites tops out at the configured rate.
+- `iperf3` between sites tops out at the configured rate (UDP: TCP over 1% loss at 120 ms cannot fill
+  20 Mbit/s, per the Mathis formula, which is realistic but not a test of the shaper).
 - Nodes in different VPCs **cannot** reach each other's private IPs (only via public IP / port forward).
 - `opsforge down && opsforge up` reproduces the lab from scratch.
 

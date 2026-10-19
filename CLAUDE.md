@@ -4,9 +4,9 @@ Lab that provisions a **distributed environment spread over simulated distant si
 multi-region) on one Linux host, with realistic WAN conditions and minimal RAM. Read `docs/PLAN.md` before
 structural changes; it has the phases, acceptance criteria and design decisions.
 
-Current status: **Phase 0 done** (2026-10-19): host set up, `preflight`/`smoke`/`make check` green.
-**Next: Phase 1** (topology → Incus networks, site gateways, `wan-core` router with netem/HTB; `opsforge up/down/link`).
-Nothing is committed yet: the v1 removal and all v2 files are uncommitted on `master`.
+Current status: **Phase 1 done** (2026-10-19): `opsforge up/down/status/link/verify/render` work; `verify` green,
+idle lab 312 MiB. **Next: Phase 2** (Ansible inventory from `render.py`, SSH via gateways, base/dns/pki roles).
+The v2 rework is committed on `master` (96a9625); v1 (Vagrant/Jenkins) is gone from the tree.
 
 ## Layout / index
 
@@ -15,7 +15,8 @@ Nothing is committed yet: the v1 removal and all v2 files are uncommitted on `ma
 | `docs/PLAN.md` | Roadmap: Incus system containers + per-site gateways + WAN core router (netem) + K3s. |
 | `topology.yml` | Single source of truth: transit net, sites (VPC + public IP), links (rtt/jitter/loss/rate), nodes. |
 | `lab/topology.schema.json` | JSON Schema for `topology.yml`; cross-reference/address checks live in `opsforge` (`topology_errors`). |
-| `opsforge` | Python 3 CLI (stdlib + PyYAML + jsonschema). Implemented: `validate`, `preflight`, `smoke`. Others are stubs labelled with their phase (`PLANNED`). |
+| `opsforge` | Python 3 CLI (stdlib + PyYAML + jsonschema): validation, Incus orchestration, `verify` checks. Implemented: `validate`, `preflight`, `smoke`, `up`, `down`, `status`, `link`, `verify`, `render`. Later-phase commands are stubs in `PLANNED`. |
+| `lab/render.py` | Pure topology → plan: Incus networks, `Instance`s with limits/NICs/files, generated nft rulesets, boot scripts and the wan-core tc script. No Incus calls. |
 | `scripts/host-setup.sh` | One-time, idempotent **root** setup for Arch: packages, subuid/subgid, kernel modules, sysctls, Docker coexistence, Incus preseed, `incus-admin` group. |
 | `lab/host/` | Files installed by host-setup: `modules-load.conf`, `sysctl.conf`, `incus-preseed.yaml`, Docker `DOCKER-USER` rules script + systemd unit. |
 | `Makefile` | `make check` (shellcheck, yamllint, py_compile, ansible-lint when `ansible/` exists, topology validation), `make preflight`, `make smoke`. |
@@ -42,7 +43,14 @@ Nothing is committed yet: the v1 removal and all v2 files are uncommitted on `ma
   ≤ 6 chars). Never reuse reserved ranges: `10.99.0.0/24` (incusbr0), `172.17.0.0/16` (docker0),
   `10.42.0.0/16`/`10.43.0.0/16` (K3s). These are enforced in `RESERVED_NETS` in `opsforge`; keep it in sync
   with `lab/host/incus-preseed.yaml`.
-- Link semantics: `rtt` is round-trip (applied rtt/2 per direction); `loss`/`rate` are per direction.
+- Link semantics: `rtt` is round-trip (applied rtt/2 per direction); `jitter` is RTT stddev (jitter/√2 per
+  direction); `loss`/`rate` are per direction. netem always gets a `rate` so jitter cannot reorder packets.
+- Lab wiring (docs/PLAN.md §3 "Wiring"): bridges `of-<site>` (VPC) and `of-<site>-wan` (gateway↔wan-core),
+  no host addresses on either. Routers are `wan-core` and `<site>-gw`; gateway is VPC `.1`, nodes `.11`+.
+  Lab instances are tagged `user.opsforge.role` (and `.site`); `down` deletes those plus managed `of-*` networks.
+- Routers are configured only by generated files pushed before first boot; their boot script logs to
+  `/var/log/opsforge.log`. Change `ROUTER_BUILD` → bump `ROUTER_IMAGE`'s suffix so `up` rebuilds it.
+- Live link state is `wan-core:/etc/opsforge/links.json`; `verify` checks against it, not `topology.yml`.
 - Values duplicated between files must stay in sync: modules (`lab/host/modules-load.conf` ↔ `REQUIRED_MODULES`),
   sysctls (`lab/host/sysctl.conf` ↔ `REQUIRED_SYSCTLS`).
 - Shell: bash, `set -euo pipefail`, tabs, must pass shellcheck. YAML must pass `yamllint` (`.yamllint`).
@@ -55,4 +63,5 @@ Nothing is committed yet: the v1 removal and all v2 files are uncommitted on `ma
 make check            # lint + topology validation (needs host-setup's dev tools)
 ./opsforge preflight  # host readiness
 ./opsforge smoke      # Phase 0 acceptance: container boots, gets IP, reaches the internet
+./opsforge up && ./opsforge verify   # Phase 1 acceptance (~45 s; --quick skips iperf3)
 ```

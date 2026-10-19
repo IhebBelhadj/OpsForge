@@ -337,7 +337,7 @@ def ensure_router_image():
 
 
 def create_instance(inst):
-    config = inst.config | {"user.opsforge.role": inst.role, "user.opsforge.site": inst.site or ""}
+    config = inst.config | {"user.opsforge.role": inst.role} | ({"user.opsforge.site": inst.site} if inst.site else {})
     incus("create", inst.image, inst.name, "--profile", render.PROFILE, *[f"--config={k}={v}" for k, v in config.items()])
     for dev, net in inst.nics.items():
         incus("config", "device", "add", inst.name, dev, "nic", f"network={net}", f"name={dev}")
@@ -418,7 +418,7 @@ def cmd_status(args):
         return 0
     total = 0
     print(f"{'NAME':<12} {'ROLE':<11} {'SITE':<5} {'STATE':<8} {'MEMORY':>8}  IPV4")
-    for inst in sorted(insts, key=lambda i: (i["config"]["user.opsforge.site"], i["name"])):
+    for inst in sorted(insts, key=lambda i: (i["config"].get("user.opsforge.site", ""), i["name"])):
         state = inst.get("state") or {}
         mem = (state.get("memory") or {}).get("usage", 0) / 1024**2
         total += mem
@@ -431,7 +431,7 @@ def cmd_status(args):
         ]
         cfg = inst["config"]
         print(
-            f"{inst['name']:<12} {cfg['user.opsforge.role']:<11} {cfg['user.opsforge.site'] or '-':<5} "
+            f"{inst['name']:<12} {cfg['user.opsforge.role']:<11} {cfg.get('user.opsforge.site', '-'):<5} "
             f"{inst['status']:<8} {mem:>5.0f} MiB  {', '.join(ips)}"
         )
     print(f"{'total':<39} {total:>5.0f} MiB")
