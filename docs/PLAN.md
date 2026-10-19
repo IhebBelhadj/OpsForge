@@ -66,8 +66,26 @@ gateways and is the single place where link conditions are applied.
 - Routers (`wan-core`, gateways) run one generated boot script (`/etc/local.d/opsforge.start`, log in
   `/var/log/opsforge.log`) from a cached image `opsforge-router-1` (Alpine + `iproute2-tc`, `nftables`,
   `iperf3`, built once by `opsforge up`). Nodes get a static systemd-networkd file.
+- Images `opsforge-router-<n>` (Alpine) and `opsforge-node-<n>` (Debian) are built once by `up` and ship
+  sshd + python3, so Ansible manages every instance from its first boot (no Incus connection plugin needed).
+  Their SSH host keys are stripped; `up` pushes a per-instance key generated on the host (kept in `.opsforge/`
+  across `down`), so `known_hosts` is written in advance and host-key checking stays strict.
 - The tc/nft modules this needs beyond `REQUIRED_MODULES` (`cls_u32`, `nft_ct`, `nft_nat`, …) are autoloaded
   by the kernel on first use, including from inside unprivileged containers.
+
+### Management access (as built in Phase 2)
+- The host is the Ansible controller and enters the lab like an operator on the internet: SSH to a gateway's
+  public IP through `incus exec wan-core -- nc` (the host has no route into the lab and needs no sudo), then
+  `ProxyJump` through the gateway (the site's bastion) to the nodes. `opsforge up` renders the SSH config and
+  inventory (`.opsforge/ssh/config`, `ansible/inventory/hosts.yml`); `opsforge ssh <host>` uses them.
+- The management path is wan-core's own traffic, so it is **not shaped**: provisioning is fast and does not
+  disturb experiments. Traffic between sites (DNS forwarding, later VPN/K3s) is shaped as usual.
+- Infrastructure (opsforge) owns addressing and firewalls, like Terraform security groups; Ansible owns the
+  services. Gateways accept SSH from anywhere on the WAN (key-only) and DNS from the other gateways only.
+- DNS: each gateway runs dnsmasq for its zone `<site>.lab` and forwards the other zones to the other gateways'
+  public IPs across the WAN, so a cross-site lookup pays the link's RTT (then is cached). Nodes resolve through
+  their gateway with every site's zone as a search domain (own site first), so short names work too. Names
+  resolve to private VPC addresses, which become reachable from other sites in Phase 3.
 
 ### Link-condition model (important detail)
 - netem only shapes **egress**. On `wan-core`, each interface facing site X gets an HTB root with one
@@ -87,7 +105,7 @@ gateways and is the single place where link conditions are applied.
 | Node | Role | Limit | Expected idle |
 |---|---|---|---|
 | wan-core | Alpine, tc/nftables | 64 MiB | ~15–25 MB |
-| a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq | 64 MiB each | ~10–20 MB each |
+| a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq | 128 MiB each (Ansible's Python modules OOM at 64) | ~10–20 MB each |
 | a-cp1 | K3s server + Prometheus + Grafana | 1.5 GiB | ~700 MB–1 GB |
 | b-w1, c-w1 | K3s agent | 768 MiB each | ~250–400 MB each |
 | ci (optional) | Gitea + Woodpecker + registry | 1 GiB | ~500–800 MB |
@@ -172,15 +190,26 @@ and reaches the internet through Docker's firewall, and `make check` runs green.
 - `opsforge down && opsforge up` reproduces the lab from scratch.
 
 ### Phase 2: Controller-driven provisioning
-- [ ] `render.py` emits the Ansible inventory (groups by site and role).
-- [ ] Ansible connects over SSH through the gateways (ProxyJump) — the same experience as managing remote
-      hosts; fall back to the Incus connection plugin for bootstrap.
-- [ ] Roles: `base` (chrony, sshd, minimal packages, no swap, journald size cap), `dns` (dnsmasq on each
-      gateway; `*.a.lab`, `*.b.lab`, … resolvable across sites), `pki` (small CA, per-node certs).
-- [ ] Retire `bootstrap.sh` / `start.env.sh` from the v2 path.
+- [x] `render.py` emits the Ansible inventory: `lab` → `gateways`, `nodes`; `site_<site>`; one group per node
+      role (`k3s_server`, `k3s_agent`); per-host `lab_site`, `lab_address` (VPC), `lab_public_ip` (gateways).
+- [x] Ansible connects over SSH through wan-core and the gateways (ProxyJump), see §3 "Management access". The
+      Incus connection plugin turned out unnecessary: the images ship sshd + python3 and `up` pushes the keys.
+- [x] Roles: `base` (key-only sshd, minimal packages, own name → VPC address in `/etc/hosts`, journald capped at
+      32 MiB, apt timers masked), `dns` (dnsmasq on each gateway; `*.a.lab`, `*.b.lab`, … resolvable across
+      sites; LLMNR/mDNS off), `pki` (ECDSA CA on the controller in `.opsforge/pki/`, per-node key generated on
+      the node, cert with name/FQDN/IP SANs, CA trusted system-wide).
+      **Changed from the plan:** no chrony: containers share the host clock and cannot set it (§2). No swap is
+      enforced by Incus (`limits.memory.swap=false`) rather than by a role.
+- [x] Retire `bootstrap.sh` / `start.env.sh` from the v2 path (removed with v1).
+- [x] CLI: `opsforge provision [ansible-playbook args]`, `opsforge ssh <host> [cmd]`; `verify` adds SSH, DNS
+      (12 names per node) and PKI checks.
+- [x] Measured (2026-10-19), provisioned and idle: Incus reports 1042 MiB, of which 921 MiB is reclaimable page
+      cache left by apt/Ansible (nodes ~290 MiB, gateways 38 MiB); non-reclaimable (anon + kernel) is 101 MiB
+      (nodes 26–30 MiB, gateways 5 MiB, wan-core 2 MiB). Images: node 126 MiB, router 21 MiB; pool 1.5 GiB used.
+      From scratch: `up` ~50 s (incl. SSH ready), first `provision` ~1 min, second run ~20 s.
 
-**Done when:** a second `ansible-playbook site.yml` run reports `changed=0`; every node resolves every
-other node by name; `ssh b-w1` works from the host via the CLI.
+**Done when** (all verified 2026-10-19 after `down && up && provision`): a second `ansible-playbook site.yml`
+run reports `changed=0`; every node resolves every other node by name; `ssh b-w1` works from the host via the CLI.
 
 ### Phase 3: Site-to-site VPN
 - [ ] WireGuard tunnels between gateways (full mesh for 3 sites) giving routed private reachability

@@ -1,0 +1,30 @@
+# Clock sync (chrony) is deliberately absent: containers share the host's clock and cannot set it
+# (docs/PLAN.md §2). Swap is disabled by opsforge up with limits.memory.swap=false.
+- name: Allow SSH with keys only
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-opsforge.conf
+    content: |
+      # Managed by Ansible (ansible/roles/base); local changes are overwritten
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+      X11Forwarding no
+    mode: "0644"
+  notify: Reload sshd
+
+# Debian maps the hostname to 127.0.1.1; like a cloud image, resolve it to the VPC address instead
+- name: Resolve the host's own name to its VPC address
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^(127\.0\.1\.1|{{ lab_address | regex_escape }})\s'
+    line: "{{ lab_address }}\t{{ inventory_hostname }}.{{ lab_site }}.{{ lab_domain }} {{ inventory_hostname }}"
+    insertbefore: BOF
+
+- name: Install the base packages
+  ansible.builtin.package:
+    name: "{{ base_packages[ansible_facts.os_family] }}"
+  when: ansible_facts.os_family != "Debian"
+
+- name: Configure Debian
+  ansible.builtin.include_tasks: debian.yml
+  when: ansible_facts.os_family == "Debian"

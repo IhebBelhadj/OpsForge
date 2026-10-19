@@ -8,8 +8,8 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 1 of [the plan](docs/PLAN.md): sites, gateways and a shaped WAN core. Nodes are plain
-> Debian machines for now; provisioning (Phase 2) and Kubernetes (Phase 4) come next.
+> **Status:** Phase 2 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, and Ansible provisioning
+> over SSH (base system, per-site DNS, a lab PKI). Site-to-site VPN (Phase 3) and Kubernetes (Phase 4) come next.
 
 ## Requirements
 
@@ -24,9 +24,12 @@ newgrp incus-admin             # or log out and back in
 ./opsforge preflight           # check the host is ready
 ./opsforge smoke               # launch a throwaway container and test networking
 
-./opsforge up                  # create the lab from topology.yml (~10 s once images are cached)
+./opsforge up                  # create the lab from topology.yml (~1 min once images are cached)
+./opsforge provision           # configure it with Ansible over SSH (ansible/site.yml); safe to re-run
 ./opsforge status              # instances, memory, live link conditions
-./opsforge verify              # latency, isolation, internet and bandwidth checks
+./opsforge verify              # latency, isolation, internet, bandwidth, SSH, DNS and PKI checks
+./opsforge ssh b-w1            # SSH in through wan-core and site b's gateway, like a remote VPC
+./opsforge ssh b-w1 getent hosts a-cp1   # a-cp1.a.lab, resolved by a-gw across the WAN
 incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
 ./opsforge link a-b --rtt 200ms --loss 2%   # change a link live
 ./opsforge down                # delete everything (keeps cached images; --purge drops the router image)
@@ -50,6 +53,10 @@ incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
   It also gives the lab internet access, but never routes to private addresses: VPCs cannot reach each other
   (or your LAN) except through public IPs and port forwards, as between real clouds.
 - Nothing on the host gets an address on the lab networks.
+- The host is the **Ansible controller**. It reaches gateways' public IPs through `wan-core` (via `incus exec`,
+  so no host route or sudo is needed) and the nodes by `ProxyJump` through their gateway. Keys, host keys and
+  the lab CA live in `.opsforge/` (gitignored, kept across `down`; delete it to reset identities).
+- Each gateway serves DNS for its site's zone (`a.lab`, `b.lab`, …) and forwards the others across the WAN.
 
 ## Measured footprint
 
@@ -57,6 +64,10 @@ incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
 |---|---|---|---|
 | 0 | 1 × Debian 13 container (`opsforge smoke`) | 113 MiB | 101 MiB image, 441 MiB pool |
 | 1 | `wan-core` + 3 gateways (Alpine) + 3 Debian 13 nodes | 312 MiB (routers 6–9 MiB each) | +5.8 MiB router image, 504 MiB pool |
+| 2 | Phase 1 + sshd, dnsmasq, Ansible-provisioned | 1042 MiB as reported, of which 921 MiB reclaimable page cache; 101 MiB anon + kernel | node image 126 MiB, router image 21 MiB, 1.5 GiB pool |
+
+Incus reports memory including page cache, which the kernel reclaims under pressure; after provisioning most of
+it is apt and Python files read once.
 
 ## Topology
 
@@ -76,7 +87,7 @@ Expose a node's port on its site's public IP with `expose: ["8080:80/tcp"]` on t
 ## Development
 
 ```bash
-make check   # shellcheck, yamllint, Python syntax, topology validation
+make check   # shellcheck, yamllint, Python syntax, ansible-lint, topology validation
 ```
 
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.

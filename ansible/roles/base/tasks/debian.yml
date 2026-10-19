@@ -1,0 +1,32 @@
+- name: Install the base packages
+  ansible.builtin.apt:
+    name: "{{ base_packages.Debian }}"
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+# Background apt runs cost RAM and WAN bandwidth at random times
+- name: Disable automatic apt runs
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop: [apt-daily.timer, apt-daily-upgrade.timer]
+
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Cap the journal size
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/10-opsforge.conf
+    content: |
+      # Managed by Ansible (ansible/roles/base); local changes are overwritten
+      [Journal]
+      SystemMaxUse={{ base_journal_max_use }}
+      RuntimeMaxUse={{ base_journal_max_use }}
+    mode: "0644"
+  notify: Restart journald

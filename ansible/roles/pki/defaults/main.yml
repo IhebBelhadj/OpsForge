@@ -1,0 +1,5 @@
+pki_dir: /etc/opsforge/pki
+# On the controller; survives opsforge down so certificates stay trusted across rebuilds
+pki_ca_dir: "{{ lab_state_dir }}/pki"
+pki_ca_name: OpsForge lab CA
+pki_cert_days: 365

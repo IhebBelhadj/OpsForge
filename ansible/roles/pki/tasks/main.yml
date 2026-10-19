@@ -1,0 +1,103 @@
+# A small CA on the controller signs one certificate per node. Node keys are generated on the node and never
+# leave it: only the signing request travels to the controller.
+- name: Create the lab CA on the controller
+  run_once: true
+  delegate_to: localhost
+  block:
+    - name: Create the CA directory
+      ansible.builtin.file:
+        path: "{{ pki_ca_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Generate the CA key
+      community.crypto.openssl_privatekey:
+        path: "{{ pki_ca_dir }}/ca.key"
+        type: ECC
+        curve: secp256r1
+        mode: "0600"
+
+    - name: Build the CA signing request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ pki_ca_dir }}/ca.key"
+        common_name: "{{ pki_ca_name }}"
+        basic_constraints: ["CA:TRUE", "pathlen:0"]
+        basic_constraints_critical: true
+        key_usage: [keyCertSign, cRLSign]
+        key_usage_critical: true
+      register: pki_ca_csr
+      changed_when: false
+
+    - name: Self-sign the CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ pki_ca_dir }}/ca.crt"
+        csr_content: "{{ pki_ca_csr.csr }}"
+        privatekey_path: "{{ pki_ca_dir }}/ca.key"
+        provider: selfsigned
+        selfsigned_not_after: +3650d
+        mode: "0644"
+
+- name: Install the Python cryptography library
+  ansible.builtin.apt:
+    name: python3-cryptography
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the PKI directory
+  ansible.builtin.file:
+    path: "{{ pki_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Install the lab CA certificate
+  ansible.builtin.copy:
+    src: "{{ pki_ca_dir }}/ca.crt"
+    dest: "{{ item }}"
+    mode: "0644"
+  loop:
+    - "{{ pki_dir }}/ca.crt"
+    - /usr/local/share/ca-certificates/opsforge-lab-ca.crt
+  notify: Update CA certificates
+
+- name: Generate the node key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/node.key"
+    type: ECC
+    curve: secp256r1
+    mode: "0600"
+
+- name: Build the node signing request
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/node.key"
+    common_name: "{{ inventory_hostname }}.{{ lab_site }}.{{ lab_domain }}"
+    subject_alt_name:
+      - "DNS:{{ inventory_hostname }}.{{ lab_site }}.{{ lab_domain }}"
+      - "DNS:{{ inventory_hostname }}"
+      - "IP:{{ lab_address }}"
+    extended_key_usage: [serverAuth, clientAuth]
+  register: pki_csr
+  changed_when: false
+
+- name: Read the current node certificate
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/node.crt"
+  register: pki_current
+  failed_when: false
+
+- name: Sign the node certificate with the lab CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ pki_current.content | b64decode if 'content' in pki_current else omit }}"
+    csr_content: "{{ pki_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ pki_ca_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ pki_ca_dir }}/ca.key"
+    ownca_not_after: "+{{ pki_cert_days }}d"
+  delegate_to: localhost
+  register: pki_cert
+
+- name: Install the node certificate
+  ansible.builtin.copy:
+    content: "{{ pki_cert.certificate }}"
+    dest: "{{ pki_dir }}/node.crt"
+    mode: "0644"

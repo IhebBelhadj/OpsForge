@@ -1,0 +1,17 @@
+- name: Install dnsmasq
+  community.general.apk:
+    name: dnsmasq
+
+- name: Configure dnsmasq
+  ansible.builtin.template:
+    src: dnsmasq.conf.j2
+    dest: /etc/dnsmasq.conf
+    mode: "0644"
+    validate: dnsmasq --test --conf-file=%s
+  notify: Restart dnsmasq
+
+- name: Run dnsmasq at boot
+  ansible.builtin.service:
+    name: dnsmasq
+    state: started
+    enabled: true

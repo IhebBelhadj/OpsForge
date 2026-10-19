@@ -1,0 +1,3 @@
+# Each gateway serves its site's zone (<site>.lab); nodes resolve through their gateway.
+- name: Configure the site DNS server or client
+  ansible.builtin.include_tasks: "{{ 'server' if inventory_hostname in groups['gateways'] else 'client' }}.yml"

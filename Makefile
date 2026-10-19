@@ -3,7 +3,7 @@ SHELL_SCRIPTS := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK := $(shell shellcheck --version >/dev/null 2>&1 && echo shellcheck || \
 	echo docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0)
 
-.PHONY: check lint-shell lint-yaml lint-python lint-ansible validate preflight smoke up down verify host-setup
+.PHONY: check lint-shell lint-yaml lint-python lint-ansible validate preflight smoke up down provision verify host-setup
 
 check: lint-shell lint-yaml lint-python lint-ansible validate
 
@@ -16,7 +16,6 @@ lint-yaml:
 lint-python:
 	python3 -m py_compile opsforge lab/render.py
 
-# ansible/ arrives in Phase 2
 lint-ansible:
 	@if [ -d ansible ]; then ansible-lint ansible; else echo "lint-ansible: no ansible/ yet, skipping"; fi
 
@@ -34,6 +33,9 @@ up:
 
 down:
 	./opsforge down
+
+provision:
+	./opsforge provision
 
 verify:
 	./opsforge verify

@@ -1,0 +1,22 @@
+# Phase 2 provisioning (docs/PLAN.md): ./opsforge provision, or ansible-playbook site.yml from ansible/.
+# Every host is reached over SSH from the controller, through wan-core and its site's gateway.
+- name: Base system
+  hosts: lab
+  roles:
+    - base
+
+# Servers first: nodes switch their resolver to the gateway only once it answers
+- name: Site DNS servers
+  hosts: gateways
+  roles:
+    - dns
+
+- name: Site DNS clients
+  hosts: nodes
+  roles:
+    - dns
+
+- name: Lab PKI
+  hosts: nodes
+  roles:
+    - pki

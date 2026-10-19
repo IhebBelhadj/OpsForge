@@ -1,0 +1,30 @@
+- name: Create the networkd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/network/10-opsforge.network.d
+    state: directory
+    mode: "0755"
+
+- name: Resolve through the site gateway, searching every site's zone (own site first)
+  ansible.builtin.template:
+    src: networkd-dns.conf.j2
+    dest: /etc/systemd/network/10-opsforge.network.d/dns.conf
+    mode: "0644"
+  notify: Reload networkd
+
+- name: Create the resolved drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
+# Cloud VPCs have no link-local name resolution; names come from the site's DNS only
+- name: Disable LLMNR and multicast DNS
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/10-opsforge.conf
+    content: |
+      # Managed by Ansible (ansible/roles/dns); local changes are overwritten
+      [Resolve]
+      LLMNR=no
+      MulticastDNS=no
+    mode: "0644"
+  notify: Restart resolved

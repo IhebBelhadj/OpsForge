@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Replaces the DNS server set by opsforge up (wan-core) with the site gateway.
+[Network]
+DNS=
+DNS={{ lab_sites[lab_site].gateway }}
+Domains={{ lab_site }}.{{ lab_domain }}{% for site in lab_sites if site != lab_site %} {{ site }}.{{ lab_domain }}{% endfor %}
+

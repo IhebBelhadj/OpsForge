@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# {{ inventory_hostname }}: answers for {{ lab_site }}.{{ lab_domain }}, forwards the other sites' zones to their
+# gateways across the WAN (so lookups pay the link's latency) and everything else to wan-core.
+listen-address=127.0.0.1,{{ lab_address }},{{ lab_public_ip }}
+bind-interfaces
+no-resolv
+no-hosts
+no-poll
+domain-needed
+bogus-priv
+cache-size=1000
+local=/{{ lab_domain }}/
+server={{ lab_upstream_dns }}
+{% for site, info in lab_sites.items() if site != lab_site %}
+server=/{{ site }}.{{ lab_domain }}/{{ info.public_ip }}
+{% endfor %}
+{% for host in groups['site_' + lab_site] %}
+host-record={{ host }}.{{ lab_site }}.{{ lab_domain }},{{ hostvars[host].lab_address }}
+{% endfor %}

@@ -22,6 +22,15 @@ import render  # noqa: E402
 
 TOPOLOGY = ROOT / "topology.yml"
 SCHEMA = ROOT / "lab" / "topology.schema.json"
+ANSIBLE_DIR = ROOT / "ansible"
+INVENTORY = ANSIBLE_DIR / "inventory" / "hosts.yml"
+# Controller-side lab state (gitignored): SSH client/host keys, lab CA. Survives `down` so identities are stable.
+STATE = ROOT / ".opsforge"
+SSH_DIR = STATE / "ssh"
+SSH_KEY = SSH_DIR / "id_ed25519"
+SSH_CONFIG = SSH_DIR / "config"
+KNOWN_HOSTS = SSH_DIR / "known_hosts"
+HOST_KEYS = SSH_DIR / "host_keys"
 
 REQUIRED_MODULES = ("br_netfilter", "overlay", "nf_conntrack", "wireguard", "sch_netem", "sch_htb")
 # Minimum values; must match lab/host/sysctl.conf
@@ -320,20 +329,54 @@ def upstream_dns():
     return incus("network", "get", "incusbr0", "ipv4.address").stdout.strip().split("/")[0]
 
 
-def ensure_router_image():
-    if exists(f"/1.0/images/aliases/{render.ROUTER_IMAGE}"):
-        return
-    print(f"Building image {render.ROUTER_IMAGE} from {render.ALPINE_IMAGE} (one-time)...")
-    build = "opsforge-build"
-    incus("delete", "--force", build, check=False)
-    incus("launch", render.ALPINE_IMAGE, build)
-    try:
-        wait_for(lambda: run_in(build, "nslookup", "dl-cdn.alpinelinux.org").returncode == 0, 60, "build container DNS")
-        incus("exec", build, "--", "sh", "-c", render.ROUTER_BUILD)
-        incus("stop", build)
-        incus("publish", build, "--alias", render.ROUTER_IMAGE, "description=OpsForge router: Alpine + tc/nftables")
-    finally:
+def ensure_images():
+    for alias, (base, script, description) in render.IMAGES.items():
+        if exists(f"/1.0/images/aliases/{alias}"):
+            continue
+        print(f"Building image {alias} from {base} (one-time)...")
+        build = "opsforge-build"
         incus("delete", "--force", build, check=False)
+        incus("launch", base, build)
+        try:
+            incus("exec", build, "--", "sh", "-c", script)
+            incus("stop", build)
+            incus("publish", build, "--alias", alias, f"description={description}")
+        finally:
+            incus("delete", "--force", build, check=False)
+
+
+def ssh_keygen(path, comment):
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", comment, "-f", str(path)], check=True)
+    return path.read_text(), path.with_suffix(".pub").read_text()
+
+
+def write_access(topo, instances):
+    """Controller side of SSH and Ansible: keys, SSH config, known_hosts and inventory. Returns the client public key."""
+    STATE.mkdir(mode=0o700, exist_ok=True)
+    _, client_pub = ssh_keygen(SSH_KEY, "opsforge-controller")
+    known = [f"{inst.name} {ssh_keygen(HOST_KEYS / inst.name, inst.name)[1]}" for inst in instances if inst.managed]
+    KNOWN_HOSTS.write_text("".join(known))
+    SSH_CONFIG.write_text(render.render_ssh_config(topo, SSH_KEY, KNOWN_HOSTS, SSH_DIR))
+    INVENTORY.parent.mkdir(parents=True, exist_ok=True)
+    inventory = render.render_inventory(topo, SSH_CONFIG, STATE)
+    INVENTORY.write_text(render.HEADER + "\n" + yaml.safe_dump(inventory, sort_keys=False))
+    return client_pub
+
+
+def ssh(host, *cmd, timeout=10):
+    return subprocess.run(
+        ["ssh", "-F", str(SSH_CONFIG), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, *cmd],
+        capture_output=True, text=True, timeout=timeout, check=False,
+    )
+
+
+def ssh_ok(host):
+    try:
+        return ssh(host, "true").returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def create_instance(inst):
@@ -351,7 +394,8 @@ def cmd_up(args):
     if missing:
         raise LabError(f"kernel modules not loaded: {', '.join(missing)} (see ./opsforge preflight)")
     networks, instances = render.plan(topo, upstream_dns())
-    ensure_router_image()
+    ensure_images()
+    client_pub = write_access(topo, instances)
 
     if not exists(f"/1.0/profiles/{render.PROFILE}"):
         # Root disk only: lab instances get their NICs explicitly, never incusbr0 from the default profile
@@ -368,6 +412,8 @@ def cmd_up(args):
             print(f"  {inst.name}: exists, left unchanged (opsforge down to rebuild)")
             continue
         print(f"  {inst.name}: creating ({inst.role}, {inst.address})")
+        if inst.managed:
+            inst.files |= render.ssh_files(client_pub, *ssh_keygen(HOST_KEYS / inst.name, inst.name))
         create_instance(inst)
         created.append(inst)
     for inst in created:
@@ -379,7 +425,10 @@ def cmd_up(args):
                 60,
                 f"{inst.name} configuration (see: incus exec {inst.name} -- cat {render.START_LOG})",
             )
-    print(f"Lab up: {len(instances)} instances. Next: ./opsforge status, ./opsforge verify")
+    for inst in created:
+        if inst.managed:
+            wait_for(lambda: ssh_ok(inst.name), 60, f"SSH to {inst.name} (try: ./opsforge ssh {inst.name})")
+    print(f"Lab up: {len(instances)} instances. Next: ./opsforge provision, then ./opsforge verify")
     return 0
 
 
@@ -393,9 +442,10 @@ def cmd_down(args):
             incus("network", "delete", net["name"])
     if exists(f"/1.0/profiles/{render.PROFILE}"):
         incus("profile", "delete", render.PROFILE)
-    if args.purge and exists(f"/1.0/images/aliases/{render.ROUTER_IMAGE}"):
-        print(f"  deleting image {render.ROUTER_IMAGE}")
-        incus("image", "delete", render.ROUTER_IMAGE)
+    for alias in render.IMAGES if args.purge else ():
+        if exists(f"/1.0/images/aliases/{alias}"):
+            print(f"  deleting image {alias}")
+            incus("image", "delete", alias)
     print("Lab down")
     return 0
 
@@ -542,8 +592,43 @@ def check_bandwidth(r, topo, links):
         (r.ok if 0.85 * rate <= got <= 1.05 * rate else r.fail)(msg)
 
 
+def check_ssh(r, managed):
+    print("SSH (from the host, through wan-core and the site gateways)")
+    for name in managed:
+        (r.ok if ssh_ok(name) else r.fail)(f"ssh {name}")
+
+
+def provisioned(topo):
+    """Any gateway running dnsmasq: a partly provisioned lab then fails the DNS checks instead of skipping them."""
+    gateways = map(render.gateway_name, topo["sites"])
+    return any(run_in(gw, "rc-service", "-q", "dnsmasq", "status").returncode == 0 for gw in gateways)
+
+
+def check_dns(r, topo):
+    print(f"DNS (every node resolves every lab host as <name>.<site>.{render.LAB_DOMAIN} and by short name)")
+    addrs = render.node_addresses(topo)
+    want = {render.gateway_name(s): (s, str(render.gateway_address(site).ip)) for s, site in topo["sites"].items()}
+    want |= {n: (topo["nodes"][n]["site"], str(addrs[n].ip)) for n in topo["nodes"]}
+    names = [f"{n}.{site}.{render.LAB_DOMAIN}" for n, (site, _) in want.items()] + list(want)
+    lookup = 'for n in "$@"; do echo "$n $(getent hosts "$n" | cut -d" " -f1)"; done'
+    for node in topo["nodes"]:
+        out = run_in(node, "sh", "-c", lookup, "sh", *names).stdout
+        got = dict(line.split() for line in out.splitlines() if len(line.split()) == 2)
+        wrong = [n for n in names if got.get(n) != want[n.split(".")[0]][1]]
+        msg = f"{node} resolves {len(names) - len(wrong)}/{len(names)} names"
+        (r.fail if wrong else r.ok)(msg + (f", wrong or missing: {', '.join(wrong)}" if wrong else ""))
+
+
+def check_pki(r, topo):
+    print("PKI (node certificates signed by the lab CA)")
+    for node in topo["nodes"]:
+        res = run_in(node, "openssl", "verify", "-CAfile", "/etc/opsforge/pki/ca.crt", "/etc/opsforge/pki/node.crt")
+        (r.ok if res.returncode == 0 else r.fail)(f"{node}: {(res.stdout or res.stderr).strip().splitlines()[-1]}")
+
+
 def cmd_verify(args):
-    """Phase 1 acceptance: latency, isolation, internet and bandwidth match topology + live link state."""
+    """Acceptance checks: latency, isolation, internet and bandwidth match topology + live link state (Phase 1);
+    SSH access, DNS and PKI once provisioned (Phase 2)."""
     topo = load_valid_topology()
     links = read_link_state()["links"]
     # One probe host per site: its first node, or the gateway if the site has none
@@ -556,6 +641,13 @@ def cmd_verify(args):
     check_internet(r, topo, probe)
     if not args.quick:
         check_bandwidth(r, topo, links)
+    check_ssh(r, [*map(render.gateway_name, topo["sites"]), *topo["nodes"]])
+    if provisioned(topo):
+        check_dns(r, topo)
+        check_pki(r, topo)
+    else:
+        print("Provisioning")
+        r.warn("gateways run no dnsmasq: lab not provisioned, DNS and PKI checks skipped (./opsforge provision)")
     print("\nVerify " + ("\033[31mFAILED\033[0m" if r.failed else "\033[32mpassed\033[0m"))
     return 1 if r.failed else 0
 
@@ -567,14 +659,33 @@ def cmd_render(args):
     for inst in instances:
         print(f"\n=== {inst.name} ({inst.role}, {inst.image}) {inst.config}")
         print(f"    nics: {', '.join(f'{dev} -> {net}' for dev, net in inst.nics.items())}")
+        if inst.managed:
+            print("    + SSH host key and authorized_keys (generated by up)")
         for path, (content, mode) in inst.files.items():
             print(f"--- {path} ({mode})\n{content}")
+    print(f"\n=== {SSH_CONFIG.relative_to(ROOT)}\n{render.render_ssh_config(topo, SSH_KEY, KNOWN_HOSTS, SSH_DIR)}")
+    inventory = yaml.safe_dump(render.render_inventory(topo, SSH_CONFIG, STATE), sort_keys=False)
+    print(f"=== {INVENTORY.relative_to(ROOT)}\n{inventory}")
     return 0
+
+
+def cmd_ssh(args):
+    if not SSH_CONFIG.exists():
+        raise LabError("no SSH config yet: run ./opsforge up")
+    os.execvp("ssh", ["ssh", "-F", str(SSH_CONFIG), args.host, *args.command])
+
+
+def cmd_provision(args):
+    """Runs ansible/site.yml against the lab over SSH, with a freshly rendered inventory."""
+    topo = load_valid_topology()
+    if not lab_instances():
+        raise LabError("lab is down (./opsforge up)")
+    write_access(topo, render.plan(topo, upstream_dns())[1])
+    return subprocess.run(["ansible-playbook", "site.yml", *args.ansible_args], cwd=ANSIBLE_DIR).returncode
 
 
 # Commands planned in docs/PLAN.md, with the phase that implements them.
 PLANNED = {
-    "ssh": ("open a shell on a node", 2),
     "partition": ("cut a site off the WAN", 6),
     "heal": ("restore all links", 6),
     "flap": ("periodically drop a link", 6),
@@ -594,7 +705,7 @@ def main():
     )
     sub.add_parser("up", help="create the lab from topology.yml").set_defaults(func=cmd_up)
     p = sub.add_parser("down", help="destroy the lab")
-    p.add_argument("--purge", action="store_true", help=f"also delete the cached {render.ROUTER_IMAGE} image")
+    p.add_argument("--purge", action="store_true", help=f"also delete the cached {', '.join(render.IMAGES)} images")
     p.set_defaults(func=cmd_down)
     sub.add_parser("status", help="show instances, memory and live link conditions").set_defaults(func=cmd_status)
     p = sub.add_parser("link", help="show or change a WAN link's conditions live, e.g. link a-b --rtt 200ms")
@@ -610,6 +721,13 @@ def main():
     sub.add_parser("render", help="print the generated networks, instances and config files").set_defaults(
         func=cmd_render
     )
+    p = sub.add_parser("provision", help="configure the lab with Ansible (ansible/site.yml) over SSH")
+    p.add_argument("ansible_args", nargs=argparse.REMAINDER, help="passed to ansible-playbook, e.g. --check --diff")
+    p.set_defaults(func=cmd_provision)
+    p = sub.add_parser("ssh", help="ssh to a lab host through wan-core and its site gateway, e.g. ssh b-w1")
+    p.add_argument("host")
+    p.add_argument("command", nargs=argparse.REMAINDER)
+    p.set_defaults(func=cmd_ssh)
     for name, (desc, phase) in PLANNED.items():
         p = sub.add_parser(name, help=f"{desc} (Phase {phase}, not implemented)")
         p.add_argument("args", nargs=argparse.REMAINDER)
