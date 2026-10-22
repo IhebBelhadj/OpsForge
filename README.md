@@ -31,6 +31,7 @@ newgrp incus-admin             # or log out and back in
 ./opsforge ssh b-w1            # SSH in through wan-core and site b's gateway, like a remote VPC
 ./opsforge ssh b-w1 getent hosts a-cp1   # a-cp1.a.lab, resolved by a-gw across the WAN
 incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
+incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, through the WireGuard VPN
 ./opsforge link a-b --rtt 200ms --loss 2%   # change a link live
 ./opsforge forward b-w1:8080   # tunnel a lab service to 127.0.0.1:8080 (--list, --stop)
 ./opsforge capture wan-core icmp -d 5 --show   # tcpdump inside an instance, pcap in .opsforge/captures/
@@ -70,6 +71,7 @@ incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
 | 0 | 1 × Debian 13 container (`opsforge smoke`) | 113 MiB | 101 MiB image, 441 MiB pool |
 | 1 | `wan-core` + 3 gateways (Alpine) + 3 Debian 13 nodes | 312 MiB (routers 6–9 MiB each) | +5.8 MiB router image, 504 MiB pool |
 | 2 | Phase 1 + sshd, dnsmasq, Ansible-provisioned | 1042 MiB as reported, of which 921 MiB reclaimable page cache; 101 MiB anon + kernel | node image 126 MiB, router image 21 MiB, 1.5 GiB pool |
+| 3 | Phase 2 + WireGuard mesh + BIRD (OSPF) on the gateways | 945 MiB as reported; 111 MiB anon + kernel (gateways 6 MiB each) | router image 22.6 MiB, 1.9 GiB pool |
 
 Incus reports memory including page cache, which the kernel reclaims under pressure; after provisioning most of
 it is apt and Python files read once.

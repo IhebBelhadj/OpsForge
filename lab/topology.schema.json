@@ -6,6 +6,14 @@
   "additionalProperties": false,
   "properties": {
     "transit": { "$ref": "#/$defs/cidr" },
+    "interconnect": {
+      "$comment": "vpn: WireGuard full mesh between the site gateways (routed VPC-to-VPC); none (default): VPCs isolated",
+      "enum": ["vpn", "none"]
+    },
+    "routing": {
+      "$comment": "with interconnect vpn: ospf (default) reroutes VPC traffic around a dead link through another site; static does not",
+      "enum": ["ospf", "static"]
+    },
     "sites": {
       "type": "object",
       "minProperties": 2,

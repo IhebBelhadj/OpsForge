@@ -150,3 +150,46 @@ def test_moving_a_node_changes_only_that_node(topo):
     topo["nodes"]["c-w1"]["site"] = "b"
     after = fingerprints(topo)
     assert {name for name in before if after[name] != before[name]} == {"c-w1"}
+
+
+def test_vpn_mesh_ports_pair_up(topo):
+    ends = {(site, peer): (port, peer_port) for site in topo["sites"] for peer, _, port, peer_port in render.tunnels(topo, site)}
+    assert len(ends) == len(topo["sites"]) * (len(topo["sites"]) - 1)
+    for (site, peer), (port, peer_port) in ends.items():
+        assert ends[(peer, site)] == (peer_port, port)  # each side sends to the port the other listens on
+    ports = [port for (site, _), (port, _) in ends.items() if site == "a"]
+    assert len(set(ports)) == len(ports)
+
+
+def test_gateway_tunnels_use_the_peers_keys(topo):
+    keys = {s: (f"priv-{s}", f"pub-{s}") for s in topo["sites"]}
+    gw = next(i for i in render.plan(topo, "10.99.0.1", keys)[1] if i.name == "a-gw")
+    conf = gw.files["/etc/opsforge/wg/wg-b.conf"]
+    assert conf[1] == "0600"
+    assert "PrivateKey = priv-a" in conf[0] and "PublicKey = pub-b" in conf[0]
+    assert f"Endpoint = {topo['sites']['b']['public_ip']}:" in conf[0]
+    b_gw = next(i for i in render.plan(topo, "10.99.0.1", keys)[1] if i.name == "b-gw")
+    assert "\nEndpoint" not in b_gw.files["/etc/opsforge/wg/wg-a.conf"][0]  # a initiates, b only responds
+    start = gw.files["/etc/local.d/opsforge.start"][0]
+    assert f"mtu {render.WG_MTU}" in start
+    assert "maxseg size set rt mtu" in gw.files["/etc/opsforge/firewall.nft"][0]
+
+
+def test_ospf_costs_follow_link_rtt_and_static_routes_replace_it(topo):
+    topo["routing"] = "ospf"
+    gw = next(i for i in render.plan(topo, "10.99.0.1")[1] if i.name == "a-gw")
+    bird = gw.files["/etc/bird.conf"][0]
+    assert 'interface "wg-b" { type ptp; cost 40;' in bird and 'interface "wg-c" { type ptp; cost 120;' in bird
+    assert "rc-service bird start" in gw.files["/etc/local.d/opsforge.start"][0]
+    assert "ip route replace" not in gw.files["/etc/local.d/opsforge.start"][0].split("wg-b", 1)[1]
+    topo["routing"] = "static"
+    gw = next(i for i in render.plan(topo, "10.99.0.1")[1] if i.name == "a-gw")
+    assert "/etc/bird.conf" not in gw.files
+    assert f"ip route replace {topo['sites']['b']['vpc']} dev wg-b" in gw.files["/etc/local.d/opsforge.start"][0]
+
+
+def test_interconnect_none_has_no_tunnels(topo):
+    topo["interconnect"] = "none"
+    for inst in render.plan(topo, "10.99.0.1")[1]:
+        assert not any("/wg/" in path for path in inst.files)
+        assert "wg-" not in inst.files.get("/etc/opsforge/firewall.nft", ("",))[0]

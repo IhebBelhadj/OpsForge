@@ -2,6 +2,7 @@
 """OpsForge lab CLI: provisions and drives the multi-site WAN lab (see docs/PLAN.md)."""
 
 import argparse
+import base64
 import grp
 import ipaddress
 import json
@@ -32,6 +33,8 @@ SSH_KEY = SSH_DIR / "id_ed25519"
 SSH_CONFIG = SSH_DIR / "config"
 KNOWN_HOSTS = SSH_DIR / "known_hosts"
 HOST_KEYS = SSH_DIR / "host_keys"
+# WireGuard keys of the site gateways: <site>.pem (X25519 private key)
+WG_KEYS = STATE / "wg"
 # `opsforge forward`: one SSH control socket + JSON description per tunnel, keyed by local port
 FORWARDS = STATE / "forwards"
 # `opsforge capture`: pcaps, named <instance>-<timestamp>.pcap
@@ -55,6 +58,8 @@ RESERVED_NETS = {
 LINK_KEYS = ("rtt", "jitter", "loss", "rate")
 # Instance config key holding render.fingerprint(): what `up` last wired and pushed into it
 SPEC_KEY = "user.opsforge.spec"
+# verify: a WireGuard tunnel whose latest handshake is older than this is down (rekeys every 2 min when in use)
+VPN_HANDSHAKE_MAX = 180
 # verify --mem: default ceiling for the whole lab's non-reclaimable memory (anon + kernel), per phase
 MEM_CEILING_MIB = 150
 # verify --disk: default ceiling for the storage pool's used space (images + instances), per phase
@@ -392,6 +397,26 @@ def ssh_keygen(path, comment):
     return path.read_text(), path.with_suffix(".pub").read_text()
 
 
+def wg_keypair(site):
+    """(private, public) WireGuard key of a site's gateway, base64 as `wg` uses them. Generated once with openssl
+    (WireGuard keys are X25519 keys: the raw 32 bytes ending each key's DER encoding), kept across `down`."""
+    pem = WG_KEYS / f"{site}.pem"
+    if not pem.exists():
+        WG_KEYS.mkdir(mode=0o700, parents=True, exist_ok=True)
+        subprocess.run(["openssl", "genpkey", "-algorithm", "X25519", "-out", str(pem)], check=True, capture_output=True)
+    der = [
+        subprocess.run(["openssl", "pkey", "-in", str(pem), *flags, "-outform", "DER"], check=True, capture_output=True).stdout
+        for flags in ([], ["-pubout"])
+    ]
+    return tuple(base64.b64encode(d[-32:]).decode() for d in der)
+
+
+def lab_plan(topo):
+    """render.plan with this host's upstream DNS and the gateways' real WireGuard keys."""
+    keys = {site: wg_keypair(site) for site in topo["sites"]} if topo.get("interconnect") == "vpn" else None
+    return render.plan(topo, upstream_dns(), keys)
+
+
 def write_access(topo, instances):
     """Controller side of SSH and Ansible: keys, SSH config, known_hosts and inventory. Returns the client public key."""
     STATE.mkdir(mode=0o700, exist_ok=True)
@@ -512,7 +537,7 @@ def cmd_up(args):
     missing = [m for m in REQUIRED_MODULES if not Path("/sys/module", m).exists()]
     if missing:
         raise LabError(f"kernel modules not loaded: {', '.join(missing)} (see ./opsforge preflight)")
-    networks, instances = render.plan(topo, upstream_dns())
+    networks, instances = lab_plan(topo)
     ensure_images()
     client_pub = write_access(topo, instances)
 
@@ -680,7 +705,7 @@ def cmd_restore(args):
         raise LabError(f"snapshot {args.name!r} does not cover {', '.join(missing)} (created after it?); "
                        "restoring part of the lab would mix states")
     topo = load_valid_topology()
-    planned = {inst.name: inst for inst in render.plan(topo, upstream_dns())[1]}
+    planned = {inst.name: inst for inst in lab_plan(topo)[1]}
     for fwd in active_forwards():
         stop_forward(fwd)
     if running := [i["name"] for i in insts if i["status"] != "Stopped"]:
@@ -809,30 +834,73 @@ def cmd_link(args):
     return 0
 
 
+def check_rtt(r, name, link, src, dst, what):
+    """Pings dst from src and checks the average RTT against the link's rtt (±10 %, at least ±3 ms)."""
+    out = run_in(src, "ping", "-q", "-c", "20", "-i", "0.2", dst).stdout
+    m = re.search(r"= [\d.]+/([\d.]+)/[\d.]+/([\d.]+) ms", out)
+    if not m:
+        r.fail(f"{name}: {src} cannot ping {what} {dst}")
+        return
+    avg, mdev = float(m[1]), float(m[2])
+    want = render.time_us(link["rtt"]) / 1000
+    tol = max(3.0, want * 0.1)
+    msg = f"{name}: {src} -> {dst}  rtt {avg:.1f} ms (want {want:.0f} ± {tol:.0f}), mdev {mdev:.1f} ms"
+    msg += f" (jitter {link.get('jitter', '0ms')})"
+    (r.ok if abs(avg - want) <= tol else r.fail)(msg)
+
+
 def check_latency(r, topo, links, probe):
     print("Latency (ping from one site to the other site's public IP; jitter is reported as mdev)")
     for name, link in sorted(links.items()):
         a, b = name.split("-")
-        src, dst = probe[b], topo["sites"][a]["public_ip"]
-        out = run_in(src, "ping", "-q", "-c", "20", "-i", "0.2", dst).stdout
-        m = re.search(r"= [\d.]+/([\d.]+)/[\d.]+/([\d.]+) ms", out)
-        if not m:
-            r.fail(f"{name}: {src} cannot ping {a}'s public IP {dst}")
-            continue
-        avg, mdev = float(m[1]), float(m[2])
-        want = render.time_us(link["rtt"]) / 1000
-        tol = max(3.0, want * 0.1)
-        msg = f"{name}: {src} -> {dst}  rtt {avg:.1f} ms (want {want:.0f} ± {tol:.0f}), mdev {mdev:.1f} ms"
-        msg += f" (jitter {link.get('jitter', '0ms')})"
-        (r.ok if abs(avg - want) <= tol else r.fail)(msg)
+        check_rtt(r, name, link, probe[b], topo["sites"][a]["public_ip"], f"{a}'s public IP")
+
+
+def private_targets(topo):
+    """One private address per site: its first node's, or the gateway's VPC address if it has none."""
+    targets = {s: str(render.gateway_address(site).ip) for s, site in topo["sites"].items()}
+    for node, addr in reversed(render.node_addresses(topo).items()):
+        targets[topo["nodes"][node]["site"]] = str(addr.ip)
+    return targets
+
+
+def handshake_ages(gateway):
+    """{interface: seconds since its latest WireGuard handshake, None if it never had one}."""
+    out = run_in(gateway, "wg", "show", "all", "latest-handshakes").stdout
+    now = time.time()
+    return {dev: (now - int(t) if int(t) else None) for dev, _, t in (line.split("\t") for line in out.splitlines())}
+
+
+def check_vpn(r, topo, links, probe):
+    print(f"VPN (WireGuard mesh: handshake < {VPN_HANDSHAKE_MAX}s, OSPF adjacencies Full; private VPC addresses at "
+          "the link's RTT)")
+    for site in topo["sites"]:
+        gw = render.gateway_name(site)
+        ages = handshake_ages(gw)
+        for peer, dev, _, _ in render.tunnels(topo, site):
+            age = ages.get(dev)
+            ok = age is not None and age < VPN_HANDSHAKE_MAX
+            (r.ok if ok else r.fail)(
+                f"{gw} {dev}: " + ("no such interface" if dev not in ages else
+                                   "no handshake yet" if age is None else f"latest handshake {age:.0f}s ago")
+            )
+    if render.routing(topo) == "ospf":
+        for site in topo["sites"]:
+            gw = render.gateway_name(site)
+            out = run_in(gw, "birdc", "-s", "/run/bird.ctl", "show", "ospf", "neighbors").stdout
+            states = {f[4]: f[2] for f in map(str.split, out.splitlines()) if len(f) == 6 and f[4].startswith("wg-")}
+            for _, dev, _, _ in render.tunnels(topo, site):
+                state = states.get(dev, "no neighbor")
+                (r.ok if state.startswith("Full") else r.fail)(f"{gw} {dev}: OSPF {state}")
+    targets = private_targets(topo)
+    for name, link in sorted(links.items()):
+        a, b = name.split("-")
+        check_rtt(r, name, link, probe[b], targets[a], f"{a}'s private address")
 
 
 def check_isolation(r, topo, probe):
-    print("Isolation (private VPC addresses must be unreachable from other sites)")
-    addrs = render.node_addresses(topo)
-    targets = {s: str(render.gateway_address(site).ip) for s, site in topo["sites"].items()}
-    for node, addr in reversed(addrs.items()):
-        targets[topo["nodes"][node]["site"]] = str(addr.ip)
+    print("Isolation (interconnect: none; private VPC addresses must be unreachable from other sites)")
+    targets = private_targets(topo)
     for src_site, src in probe.items():
         for dst_site, ip in targets.items():
             if dst_site == src_site:
@@ -861,15 +929,22 @@ def check_bandwidth(r, topo, links):
         rate = render.rate_bps(link["rate"])
         run_in(server, "nft", "add rule inet opsforge verify meta l4proto { tcp, udp } th dport 5201 accept")
         try:
-            run_in(server, "iperf3", "-s", "-1", "-D")
-            time.sleep(0.5)
-            res = run_in(
-                client, "iperf3", "-c", topo["sites"][a]["public_ip"], "-u", "-b", str(2 * rate), "-t", "5", "-J"
-            )
-            try:
-                got = json.loads(res.stdout)["end"]["sum_received"]["bits_per_second"]
-            except (ValueError, KeyError):
-                r.fail(f"{name}: iperf3 {client} -> {server} failed: {res.stdout[-300:]}{res.stderr.strip()}")
+            # One retry when iperf3 itself fails: its TCP control connection shares the flooded, lossy link and can
+            # time out ("unable to read from stream socket"). A measured rate out of range is never retried.
+            for _ in range(2):
+                run_in(server, "pkill", "iperf3")
+                run_in(server, "iperf3", "-s", "-1", "-D")
+                time.sleep(0.5)
+                res = run_in(
+                    client, "iperf3", "-c", topo["sites"][a]["public_ip"], "-u", "-b", str(2 * rate), "-t", "5", "-J"
+                )
+                try:
+                    got = json.loads(res.stdout)["end"]["sum_received"]["bits_per_second"]
+                    break
+                except (ValueError, KeyError):
+                    got = None
+            if got is None:
+                r.fail(f"{name}: iperf3 {client} -> {server} failed twice: {res.stdout[-300:]}{res.stderr.strip()}")
                 continue
         finally:
             run_in(server, "nft", "flush chain inet opsforge verify")
@@ -944,7 +1019,7 @@ def check_disk(r, ceiling):
 
 def cmd_verify(args):
     """Acceptance checks: latency, isolation, internet and bandwidth match topology + live link state (Phase 1);
-    SSH access, DNS and PKI once provisioned (Phase 2)."""
+    SSH access, DNS and PKI once provisioned (Phase 2); with interconnect: vpn, the tunnels (Phase 3)."""
     topo = load_valid_topology()
     links = read_link_state()["links"]
     # One probe host per site: its first node, or the gateway if the site has none
@@ -953,7 +1028,10 @@ def cmd_verify(args):
         probe[n["site"]] = node
     r = Report()
     check_latency(r, topo, links, probe)
-    check_isolation(r, topo, probe)
+    if topo.get("interconnect") == "vpn":
+        check_vpn(r, topo, links, probe)
+    else:
+        check_isolation(r, topo, probe)
     check_internet(r, topo, probe)
     if not args.quick:
         check_bandwidth(r, topo, links)
@@ -1136,7 +1214,7 @@ def cmd_provision(args):
     topo = load_valid_topology()
     if not lab_instances():
         raise LabError("lab is down (./opsforge up)")
-    write_access(topo, render.plan(topo, upstream_dns())[1])
+    write_access(topo, lab_plan(topo)[1])
     return subprocess.run(["ansible-playbook", "site.yml", *args.ansible_args], cwd=ANSIBLE_DIR).returncode
 
 

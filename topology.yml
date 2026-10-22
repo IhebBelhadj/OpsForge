@@ -4,6 +4,11 @@
 # Simulated "internet" between site gateways (TEST-NET-3, never routed on the real internet)
 transit: 203.0.113.0/24
 
+# How VPCs reach each other: vpn = WireGuard full mesh between the site gateways; none = isolated
+interconnect: vpn
+# vpn routing: ospf = reroute around a dead link through another site (cost = link rtt); static = no rerouting
+routing: ospf
+
 sites:
   a: { vpc: 10.10.0.0/24, public_ip: 203.0.113.10 }
   b: { vpc: 10.20.0.0/24, public_ip: 203.0.113.20 }
