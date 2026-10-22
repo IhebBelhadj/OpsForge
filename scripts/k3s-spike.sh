@@ -4,7 +4,7 @@
 set -euo pipefail
 
 NAME=opsforge-k3s-spike
-PROFILE=k3s-node
+PROFILE=opsforge-k3s-spike  # not k3s-node: the lab uses that name (opsforge up)
 IMAGE=images:debian/13
 KEEP=${1:-}
 

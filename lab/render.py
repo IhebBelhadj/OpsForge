@@ -45,11 +45,58 @@ rm -rf /var/lib/apt/lists/* /var/lib/apt/periodic/update-success-stamp /etc/ssh/
 touch -d @0 /var/lib/apt/lists
 truncate -s 0 /etc/machine-id
 """
+# Image pull-through cache (Phase 4): zot, one binary syncing several upstream registries on demand. Its release
+# binary links glibc, which Alpine's gcompat provides.
+ZOT_VERSION = "v2.1.22"
+ZOT_SHA256 = "33b9b5bfe05d6788c076de951a01920477dbd6395c330146e23cc2340073e52e"
+CACHE_IMAGE = "opsforge-cache-1"
+CACHE_BUILD = f"""
+set -e
+timeout 60 sh -c 'until nslookup dl-cdn.alpinelinux.org >/dev/null 2>&1; do sleep 1; done'
+apk add --no-cache gcompat
+wget -qO /usr/local/bin/zot https://github.com/project-zot/zot/releases/download/{ZOT_VERSION}/zot-linux-amd64
+echo '{ZOT_SHA256}  /usr/local/bin/zot' | sha256sum -c -
+chmod 0755 /usr/local/bin/zot
+cat >/etc/init.d/zot <<'EOF'
+#!/sbin/openrc-run
+command=/usr/local/bin/zot
+command_args="serve /etc/zot/config.json"
+supervisor=supervise-daemon
+output_log=/var/log/zot.log
+error_log=/var/log/zot.log
+depend() {{ need net; }}
+EOF
+chmod 0755 /etc/init.d/zot
+rc-update add zot default
+rc-update del crond default || true
+"""
 IMAGES = {
     ROUTER_IMAGE: (ALPINE_IMAGE, ROUTER_BUILD, "OpsForge router: Alpine + tc/nftables/WireGuard/BIRD/tcpdump/sshd"),
     NODE_IMAGE: (DEBIAN_IMAGE, NODE_BUILD, "OpsForge node: Debian + sshd/python3/tcpdump"),
+    CACHE_IMAGE: (ALPINE_IMAGE, CACHE_BUILD, f"OpsForge image cache: Alpine + zot {ZOT_VERSION}"),
 }
 PROFILE = "opsforge"
+# Added to K3s nodes. Unprivileged (Phase 2.5 spike): nesting for containerd, /dev/kmsg for the kubelet, and the
+# modules K3s needs loaded by Incus on the host, since an unprivileged container cannot load them itself.
+K3S_PROFILE = "k3s-node"
+K3S_PROFILE_CONFIG = {
+    "security.nesting": "true",
+    "security.privileged": "false",
+    "linux.kernel_modules": "overlay,br_netfilter,nf_conntrack,ip_tables,ip6_tables,iptable_nat,iptable_filter,"
+    "iptable_mangle,xt_conntrack,xt_comment,xt_mark,xt_multiport,xt_addrtype,xt_MASQUERADE,vxlan",
+}
+K3S_PROFILE_DEVICES = {"kmsg": {"type": "unix-char", "source": "/dev/kmsg", "path": "/dev/kmsg"}}
+K3S_ROLES = ("k3s-server", "k3s-agent")
+CACHE = "opsforge-cache"
+CACHE_PORT = 5000
+CACHE_LIMITS = {"limits.cpu": "1", "limits.memory": "256MiB", "limits.memory.swap": "false"}
+# Mirrored registries; the cache stores each under its own prefix (docker.io/library/alpine)
+CACHE_UPSTREAMS = {
+    "docker.io": "https://registry-1.docker.io",
+    "ghcr.io": "https://ghcr.io",
+    "registry.k8s.io": "https://registry.k8s.io",
+    "quay.io": "https://quay.io",
+}
 WAN_CORE = "wan-core"
 ROUTER_LIMITS = {"limits.cpu": "1", "limits.memory": "64MiB", "limits.memory.swap": "false"}
 # Gateways idle like wan-core but run Ansible's Python modules, which do not fit in 64 MiB
@@ -92,6 +139,17 @@ def gateway_name(site):
 
 def core_address(topo):
     return next(ipaddress.ip_network(topo["transit"]).hosts())
+
+
+def cache_public_address(topo):
+    """Where the lab reaches the image cache: the transit address after wan-core's, DNATed by wan-core like a CDN
+    edge on the internet (reachable from every site, unshaped)."""
+    return core_address(topo) + 1
+
+
+def cache_address(upstream_dns):
+    """The cache's own address on incusbr0: the one after incusbr0's (a static DHCP reservation)."""
+    return ipaddress.ip_address(upstream_dns) + 1
 
 
 def node_addresses(topo):
@@ -142,12 +200,13 @@ class Instance:
     address: str | None = None
     files: dict = field(default_factory=dict)  # path -> (content, mode)
     managed: bool = False  # reachable over SSH and in the Ansible inventory
+    profiles: list = field(default_factory=lambda: [PROFILE])
 
 
 def fingerprint(inst):
-    """Digest of what an instance is wired and configured with (address, NICs, pushed files; not image or limits).
-    `up` records it as user.opsforge.spec, so a later `up` knows which instances a topology edit touched."""
-    blob = json.dumps([inst.address, inst.nics, inst.files], sort_keys=True)
+    """Digest of what an instance is wired and configured with (address, NICs, pushed files, profiles; not image or
+    limits). `up` records it as user.opsforge.spec, so a later `up` knows which instances a topology edit touched."""
+    blob = json.dumps([inst.address, inst.nics, inst.files, inst.profiles], sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
@@ -303,6 +362,11 @@ def render_wan_core(topo, upstream_dns):
             f"ip route replace {site['public_ip']}/32 dev {dev}",
         ]
     start += ["nft -f /etc/opsforge/firewall.nft", "/etc/opsforge/links.sh", f"touch {READY_FLAG}"]
+    cache_dnat = "" if not uses_cache(topo) else (
+        f"\t\t# image cache ({CACHE}, on incusbr0): a CDN edge on the internet\n"
+        f"\t\tiifname \"to-*\" ip daddr {cache_public_address(topo)} tcp dport {CACHE_PORT} "
+        f"dnat to {cache_address(upstream_dns)}\n"
+    )
 
     firewall = f"""{HEADER}
 # wan-core: the simulated internet. Routes between site gateways, gives them real internet access
@@ -336,7 +400,7 @@ table ip nat {{
 	chain prerouting {{
 		type nat hook prerouting priority dstnat
 		iifname "to-*" ip daddr {core} meta l4proto {{ tcp, udp }} th dport 53 dnat to {upstream_dns}
-	}}
+{cache_dnat}	}}
 
 	chain postrouting {{
 		type nat hook postrouting priority srcnat
@@ -483,9 +547,44 @@ DNS={core_address(topo)}
 """
     config = {"limits.cpu": str(node["cpu"]), "limits.memory": node["memory"], "limits.memory.swap": "false"}
     files = {"/etc/systemd/network/10-opsforge.network": (network, "0644")}
+    profiles = [PROFILE, K3S_PROFILE] if node["role"] in K3S_ROLES else [PROFILE]
     return Instance(
-        name, node["role"], node["site"], NODE_IMAGE, config, {"eth0": vpc_net(node["site"])}, str(addr.ip), files, True
+        name, node["role"], node["site"], NODE_IMAGE, config, {"eth0": vpc_net(node["site"])}, str(addr.ip), files, True,
+        profiles,
     )
+
+
+def uses_cache(topo):
+    """The image cache runs when the lab has K3s nodes to pull images."""
+    return any(node["role"] in K3S_ROLES for node in topo["nodes"].values())
+
+
+def render_zot_config():
+    """zot syncs an image from its upstream on first request (onDemand), then serves it locally; each upstream lives
+    under its own prefix (docker.io/library/alpine), which K3s' registries.yaml adds with a rewrite."""
+    registries = [
+        {"urls": [url], "onDemand": True, "tlsVerify": True,
+         "content": [{"prefix": "**", "destination": f"/{name}", "stripPrefix": True}]}
+        for name, url in CACHE_UPSTREAMS.items()
+    ]
+    config = {
+        "distSpecVersion": "1.1.1",
+        "storage": {"rootDirectory": "/var/lib/zot", "gc": True, "dedupe": False},
+        # docker2s2: also store Docker schema 2 manifests (most of docker.io), not only OCI ones. Without it zot
+        # answers 503 for those and containerd silently falls back to the upstream registry.
+        "http": {"address": "0.0.0.0", "port": str(CACHE_PORT), "compat": ["docker2s2"]},
+        "log": {"level": "info"},
+        "extensions": {"sync": {"enable": True, "registries": registries}},
+    }
+    return json.dumps(config, indent=2) + "\n"
+
+
+def render_cache(upstream_dns):
+    """The image cache lives outside the lab (on incusbr0, not tagged as a lab instance), so `down` keeps it and its
+    images; `down --purge` removes it. Its NIC has a static address, which wan-core's DNAT points to."""
+    files = {"/etc/zot/config.json": (render_zot_config(), "0644")}
+    return Instance(CACHE, "cache", None, CACHE_IMAGE, dict(CACHE_LIMITS), {"eth0": "incusbr0"},
+                    str(cache_address(upstream_dns)), files, profiles=[])
 
 
 def placeholder_wg_keys(topo):
@@ -553,6 +652,10 @@ def render_inventory(topo, ssh_config, state_dir):
                 "lab_domain": LAB_DOMAIN,
                 "lab_upstream_dns": str(core_address(topo)),
                 "lab_state_dir": str(state_dir),
+                # Smallest MTU on the path between VPCs: the WireGuard tunnels' (flannel's VXLAN goes inside them)
+                "lab_path_mtu": WG_MTU if topo.get("interconnect") == "vpn" else 1500,
+                "lab_registry_cache": f"{cache_public_address(topo)}:{CACHE_PORT}",
+                "lab_registry_upstreams": list(CACHE_UPSTREAMS),
                 "lab_sites": {
                     name: {"vpc": site["vpc"], "public_ip": site["public_ip"], "gateway": str(gateway_address(site).ip)}
                     for name, site in topo["sites"].items()

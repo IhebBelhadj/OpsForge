@@ -1,0 +1,13 @@
+# K3s applies every manifest in this directory at start and whenever one changes (its deploy controller)
+- name: Create the K3s manifests directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/manifests
+    state: directory
+    mode: "0700"
+
+# Before K3s first starts, so its bundled Traefik is installed as a DaemonSet straight away
+- name: Install the ingress configuration
+  ansible.builtin.template:
+    src: traefik-config.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/opsforge-traefik-config.yaml
+    mode: "0600"

@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# Every upstream registry goes through the lab's pull-through cache (opsforge-cache, zot, outside the lab), which
+# stores each one under its own prefix; containerd falls back to the upstream if the cache fails.
+mirrors:
+{% for registry in lab_registry_upstreams %}
+  {{ registry }}:
+    endpoint:
+      - http://{{ lab_registry_cache }}
+    rewrite:
+      "^(.*)$": "{{ registry }}/$1"
+{% endfor %}

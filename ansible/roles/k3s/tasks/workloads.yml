@@ -1,0 +1,17 @@
+# Run on the server after the agents' play (site.yml): workloads are spread over regions when they are scheduled,
+# so every node must have joined and be Ready first.
+- name: Wait for every K3s node to be Ready
+  ansible.builtin.command: k3s kubectl get nodes -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
+  register: k3s_ready
+  until: k3s_ready.stdout.split() | select('equalto', 'True') | list | length == k3s_nodes | length
+  retries: 60
+  delay: 3
+  changed_when: false
+  vars:
+    k3s_nodes: "{{ groups['k3s_server'] | union(groups['k3s_agent'] | default([])) }}"
+
+- name: Install the sample workload manifest
+  ansible.builtin.template:
+    src: demo.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/opsforge-demo.yaml
+    mode: "0600"

@@ -109,11 +109,11 @@ gateways and is the single place where link conditions are applied.
 |---|---|---|---|
 | wan-core | Alpine, tc/nftables | 64 MiB | ~15–25 MB |
 | a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq | 128 MiB each (Ansible's Python modules OOM at 64) | ~10–20 MB each |
-| a-cp1 | K3s server | 1.5 GiB | ~500–700 MB |
+| a-cp1 | K3s server + Traefik | 1.5 GiB | ~500–700 MB (measured 757 MiB) |
 | mon | Prometheus + Grafana + blackbox, own node in site b (survives partitioning site a) | 512 MiB | ~200–300 MB |
-| b-w1, c-w1 | K3s agent | 768 MiB each | ~250–400 MB each |
+| b-w1, c-w1 | K3s agent + Traefik | 768 MiB each | ~250–400 MB each (measured ~172 MiB) |
 | ci (optional) | Gitea + Woodpecker + registry | 1 GiB | ~500–800 MB |
-| opsforge-cache | zot pull-through registry (outside the lab, Phase 4) | 256 MiB | ~30–60 MB |
+| opsforge-cache | zot pull-through registry (outside the lab, Phase 4) | 256 MiB | ~30–60 MB (measured 55 MiB) |
 | **Total (no CI)** | | | **≈ 1.5–2.1 GB** |
 
 
@@ -129,7 +129,7 @@ lab/
 ansible/
   inventory/              # generated (gitignored)
   site.yml                # top-level playbook
-  roles/ base dns pki gateway wan_core wireguard k3s_server k3s_agent monitoring ci
+  roles/ base dns pki k3s monitoring ci  # routers (wan-core, gateways, WireGuard) are rendered by opsforge
 scenarios/                # fault-injection scenarios with expected outcomes
 docs/PLAN.md
 ```
@@ -338,35 +338,73 @@ restored. **Met 2026-10-22:** all of the above as measured in the items; during 
 `verify --mem --disk` green: 111 MiB anon + kernel (gateways 6 MiB each, +2 MiB for WireGuard + BIRD),
 pool 1.88 GiB (router image 22.6 MiB).
 
-### Phase 4: Stretched K3s (single cluster)
-- [ ] Decide CA use: K3s generates its own cluster CAs; the lab CA (`.opsforge/pki/`) signs node/service certs
-      only. Document rotation (delete `.opsforge/pki/` + `provision`) and what is lost if it goes missing.
-- [ ] `k3s_server` on a-cp1: SQLite datastore, `--disable traefik,servicelb,metrics-server`,
-      `--flannel-backend=vxlan` over the site VPN with flannel MTU lowered for the double encapsulation
-      (VPN + VXLAN). Experiment flag: `wireguard-native` with interconnect `none` and public node IPs.
-- [ ] `k3s_agent` on workers; node labels `topology.kubernetes.io/region=<site>` / `zone`.
-- [ ] Kubelet tuning for small nodes: `system-reserved`/`kube-reserved`, eviction thresholds, image
-      garbage collection thresholds; `--node-status-update-frequency` left default but documented.
-- [ ] Incus container config for K3s, captured in an Incus profile `k3s-node`. **Try unprivileged first**
-      (`security.nesting`, `/dev/kmsg`, required kernel modules); fall back to `security.privileged` only for
-      what concretely breaks, and document why. The user cares about host isolation: a privileged container's
-      root is effectively host root. Alternatives if that matters more than RAM: K3s nodes as Incus VMs
-      (+250–400 MB each).
-- [ ] Sample workload spread across regions (topology spread constraints).
-- [ ] **kubectl from the host:** `provision` fetches the server's kubeconfig into `.opsforge/kubeconfig` with the
-      server URL rewritten to `https://127.0.0.1:<port>`, served by `opsforge forward a-cp1:6443` (Phase 2.5);
-      `opsforge kubectl ...` wraps both. The API cert gets a `127.0.0.1` SAN (`--tls-san`).
-- [ ] **Per-site ingress:** keep servicelb disabled; re-enable K3s' bundled Traefik as a DaemonSet with hostPorts
-      80/443 on the workers, and each site's gateway forwards its public 80/443 to its own node with `expose`.
-      Each region gets its own entry point on its public IP, as a regional cloud load balancer would; a request
-      to b's public IP is served in b unless the Service routes elsewhere. Budget: ~40 MiB per Traefik pod.
-- [ ] **Image pull-through cache** (outside the lab, survives `down`; removed by `down --purge`): an Incus
-      container `opsforge-cache` on `incusbr0` running zot (single binary; on-demand sync for several upstreams:
-      `docker.io`, `ghcr.io`, `registry.k8s.io`, `quay.io`, which `registry:2` cannot do in one instance). It is
-      modelled as a CDN mirror on the internet: `wan-core` DNATs a transit address (`203.0.113.2`) to it as it
-      does for DNS, so it is reachable from every site, unshaped, without opening `wan-core`'s private-range
-      drop. K3s `registries.yaml` mirrors every upstream to it, with fallback to the upstream. Optional:
-      apt-cacher-ng in the same container to speed up `provision` from scratch.
+### Phase 4: Stretched K3s (single cluster) (done 2026-10-22)
+- [x] **CA use:** K3s generates and keeps its own cluster CAs (`/var/lib/rancher/k3s/server/tls` on the server);
+      the lab CA (`.opsforge/pki/`) signs node certificates only and K3s never sees it. Rotating the lab CA: delete
+      `.opsforge/pki/` and run `provision` (every node certificate is re-signed). Losing it costs nothing but that
+      re-sign. The cluster CAs live in the server container: `down` (or deleting a-cp1) loses them with the
+      cluster, and the next `provision` creates a new cluster and a new `.opsforge/kubeconfig`.
+- [x] One Ansible role `k3s` (server and agent differ by `lab_role`, as `dns` does by group), `ansible/roles/k3s`:
+      K3s **v1.37.1+k3s1**, binary downloaded once to the controller (`.opsforge/k3s/`, sha256-checked) and copied
+      over the management path, like an air-gapped install; join token generated once in `.opsforge/k3s/token`.
+      Server on a-cp1: SQLite, `disable: [servicelb, metrics-server]`, flannel **vxlan** over the site VPN; agents
+      join `https://<server's private IP>:6443` across the tunnels. Flannel's underlay MTU is set to the tunnels'
+      (`flannel-conf` `Backend.MTU` 1420; flannel subtracts its 50 bytes itself, so pods get **1370**). Measured:
+      20 MB pod (b-w1) → pod (a-cp1) over TCP in 17.9 s with 0 fragments created on b-gw. Flannel does not resize
+      an existing `flannel.1`: an MTU change needs the interface deleted (or a rebuilt node).
+      **Not done:** the `wireguard-native` experiment flag (interconnect `none`, public node IPs): nodes sit behind
+      their gateway's NAT and share its public IP, so it needs one public port set per node; deferred to Phase 8,
+      where per-site clusters make it natural.
+- [x] Node labels `topology.kubernetes.io/region=<site>`, `zone=<site>-1` (set at registration).
+- [x] Kubelet tuning (`ansible/roles/k3s/defaults`): `kube-reserved` = what K3s itself uses (server 512Mi, agent
+      256Mi), `system-reserved` 64Mi, `eviction-hard` memory.available<64Mi / nodefs and imagefs < 10 %, image GC at
+      80/70 %; agents' allocatable is 384Mi of 768Mi. `node-status-update-frequency` left at 10 s (documented in
+      the config): a cut-off node turns NotReady after ~50 s. `default-(not-ready|unreachable)-toleration-seconds`
+      lowered from 300 to 60 so partition experiments reschedule in about 2 minutes. kube-proxy gets
+      `conntrack-max-per-core=0` (it cannot set the host-wide `nf_conntrack_max` from a container).
+- [x] Incus profile **`k3s-node`**, created by `up` and added to every `k3s-*` node: **unprivileged**
+      (`security.privileged=false`), `security.nesting=true`, `/dev/kmsg` (unix-char), and `linux.kernel_modules`
+      (overlay, br_netfilter, nf_conntrack, the iptables/xtables modules kube-proxy and flannel use, vxlan) loaded
+      by Incus on the host. Kubelet runs with `KubeletInUserNamespace=true`. Nothing needed privileges: agents,
+      flannel vxlan across the VPN, hostPorts and the ingress all work unprivileged. Profiles are part of the
+      instance fingerprint, so `up` assigns them like NICs.
+- [x] Sample workload (`ansible/roles/k3s/templates/demo.yaml.j2`, namespace `demo`): `traefik/whoami`, one replica
+      per region, topology spread on `region` (maxSkew 1, `DoNotSchedule`, `nodeTaintsPolicy: Honor`), each response
+      naming its node. **Found while testing:** spreading happens at scheduling only. Installed with the server,
+      all three pods landed on a-cp1 before the agents joined; `minDomains: 3` fixed that but kept the evicted pod
+      of a partitioned region Pending (the tainted region is not counted, so the minimum is 0 and a second pod in a
+      or b breaks maxSkew). Now a last play deploys it once every node is Ready, without `minDomains`. Kubernetes
+      never rebalances by itself (a rollout restart does not either: old pods count while new ones are placed);
+      after a heal: `opsforge kubectl -n demo delete pods -l app=whoami` (all at once).
+- [x] **kubectl from the host:** `provision` saves the server's kubeconfig as `.opsforge/kubeconfig` (server
+      `https://127.0.0.1:6443`, a SAN K3s has by default; `tls-san` also lists the node's name and private IP);
+      `opsforge kubectl ...` starts `opsforge forward a-cp1:6443` if it is not running and runs the host's
+      `kubectl` with it.
+- [x] **Per-site ingress:** servicelb disabled; K3s' bundled Traefik reconfigured by a `HelmChartConfig` as a
+      DaemonSet on every node (the server too, so site a has one) with hostPorts 80/443 and a ClusterIP Service;
+      each node `expose`s 80/443 on its gateway (`topology.yml`). The demo Service has `trafficDistribution:
+      PreferSameZone` and Traefik's `service.nativelb` annotation, so Traefik goes through the ClusterIP and
+      kube-proxy keeps the request in the zone (site) it entered. The client IP is preserved (`X-Real-Ip` is
+      wan-core's). Measured: each public IP, fetched from wan-core (the internet) or from the host with `forward
+      <other site's gateway>:80 --to <public IP>`, is answered by the pod in that site. Traefik ~40 MiB per node.
+- [x] **Image pull-through cache** `opsforge-cache` (outside the lab: no role tag, no profile; `down` keeps it,
+      `down --purge` deletes it): Alpine + zot v2.1.22 (image `opsforge-cache-1`, 67 MiB; zot's release binary links
+      glibc, `gcompat` provides it), static `10.99.0.2` on `incusbr0`, 256 MiB limit, ~55 MiB idle. One zot syncs
+      `docker.io`, `ghcr.io`, `registry.k8s.io` and `quay.io` on demand, each stored under its own prefix; K3s'
+      `registries.yaml` mirrors each upstream to `http://203.0.113.2:5000` with a `rewrite` adding the prefix.
+      wan-core DNATs `203.0.113.2:5000` to it (reachable from every site, unshaped; `.2` is reserved like
+      wan-core's `.1`). Created only when the topology has K3s nodes. **Found while testing:** zot refuses Docker
+      schema-2 manifests (most of docker.io) without `http.compat: ["docker2s2"]`, answering 503, and containerd
+      then silently pulls from the upstream instead: only OCI images (Traefik) were cached. zot still asks the
+      upstream whether a tag moved (a manifest HEAD) on each pull by tag; layers come from the cache. apt-cacher-ng
+      not added (provision from scratch already takes ~2 minutes).
+- [x] `opsforge partition <site>` / `opsforge heal`, needed by this phase's acceptance (moved from Phase 6):
+      `partition` saves the live link state to `wan-core:/etc/opsforge/pre-fault.json` (first fault only) and
+      sets 100 % loss on every link of the site; `heal` puts the saved state back. The site keeps its internet
+      access and the management path (wan-core's own traffic is not shaped), so `ssh` and `verify` still work.
+- [x] `verify` checks, once K3s is installed: every K3s node Ready with its region label, a running demo pod in
+      every region, and each site's public IP (port 80, fetched from wan-core) served by a pod in that site.
+      `verify --mem` counts the cache too.
 
 **Done when:**
 - All nodes `Ready`; sample Deployment runs pods in all three regions.
@@ -375,6 +413,15 @@ pool 1.88 GiB (router image 22.6 MiB).
 - After `down && up && provision`, no image is pulled from an upstream registry (the cache's log shows only hits).
 - `opsforge partition c`: c-w1 → `NotReady`, pods rescheduled after the eviction timeout;
   `opsforge heal` → node recovers cleanly without manual intervention.
+
+**Met 2026-10-22:** `verify` green including the K3s checks; `down && up && provision` takes 2.0–2.6 minutes and a
+second `provision` reports `changed=0`. Second rebuild after the cache was warm: 98 registry requests, all 200,
+11 cache hits, 0 layers fetched upstream. `partition c`: c-w1 NotReady at 53 s, its pod running in b at 114 s,
+sites a and b keep serving their ingress; `heal`: c-w1 Ready 13 s later and the stranded pod removed. Snapshot
+(0.8 s) and restore (13.6 s) of the running cluster: every pod back within a minute. `verify --mem --disk`:
+**1182 MiB** anon + kernel idle (a-cp1 757, b-w1 175, c-w1 170, cache 55, gateways 7 each, wan-core 3), pool
+4.13 GiB. Incus' own figures show the K3s nodes at their limits: page cache, reclaimable; no evictions or
+memory pressure seen.
 
 ### Phase 5: WAN-aware observability
 - [ ] Monitoring runs on its own `mon` node, in a different site than the control plane, so partitioning
@@ -387,7 +434,7 @@ pool 1.88 GiB (router image 22.6 MiB).
 **Done when:** changing a link's RTT with `opsforge link` appears on the matrix within one scrape interval.
 
 ### Phase 6: Fault injection and scenarios
-- [ ] CLI: `partition <site>`, `heal`, `flap <link> --period`, `degrade <link> --loss --rate`,
+- [ ] CLI: `flap <link> --period`, `degrade <link> --loss --rate`,
       `mtu <link> <n>`.
 - [ ] Scenario runner (`opsforge scenario <name>`): each scenario in `scenarios/<name>.yml` declares `setup`,
       `fault`, `measure`, `expect` (thresholds) and `teardown`; faults always restore the pre-fault link state
@@ -430,12 +477,12 @@ pool 1.88 GiB (router image 22.6 MiB).
 
 | Risk | Mitigation |
 |---|---|
-| K3s inside LXC may need privileged containers | **Retired for a single node** (spike, Phase 2.5): works unprivileged with the `k3s-node` profile. Re-check for agents and vxlan in Phase 4. |
+| K3s inside LXC may need privileged containers | **Retired** (Phase 4): server, agents, flannel vxlan over the VPN, hostPorts and ingress all run unprivileged with the `k3s-node` profile. |
 | `br_netfilter` (loaded by host-setup) is system-wide: bridged traffic on all bridges, incl. Docker's, hits iptables | Accepted trade-off (Docker supports it); told to the user. |
 | Docker on host interferes with bridge forwarding | Phase 0 check + `DOCKER-USER` rules. |
 | Host kernel updates (Arch) break module availability until reboot | `opsforge up` preflight checks required modules. |
 | netem imprecision under host load | Keep WAN rates realistic; preflight warns if host load is high; measure in Phase 1 acceptance. |
-| Double encapsulation MTU issues | Explicit MTU math in templates; Phase 3/4 acceptance tests large transfers. |
+| Double encapsulation MTU issues | Explicit MTU math: tunnels 1420, flannel underlay 1420, pods 1370; Phase 3/4 measured large transfers with no fragmentation. |
 | Linux-only host requirement | Document; KVM/libvirt or a Linux VM as the path for other OSes. |
 
 ## 7. Decisions on previously open questions (2026-10-20)

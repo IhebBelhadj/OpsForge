@@ -1,4 +1,4 @@
-# Phase 2 provisioning (docs/PLAN.md): ./opsforge provision, or ansible-playbook site.yml from ansible/.
+# Provisioning (docs/PLAN.md Phases 2 and 4): ./opsforge provision, or ansible-playbook site.yml from ansible/.
 # Every host is reached over SSH from the controller, through wan-core and its site's gateway.
 - name: Base system
   hosts: lab
@@ -20,3 +20,22 @@
   hosts: nodes
   roles:
     - pki
+
+# Server first: agents join it across the VPN (docs/PLAN.md Phase 4)
+- name: K3s server
+  hosts: k3s_server
+  roles:
+    - k3s
+
+- name: K3s agents
+  hosts: k3s_agent
+  roles:
+    - k3s
+
+- name: K3s workloads
+  hosts: k3s_server
+  tasks:
+    - name: Deploy the sample workload once every node is Ready
+      ansible.builtin.include_role:
+        name: k3s
+        tasks_from: workloads.yml

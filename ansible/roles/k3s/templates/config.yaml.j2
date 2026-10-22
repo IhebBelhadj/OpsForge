@@ -1,0 +1,40 @@
+# {{ ansible_managed }}
+# {{ inventory_hostname }}: K3s {{ 'server' if lab_role == 'k3s-server' else 'agent' }} in region {{ lab_site }}
+token: {{ k3s_token }}
+{% if lab_role == 'k3s-agent' %}
+# The server's private address, reached across the site-to-site VPN
+server: https://{{ hostvars[k3s_server_host].lab_address }}:{{ k3s_api_port }}
+{% endif %}
+node-ip: {{ lab_address }}
+node-label:
+  - topology.kubernetes.io/region={{ lab_site }}
+  - topology.kubernetes.io/zone={{ lab_site }}-1
+flannel-iface: eth0
+flannel-conf: /etc/rancher/k3s/flannel.json
+kubelet-arg:
+  # Lets the kubelet run in an unprivileged container (user namespace): tolerates read-only sysctls and devices
+  - feature-gates=KubeletInUserNamespace=true
+  - system-reserved=memory={{ k3s_reserved[lab_role].system }}
+  - kube-reserved=memory={{ k3s_reserved[lab_role].kube }}
+  - eviction-hard={{ k3s_eviction_hard }}
+  - image-gc-high-threshold={{ k3s_image_gc.high }}
+  - image-gc-low-threshold={{ k3s_image_gc.low }}
+  # node-status-update-frequency stays at its default (10 s): with the controller's 40 s grace period, a node cut
+  # off from the server turns NotReady 40-50 s after the partition
+kube-proxy-arg:
+  # nf_conntrack_max is a host-wide sysctl that an unprivileged container cannot set: leave it alone
+  - conntrack-max-per-core=0
+{% if lab_role == 'k3s-server' %}
+write-kubeconfig-mode: "0600"
+tls-san:
+  - 127.0.0.1
+  - {{ inventory_hostname }}.{{ lab_site }}.{{ lab_domain }}
+  - {{ lab_address }}
+# servicelb: each site's gateway is its load balancer (expose); Traefik is reconfigured as a per-node ingress
+disable:
+  - servicelb
+  - metrics-server
+kube-apiserver-arg:
+  - default-not-ready-toleration-seconds={{ k3s_toleration_seconds }}
+  - default-unreachable-toleration-seconds={{ k3s_toleration_seconds }}
+{% endif %}

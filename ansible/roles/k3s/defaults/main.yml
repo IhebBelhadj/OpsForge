@@ -1,0 +1,24 @@
+k3s_version: v1.37.1+k3s1
+k3s_sha256: 92b94582eb7b34a8cf532e6006842b9ed215a6783cf56a3dd6271fd35243b2c0
+# On the controller; survives opsforge down, so the binary is downloaded once and the join token stays stable
+k3s_cache_dir: "{{ lab_state_dir }}/k3s"
+k3s_token: >-
+  {{ lookup('ansible.builtin.password', k3s_cache_dir ~ '/token', length=48, chars=['ascii_letters', 'digits']) }}
+k3s_server_host: "{{ groups['k3s_server'][0] }}"
+k3s_api_port: 6443
+# Where the host reaches the API: `opsforge kubectl` forwards this local port to the server (opsforge KUBECONFIG)
+k3s_kubeconfig: "{{ lab_state_dir }}/kubeconfig"
+# Flannel VXLAN rides inside the WireGuard tunnels: its underlay MTU is the tunnels' (1420), not eth0's (1500).
+# Flannel subtracts the 50 bytes of VXLAN overhead itself: pods get 1370.
+k3s_flannel_mtu: "{{ lab_path_mtu }}"
+# Small nodes: reserve what K3s itself uses (one process: kubelet, containerd, flannel; plus the control plane on
+# the server), so the scheduler only hands out the rest. Eviction starts before the container's limit is hit.
+k3s_reserved:
+  k3s-server: { system: 64Mi, kube: 512Mi }
+  k3s-agent: { system: 64Mi, kube: 256Mi }
+k3s_eviction_hard: memory.available<64Mi,nodefs.available<10%,imagefs.available<10%
+k3s_image_gc: { high: 80, low: 70 }
+# Pods on an unreachable node are evicted after this (Kubernetes' default 300 s is long for experiments)
+k3s_toleration_seconds: 60
+# Sample workload (verify checks it: opsforge DEMO_NAMESPACE / DEMO_APP)
+k3s_demo_image: traefik/whoami:v1.11.0

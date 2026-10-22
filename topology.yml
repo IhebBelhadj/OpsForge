@@ -20,10 +20,11 @@ links:
   a-c: { rtt: 120ms, jitter: 15ms, loss: 1%, rate: 20mbit }
   b-c: { rtt: 90ms, jitter: 10ms, loss: 0.5%, rate: 50mbit }
 
+# expose: port forwards on the site gateway's public IP; 80/443 reach the node's ingress (Traefik hostPorts)
 nodes:
-  a-cp1: { site: a, role: k3s-server, cpu: 2, memory: 1536MiB }
-  b-w1: { site: b, role: k3s-agent, cpu: 1, memory: 768MiB }
-  c-w1: { site: c, role: k3s-agent, cpu: 1, memory: 768MiB }
+  a-cp1: { site: a, role: k3s-server, cpu: 2, memory: 1536MiB, expose: ["80", "443"] }
+  b-w1: { site: b, role: k3s-agent, cpu: 1, memory: 768MiB, expose: ["80", "443"] }
+  c-w1: { site: c, role: k3s-agent, cpu: 1, memory: 768MiB, expose: ["80", "443"] }
 
 profiles:
   ci: false

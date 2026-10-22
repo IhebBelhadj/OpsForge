@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+# K3s' bundled Traefik as a per-node ingress: a DaemonSet listening on hostPorts 80/443 of every node, which each
+# site's gateway forwards its public 80/443 to (expose in topology.yml). A request entering a site is answered by
+# that site's Traefik, as by a regional cloud load balancer.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    deployment:
+      kind: DaemonSet
+    updateStrategy:
+      rollingUpdate:
+        maxUnavailable: 1
+        maxSurge: 0
+    ports:
+      web:
+        hostPort: 80
+      websecure:
+        hostPort: 443
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        cpu: 10m
+        memory: 48Mi

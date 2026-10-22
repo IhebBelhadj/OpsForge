@@ -8,8 +8,9 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 2 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, and Ansible provisioning
-> over SSH (base system, per-site DNS, a lab PKI). Site-to-site VPN (Phase 3) and Kubernetes (Phase 4) come next.
+> **Status:** Phase 4 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
+> SSH, a WireGuard + OSPF mesh between sites, and a K3s cluster stretched across them (unprivileged containers,
+> per-site ingress, a local image cache). WAN-aware monitoring (Phase 5) comes next.
 
 ## Requirements
 
@@ -27,7 +28,9 @@ newgrp incus-admin             # or log out and back in
 ./opsforge up                  # create the lab from topology.yml (~1 min once images are cached); re-run after editing it
 ./opsforge provision           # configure it with Ansible over SSH (ansible/site.yml); safe to re-run
 ./opsforge status              # instances, memory, live link conditions
-./opsforge verify              # latency, isolation, internet, bandwidth, SSH, DNS and PKI checks
+./opsforge verify              # latency, VPN, internet, bandwidth, SSH, DNS, PKI and K3s checks
+./opsforge kubectl get nodes -L topology.kubernetes.io/region   # K3s from the host (tunnel started for you)
+incus exec wan-core -- wget -qO- http://203.0.113.20/   # site b's ingress, answered by the demo pod in b
 ./opsforge ssh b-w1            # SSH in through wan-core and site b's gateway, like a remote VPC
 ./opsforge ssh b-w1 getent hosts a-cp1   # a-cp1.a.lab, resolved by a-gw across the WAN
 incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
@@ -35,7 +38,8 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 ./opsforge link a-b --rtt 200ms --loss 2%   # change a link live
 ./opsforge forward b-w1:8080   # tunnel a lab service to 127.0.0.1:8080 (--list, --stop)
 ./opsforge capture wan-core icmp -d 5 --show   # tcpdump inside an instance, pcap in .opsforge/captures/
-./opsforge down                # delete everything (keeps cached images; --purge drops them)
+./opsforge partition c         # cut site c off the other sites; ./opsforge heal puts the links back
+./opsforge down                # delete the lab (keeps cached images and the image cache; --purge drops them)
 ./opsforge gc                  # delete images left by older opsforge builds
 ./opsforge snapshot provisioned   # snapshot every instance (btrfs CoW, <1 s); --list, --delete NAME
 ./opsforge restore provisioned    # roll the whole lab back to it (~15 s)
@@ -63,6 +67,10 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
   so no host route or sudo is needed) and the nodes by `ProxyJump` through their gateway. Keys, host keys and
   the lab CA live in `.opsforge/` (gitignored, kept across `down`; delete it to reset identities).
 - Each gateway serves DNS for its site's zone (`a.lab`, `b.lab`, …) and forwards the others across the WAN.
+- **K3s** runs in unprivileged containers: the server in site a, agents in b and c, joined across the VPN, with
+  flannel's VXLAN inside the WireGuard tunnels. Each gateway forwards its public 80/443 to its site's Traefik, so
+  each site has its own entry point, like a regional load balancer. Images come through `opsforge-cache` (zot,
+  outside the lab, kept across `down`), which wan-core serves at `203.0.113.2:5000` like a CDN.
 
 ## Measured footprint
 
@@ -72,6 +80,7 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 | 1 | `wan-core` + 3 gateways (Alpine) + 3 Debian 13 nodes | 312 MiB (routers 6–9 MiB each) | +5.8 MiB router image, 504 MiB pool |
 | 2 | Phase 1 + sshd, dnsmasq, Ansible-provisioned | 1042 MiB as reported, of which 921 MiB reclaimable page cache; 101 MiB anon + kernel | node image 126 MiB, router image 21 MiB, 1.5 GiB pool |
 | 3 | Phase 2 + WireGuard mesh + BIRD (OSPF) on the gateways | 945 MiB as reported; 111 MiB anon + kernel (gateways 6 MiB each) | router image 22.6 MiB, 1.9 GiB pool |
+| 4 | Phase 3 + K3s (server + 2 agents, Traefik on each, demo pods) + zot image cache | 1182 MiB anon + kernel (a-cp1 757, agents ~172 each, cache 55) | cache image 67 MiB, 4.1 GiB pool |
 
 Incus reports memory including page cache, which the kernel reclaims under pressure; after provisioning most of
 it is apt and Python files read once.

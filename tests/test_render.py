@@ -146,10 +146,19 @@ def test_adding_a_site_touches_wan_core_and_gateways_only(topo):
 
 
 def test_moving_a_node_changes_only_that_node(topo):
+    topo["nodes"]["c-w1"].pop("expose", None)
     before = fingerprints(topo)
     topo["nodes"]["c-w1"]["site"] = "b"
     after = fingerprints(topo)
     assert {name for name in before if after[name] != before[name]} == {"c-w1"}
+
+
+def test_moving_an_exposed_node_also_changes_both_gateways(topo):
+    topo["nodes"]["c-w1"]["expose"] = ["80"]
+    before = fingerprints(topo)
+    topo["nodes"]["c-w1"]["site"] = "b"
+    after = fingerprints(topo)
+    assert {name for name in before if after[name] != before[name]} == {"c-w1", "b-gw", "c-gw"}
 
 
 def test_vpn_mesh_ports_pair_up(topo):
@@ -193,3 +202,41 @@ def test_interconnect_none_has_no_tunnels(topo):
     for inst in render.plan(topo, "10.99.0.1")[1]:
         assert not any("/wg/" in path for path in inst.files)
         assert "wg-" not in inst.files.get("/etc/opsforge/firewall.nft", ("",))[0]
+
+
+def test_k3s_nodes_get_the_k3s_profile(topo):
+    topo["nodes"]["a-misc"] = {"site": "a", "role": "plain"}
+    profiles = {i.name: i.profiles for i in render.plan(topo, "10.99.0.1")[1]}
+    assert profiles["a-cp1"] == profiles["b-w1"] == [render.PROFILE, render.K3S_PROFILE]
+    assert profiles["a-misc"] == profiles["a-gw"] == profiles[render.WAN_CORE] == [render.PROFILE]
+    assert "vxlan" in render.K3S_PROFILE_CONFIG["linux.kernel_modules"].split(",")
+    assert render.K3S_PROFILE_CONFIG["security.privileged"] == "false"
+
+
+def test_wan_core_dnats_the_cache_only_with_k3s_nodes(topo):
+    wan_core = render.plan(topo, "10.99.0.1")[1][0]
+    firewall = wan_core.files["/etc/opsforge/firewall.nft"][0]
+    assert f"ip daddr 203.0.113.2 tcp dport {render.CACHE_PORT} dnat to 10.99.0.2" in firewall
+    for node in topo["nodes"].values():
+        node["role"] = "plain"
+    wan_core = render.plan(topo, "10.99.0.1")[1][0]
+    assert "203.0.113.2" not in wan_core.files["/etc/opsforge/firewall.nft"][0]
+    assert not render.uses_cache(topo)
+
+
+def test_cache_mirrors_each_upstream_under_its_prefix():
+    cache = render.render_cache("10.99.0.1")
+    assert cache.address == "10.99.0.2" and cache.nics == {"eth0": "incusbr0"} and cache.profiles == []
+    config = json.loads(cache.files["/etc/zot/config.json"][0])
+    assert "docker2s2" in config["http"]["compat"]  # else Docker-format images bypass the cache
+    registries = config["extensions"]["sync"]["registries"]
+    assert {r["content"][0]["destination"] for r in registries} == {f"/{u}" for u in render.CACHE_UPSTREAMS}
+    assert all(r["onDemand"] and r["content"][0]["stripPrefix"] for r in registries)
+
+
+def test_inventory_gives_k3s_the_cache_and_path_mtu(topo, tmp_path):
+    lab_vars = render.render_inventory(topo, tmp_path / "c", tmp_path)["all"]["children"]["lab"]["vars"]
+    assert lab_vars["lab_registry_cache"] == f"203.0.113.2:{render.CACHE_PORT}"
+    assert lab_vars["lab_path_mtu"] == render.WG_MTU
+    topo["interconnect"] = "none"
+    assert render.render_inventory(topo, tmp_path / "c", tmp_path)["all"]["children"]["lab"]["vars"]["lab_path_mtu"] == 1500

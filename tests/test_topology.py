@@ -31,6 +31,16 @@ def test_core_address_is_reserved(topo):
     assert any("reserved for wan-core" in e for e in errors(topo))
 
 
+def test_cache_address_is_reserved(topo):
+    topo["sites"]["a"]["public_ip"] = "203.0.113.2"
+    assert any("reserved for the image cache" in e for e in errors(topo))
+
+
+def test_k3s_agents_need_a_server(topo):
+    topo["nodes"]["a-cp1"]["role"] = "plain"
+    assert any("no k3s-server" in e for e in errors(topo))
+
+
 def test_vpc_overlap_between_sites(topo):
     topo["sites"]["b"]["vpc"] = "10.10.0.0/24"
     assert any("overlaps" in e for e in errors(topo))

@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# As K3s' install script writes it, minus the modprobe calls (Incus loads the modules: profile k3s-node)
+[Unit]
+Description=Lightweight Kubernetes ({{ 'server' if lab_role == 'k3s-server' else 'agent' }})
+Documentation=https://k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=notify
+KillMode=process
+Delegate=yes
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+ExecStart=/usr/local/bin/k3s {{ 'server' if lab_role == 'k3s-server' else 'agent' }}

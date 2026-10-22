@@ -39,6 +39,15 @@ WG_KEYS = STATE / "wg"
 FORWARDS = STATE / "forwards"
 # `opsforge capture`: pcaps, named <instance>-<timestamp>.pcap
 CAPTURES = STATE / "captures"
+# Fetched from the K3s server by `provision` (ansible/roles/k3s); points at 127.0.0.1:K3S_API_PORT, which
+# `opsforge kubectl` forwards to the server
+KUBECONFIG = STATE / "kubeconfig"
+K3S_API_PORT = 6443
+# Sample workload deployed by ansible/roles/k3s (templates/demo.yaml.j2); verify checks it
+DEMO_NAMESPACE = "demo"
+DEMO_APP = "whoami"
+# wan-core: live link state saved by `partition`, put back by `heal`
+PRE_FAULT = "/etc/opsforge/pre-fault.json"
 
 REQUIRED_MODULES = ("br_netfilter", "overlay", "nf_conntrack", "wireguard", "sch_netem", "sch_htb")
 # Minimum values; must match lab/host/sysctl.conf
@@ -60,10 +69,11 @@ LINK_KEYS = ("rtt", "jitter", "loss", "rate")
 SPEC_KEY = "user.opsforge.spec"
 # verify: a WireGuard tunnel whose latest handshake is older than this is down (rekeys every 2 min when in use)
 VPN_HANDSHAKE_MAX = 180
-# verify --mem: default ceiling for the whole lab's non-reclaimable memory (anon + kernel), per phase
-MEM_CEILING_MIB = 150
-# verify --disk: default ceiling for the storage pool's used space (images + instances), per phase
-DISK_CEILING_GIB = 3
+# verify --mem: default ceiling for the whole lab's non-reclaimable memory (anon + kernel, image cache included), per
+# phase. Phase 4 measured 2026-10-22: 1182 MiB idle (a-cp1 757, agents ~172 each, cache 55, routers 3-7 each)
+MEM_CEILING_MIB = 1400
+# verify --disk: default ceiling for the storage pool's used space (images + instances), per phase (Phase 4: 4.13)
+DISK_CEILING_GIB = 5
 # preflight warns when the pool (capped in lab/host/incus-preseed.yaml) is fuller than this
 POOL_WARN_FRACTION = 0.8
 SMOKE_IMAGE = "images:debian/13"
@@ -142,6 +152,9 @@ def topology_errors(topo):
     core = render.core_address(topo)
     if core in public_ips.values():
         errors.append(f"transit: {core} is reserved for {render.WAN_CORE}, not usable as a site public_ip")
+    cache = render.cache_public_address(topo)
+    if cache in public_ips.values():
+        errors.append(f"transit: {cache} is reserved for the image cache, not usable as a site public_ip")
 
     reserved_names = {render.WAN_CORE} | {render.gateway_name(s) for s in sites}
     exposed = set()
@@ -167,6 +180,9 @@ def topology_errors(topo):
     servers = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"]
     if len(servers) > 1:
         errors.append(f"nodes: only one k3s-server is supported per cluster, found {servers}")
+    agents = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-agent"]
+    if agents and not servers:
+        errors.append(f"nodes: k3s-agent nodes {agents} have no k3s-server to join")
     return errors
 
 
@@ -490,7 +506,8 @@ def close_ssh_masters():
 
 
 def create_instance(inst, config):
-    incus("create", inst.image, inst.name, "--profile", render.PROFILE, *[f"--config={k}={v}" for k, v in config.items()])
+    profiles = [arg for p in inst.profiles for arg in ("--profile", p)]
+    incus("create", inst.image, inst.name, *profiles, *[f"--config={k}={v}" for k, v in config.items()])
     for dev, net in inst.nics.items():
         incus("config", "device", "add", inst.name, dev, "nic", f"network={net}", f"name={dev}")
     for path, (content, mode) in inst.files.items():
@@ -500,6 +517,8 @@ def create_instance(inst, config):
 def reconfigure_instance(inst, cur, config):
     """Rewires a stopped instance and re-pushes its files. Routers' boot scripts and nodes' networkd config then
     start from a fresh network namespace, so no stale address or route survives."""
+    if cur["profiles"] != inst.profiles:
+        incus("profile", "assign", inst.name, *inst.profiles)
     remove, add = nic_changes(cur["devices"], inst.nics)
     for dev in remove:
         incus("config", "device", "remove", inst.name, dev)
@@ -509,6 +528,46 @@ def reconfigure_instance(inst, cur, config):
         push_file(inst.name, path, content, mode)
     if changes := config_changes(cur["config"], config):
         incus("config", "set", inst.name, *[f"{k}={v}" for k, v in changes.items()])
+
+
+def ensure_k3s_profile():
+    """Creates or updates the k3s-node profile (config applies live; modules load when an instance starts)."""
+    if not exists(f"/1.0/profiles/{render.K3S_PROFILE}"):
+        incus("profile", "create", render.K3S_PROFILE)
+    incus("profile", "set", render.K3S_PROFILE, *[f"{k}={v}" for k, v in render.K3S_PROFILE_CONFIG.items()])
+    devices = json.loads(incus("query", f"/1.0/profiles/{render.K3S_PROFILE}").stdout)["devices"]
+    for name, dev in render.K3S_PROFILE_DEVICES.items():
+        if devices.get(name) != dev:
+            incus("profile", "device", "remove", render.K3S_PROFILE, name, check=False)
+            incus("profile", "device", "add", render.K3S_PROFILE, name, dev["type"],
+                  *[f"{k}={v}" for k, v in dev.items() if k != "type"])
+
+
+def ensure_cache(cache):
+    """Creates the image cache, or re-pushes its config and restarts zot when the config changed. It is not a lab
+    instance (no role tag, no profile), so `down` keeps it with its images."""
+    if not exists(f"/1.0/instances/{cache.name}"):
+        print(f"  {cache.name}: creating (image cache, {cache.address} on incusbr0)")
+        incus("create", cache.image, cache.name, "--no-profiles", "--storage", "default",
+              *[f"--config={k}={v}" for k, v in cache.config.items()], "--config=user.opsforge.cache=true")
+        incus("config", "device", "add", cache.name, "eth0", "nic", "network=incusbr0", "name=eth0",
+              f"ipv4.address={cache.address}")
+        for path, (content, mode) in cache.files.items():
+            push_file(cache.name, path, content, mode)
+        incus("start", cache.name)
+        return True
+    if instance_state(cache.name)["status"] != "Running":
+        print(f"  {cache.name}: starting")
+        incus("start", cache.name)
+    changed = False
+    for path, (content, mode) in cache.files.items():
+        if incus("file", "pull", f"{cache.name}{path}", "-", check=False).stdout != content:
+            push_file(cache.name, path, content, mode)
+            changed = True
+    if changed:
+        print(f"  {cache.name}: config changed, restarting zot")
+        run_in(cache.name, "rc-service", "zot", "restart")
+    return changed
 
 
 def start_instances(insts):
@@ -540,6 +599,8 @@ def cmd_up(args):
     networks, instances = lab_plan(topo)
     ensure_images()
     client_pub = write_access(topo, instances)
+    if render.uses_cache(topo):
+        ensure_k3s_profile()
 
     if not exists(f"/1.0/profiles/{render.PROFILE}"):
         # Root disk only: lab instances get their NICs explicitly, never incusbr0 from the default profile
@@ -596,6 +657,8 @@ def cmd_up(args):
             print(f"  deleting network {net}")
             incus("network", "delete", net)
 
+    if render.uses_cache(topo) and ensure_cache(render.render_cache(upstream_dns())):
+        changed.append(render.CACHE)
     start_instances(started)
     if not changed:
         print(f"Lab up to date: {len(instances)} instances")
@@ -613,8 +676,12 @@ def cmd_down(args):
     for net in lab_networks():
         print(f"  deleting network {net}")
         incus("network", "delete", net)
-    if exists(f"/1.0/profiles/{render.PROFILE}"):
-        incus("profile", "delete", render.PROFILE)
+    for profile in (render.PROFILE, render.K3S_PROFILE):
+        if exists(f"/1.0/profiles/{profile}"):
+            incus("profile", "delete", profile)
+    if args.purge and exists(f"/1.0/instances/{render.CACHE}"):
+        print(f"  deleting {render.CACHE} and its cached images")
+        incus("delete", "--force", render.CACHE)
     for alias in render.IMAGES if args.purge else ():
         if exists(f"/1.0/images/aliases/{alias}"):
             print(f"  deleting image {alias}")
@@ -761,6 +828,10 @@ def cmd_status(args):
             f"{inst['status']:<8} {mem:>5.0f} MiB  {', '.join(ips)}"
         )
     print(f"{'total':<39} {total:>5.0f} MiB")
+    if exists(f"/1.0/instances/{render.CACHE}"):
+        cache = instance_state(render.CACHE)
+        mem = (cache.get("memory") or {}).get("usage", 0) / 1024**2
+        print(f"{render.CACHE} (image cache, outside the lab; kept by down): {cache['status']}, {mem:.0f} MiB")
     print(f"\nPool default: {describe_pool(*pool_usage())}")
     print("\nLinks (live)")
     desired = load_valid_topology()["links"]
@@ -1001,7 +1072,8 @@ def instance_mem_mib(name):
 def check_memory(r, ceiling):
     print(f"Memory (anon + kernel; page cache excluded; lab ceiling {ceiling} MiB)")
     total = 0
-    for inst in sorted(i["name"] for i in lab_instances()):
+    cache = [render.CACHE] if exists(f"/1.0/instances/{render.CACHE}") else []
+    for inst in sorted(i["name"] for i in lab_instances()) + cache:
         mib = instance_mem_mib(inst)
         if mib is None:
             r.fail(f"{inst}: cannot read memory.stat")
@@ -1017,9 +1089,56 @@ def check_disk(r, ceiling):
     (r.ok if used <= ceiling * GIB else r.fail)(f"pool {describe_pool(used, total)} (ceiling {ceiling:g} GiB)")
 
 
+def k3s_server(topo):
+    return next((n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"), None)
+
+
+def kubectl_json(server, *args):
+    res = run_in(server, "k3s", "kubectl", *args, "-o", "json")
+    return json.loads(res.stdout)["items"] if res.returncode == 0 else None
+
+
+def check_k3s(r, topo):
+    """Every K3s node Ready with its region label, demo pods in every region, and each site's public IP (port 80, from
+    the internet: wan-core) served by a pod in that site."""
+    print("K3s (nodes Ready in their region, demo pods spread over regions, ingress served in the site it entered)")
+    server = k3s_server(topo)
+    nodes = kubectl_json(server, "get", "nodes")
+    if nodes is None:
+        r.fail(f"{server}: k3s kubectl get nodes failed")
+        return
+    live = {n["metadata"]["name"]: n for n in nodes}
+    for name, node in topo["nodes"].items():
+        if node["role"] not in render.K3S_ROLES:
+            continue
+        if name not in live:
+            r.fail(f"{name}: not a cluster node")
+            continue
+        ready = any(c["type"] == "Ready" and c["status"] == "True" for c in live[name]["status"]["conditions"])
+        region = live[name]["metadata"]["labels"].get("topology.kubernetes.io/region")
+        (r.ok if ready and region == node["site"] else r.fail)(
+            f"{name}: {'Ready' if ready else 'NOT Ready'}, region {region} (site {node['site']})"
+        )
+    k3s_sites = sorted({node["site"] for node in topo["nodes"].values() if node["role"] in render.K3S_ROLES})
+    pods = kubectl_json(server, "-n", DEMO_NAMESPACE, "get", "pods", "-l", f"app={DEMO_APP}") or []
+    running = {topo["nodes"].get(p["spec"].get("nodeName"), {}).get("site") for p in pods
+               if p["status"].get("phase") == "Running"}
+    for site in k3s_sites:
+        (r.ok if site in running else r.fail)(f"{DEMO_NAMESPACE}/{DEMO_APP}: {'a' if site in running else 'no'} "
+                                              f"running pod in region {site}")
+    for site in k3s_sites:
+        ip = topo["sites"][site]["public_ip"]
+        out = run_in(render.WAN_CORE, "wget", "-qO-", "-T", "10", f"http://{ip}/").stdout
+        m = re.search(r"^Name: (\S+)", out, re.M)
+        served = topo["nodes"].get(m[1], {}).get("site") if m else None
+        msg = f"http://{ip}/ (site {site}) " + (f"served by a pod on {m[1]} (site {served})" if m else "no answer")
+        (r.ok if served == site else r.fail)(msg)
+
+
 def cmd_verify(args):
     """Acceptance checks: latency, isolation, internet and bandwidth match topology + live link state (Phase 1);
-    SSH access, DNS and PKI once provisioned (Phase 2); with interconnect: vpn, the tunnels (Phase 3)."""
+    SSH access, DNS and PKI once provisioned (Phase 2); with interconnect: vpn, the tunnels (Phase 3); the K3s
+    cluster, its spread and per-site ingress once installed (Phase 4)."""
     topo = load_valid_topology()
     links = read_link_state()["links"]
     # One probe host per site: its first node, or the gateway if the site has none
@@ -1039,6 +1158,8 @@ def cmd_verify(args):
     if provisioned(topo):
         check_dns(r, topo)
         check_pki(r, topo)
+        if (server := k3s_server(topo)) and run_in(server, "test", "-x", "/usr/local/bin/k3s").returncode == 0:
+            check_k3s(r, topo)
     else:
         print("Provisioning")
         r.warn("gateways run no dnsmasq: lab not provisioned, DNS and PKI checks skipped (./opsforge provision)")
@@ -1052,10 +1173,11 @@ def cmd_verify(args):
 
 def cmd_render(args):
     topo = load_valid_topology()
-    networks, instances = render.plan(topo, upstream_dns() if shutil.which("incus") else "<incusbr0>")
+    dns = upstream_dns() if shutil.which("incus") else "10.99.0.1"
+    networks, instances = render.plan(topo, dns)
     print(f"networks: {', '.join(networks)}")
-    for inst in instances:
-        print(f"\n=== {inst.name} ({inst.role}, {inst.image}) {inst.config}")
+    for inst in instances + ([render.render_cache(dns)] if render.uses_cache(topo) else []):
+        print(f"\n=== {inst.name} ({inst.role}, {inst.image}, profiles {inst.profiles or 'none'}) {inst.config}")
         print(f"    nics: {', '.join(f'{dev} -> {net}' for dev, net in inst.nics.items())}")
         if inst.managed:
             print("    + SSH host key and authorized_keys (generated by up)")
@@ -1209,6 +1331,56 @@ def cmd_capture(args):
     return 0
 
 
+def cmd_kubectl(args):
+    """kubectl from the host: the server's kubeconfig (fetched by provision) through an `opsforge forward` tunnel."""
+    server = k3s_server(load_valid_topology())
+    if server is None:
+        raise LabError("topology.yml has no k3s-server node")
+    if not KUBECONFIG.exists():
+        raise LabError(f"no {KUBECONFIG.relative_to(ROOT)} yet: run ./opsforge provision")
+    if not shutil.which("kubectl"):
+        raise LabError(f"kubectl is not installed on the host (or: ./opsforge ssh {server} kubectl ...)")
+    if not any(f["local"] == K3S_API_PORT for f in active_forwards()):
+        start_forward(server, K3S_API_PORT, K3S_API_PORT, "127.0.0.1")
+    os.execvp("kubectl", ["kubectl", "--kubeconfig", str(KUBECONFIG), *args.kubectl_args])
+
+
+def read_pre_fault():
+    res = incus("file", "pull", f"{render.WAN_CORE}{PRE_FAULT}", "-", check=False)
+    return json.loads(res.stdout) if res.returncode == 0 else None
+
+
+def cmd_partition(args):
+    """Cuts a site off the other sites (100 % loss on each of its links), keeping the live state from before the first
+    fault so `heal` puts it back. The site keeps its internet access and the host's management path."""
+    topo = load_valid_topology()
+    if args.site not in topo["sites"]:
+        raise LabError(f"no site {args.site}; sites: {', '.join(topo['sites'])}")
+    state = read_link_state()
+    if read_pre_fault() is None:
+        push_file(render.WAN_CORE, PRE_FAULT, json.dumps(state, indent=2) + "\n", "0644")
+    cut = sorted(n for n in state["links"] if args.site in n.split("-"))
+    for name in cut:
+        state["links"][name] = state["links"][name] | {"loss": "100%"}
+    apply_link_state(state)
+    print(f"site {args.site} partitioned: {', '.join(cut)} at 100 % loss (./opsforge heal restores them)")
+    return 0
+
+
+def cmd_heal(args):
+    """Restores every link to its live state from before the first `partition` (not to topology.yml)."""
+    pre = read_pre_fault()
+    if pre is None:
+        print("nothing to heal (no partition in place)")
+        return 0
+    state = read_link_state()
+    state["links"] = {name: pre["links"].get(name, link) for name, link in state["links"].items()}
+    apply_link_state(state)
+    run_in(render.WAN_CORE, "rm", "-f", PRE_FAULT)
+    print("healed: links back to their pre-partition state")
+    return 0
+
+
 def cmd_provision(args):
     """Runs ansible/site.yml against the lab over SSH, with a freshly rendered inventory."""
     topo = load_valid_topology()
@@ -1220,8 +1392,6 @@ def cmd_provision(args):
 
 # Commands planned in docs/PLAN.md, with the phase that implements them.
 PLANNED = {
-    "partition": ("cut a site off the WAN", 6),
-    "heal": ("restore all links", 6),
     "flap": ("periodically drop a link", 6),
 }
 
@@ -1262,7 +1432,7 @@ def main():
     p.add_argument("--save", action="store_true", help="also write the link's conditions to topology.yml")
     p.add_argument("--reset", action="store_true", help="revert the link (or every link) to topology.yml")
     p.set_defaults(func=cmd_link)
-    p = sub.add_parser("verify", help="check latency, isolation, internet and bandwidth against the live links")
+    p = sub.add_parser("verify", help="check the WAN, VPN, provisioning and K3s against topology and live links")
     p.add_argument("--quick", action="store_true", help="skip the bandwidth test")
     p.add_argument(
         "--mem", nargs="?", type=int, const=MEM_CEILING_MIB, metavar="MIB",
@@ -1302,17 +1472,29 @@ def main():
     p.add_argument("--show", nargs="?", const="brief", choices=("brief", "full"),
                    help="also print the packets (decoded by the instance's tcpdump)")
     p.set_defaults(func=cmd_capture)
+    p = sub.add_parser("kubectl", help="kubectl against the lab cluster from the host, e.g. kubectl get nodes")
+    p.add_argument("kubectl_args", nargs=argparse.REMAINDER, help="passed to kubectl")
+    p.set_defaults(func=cmd_kubectl)
+    p = sub.add_parser("partition", help="cut a site off the other sites (100 %% loss on its links)")
+    p.add_argument("site")
+    p.set_defaults(func=cmd_partition)
+    sub.add_parser("heal", help="undo partition: links back to their pre-partition live state").set_defaults(
+        func=cmd_heal
+    )
     for name, (desc, phase) in PLANNED.items():
         p = sub.add_parser(name, help=f"{desc} (Phase {phase}, not implemented)")
         p.add_argument("args", nargs=argparse.REMAINDER)
         p.set_defaults(func=lambda a, n=name, ph=phase: sys.exit(f"opsforge {n}: not implemented yet (Phase {ph})"))
 
-    # argparse.REMAINDER drops leading options (`provision --check`), so provision takes the unknown ones
+    # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take
+    # the unknown ones
     args, extra = parser.parse_known_args()
-    if extra and args.command != "provision":
+    if extra and args.command not in ("provision", "kubectl"):
         parser.error(f"unrecognized arguments: {' '.join(extra)}")
     if args.command == "provision":
         args.ansible_args = extra + args.ansible_args
+    if args.command == "kubectl":
+        args.kubectl_args = extra + args.kubectl_args
     try:
         return args.func(args)
     except LabError as e:
