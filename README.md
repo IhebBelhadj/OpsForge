@@ -24,7 +24,7 @@ newgrp incus-admin             # or log out and back in
 ./opsforge preflight           # check the host is ready
 ./opsforge smoke               # launch a throwaway container and test networking
 
-./opsforge up                  # create the lab from topology.yml (~1 min once images are cached)
+./opsforge up                  # create the lab from topology.yml (~1 min once images are cached); re-run after editing it
 ./opsforge provision           # configure it with Ansible over SSH (ansible/site.yml); safe to re-run
 ./opsforge status              # instances, memory, live link conditions
 ./opsforge verify              # latency, isolation, internet, bandwidth, SSH, DNS and PKI checks
@@ -32,7 +32,12 @@ newgrp incus-admin             # or log out and back in
 ./opsforge ssh b-w1 getent hosts a-cp1   # a-cp1.a.lab, resolved by a-gw across the WAN
 incus exec b-w1 -- ping 203.0.113.10   # ~40 ms: site b to site a's public IP
 ./opsforge link a-b --rtt 200ms --loss 2%   # change a link live
-./opsforge down                # delete everything (keeps cached images; --purge drops the router image)
+./opsforge forward b-w1:8080   # tunnel a lab service to 127.0.0.1:8080 (--list, --stop)
+./opsforge capture wan-core icmp -d 5 --show   # tcpdump inside an instance, pcap in .opsforge/captures/
+./opsforge down                # delete everything (keeps cached images; --purge drops them)
+./opsforge gc                  # delete images left by older opsforge builds
+./opsforge snapshot provisioned   # snapshot every instance (btrfs CoW, <1 s); --list, --delete NAME
+./opsforge restore provisioned    # roll the whole lab back to it (~15 s)
 ```
 
 ## How it is wired
@@ -83,6 +88,17 @@ links:
 
 Validate it with `./opsforge validate`; see what `up` would create with `./opsforge render`.
 Expose a node's port on its site's public IP with `expose: ["8080:80/tcp"]` on the node.
+
+## Host updates (Arch)
+
+Arch removes the running kernel's modules when it upgrades the kernel, so modules the lab loads on demand (tc,
+nftables, later K3s's) fail until you reboot. Update fully and reboot together, never `pacman -S` a single
+package on a stale system (a partial upgrade breaks tools such as `shellcheck`):
+
+```bash
+sudo pacman -Syu && sudo reboot
+./opsforge preflight   # warns if the kernel and its modules disagree, or a dev tool is broken
+```
 
 ## Development
 

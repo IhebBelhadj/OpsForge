@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -31,6 +32,10 @@ SSH_KEY = SSH_DIR / "id_ed25519"
 SSH_CONFIG = SSH_DIR / "config"
 KNOWN_HOSTS = SSH_DIR / "known_hosts"
 HOST_KEYS = SSH_DIR / "host_keys"
+# `opsforge forward`: one SSH control socket + JSON description per tunnel, keyed by local port
+FORWARDS = STATE / "forwards"
+# `opsforge capture`: pcaps, named <instance>-<timestamp>.pcap
+CAPTURES = STATE / "captures"
 
 REQUIRED_MODULES = ("br_netfilter", "overlay", "nf_conntrack", "wireguard", "sch_netem", "sch_htb")
 # Minimum values; must match lab/host/sysctl.conf
@@ -47,6 +52,15 @@ RESERVED_NETS = {
     "k3s pods": ipaddress.ip_network("10.42.0.0/16"),
     "k3s services": ipaddress.ip_network("10.43.0.0/16"),
 }
+LINK_KEYS = ("rtt", "jitter", "loss", "rate")
+# Instance config key holding render.fingerprint(): what `up` last wired and pushed into it
+SPEC_KEY = "user.opsforge.spec"
+# verify --mem: default ceiling for the whole lab's non-reclaimable memory (anon + kernel), per phase
+MEM_CEILING_MIB = 150
+# verify --disk: default ceiling for the storage pool's used space (images + instances), per phase
+DISK_CEILING_GIB = 3
+# preflight warns when the pool (capped in lab/host/incus-preseed.yaml) is fuller than this
+POOL_WARN_FRACTION = 0.8
 SMOKE_IMAGE = "images:debian/13"
 SMOKE_NAME = "opsforge-smoke"
 GIB = 1024**3
@@ -70,7 +84,8 @@ class Report:
 
 
 def incus(*args, check=True):
-    return subprocess.run(["incus", *args], capture_output=True, text=True, check=check)
+    # No stdin: given a pipe or socket, some commands (`network create`) wait for YAML config on it
+    return subprocess.run(["incus", *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, check=check)
 
 
 def load_topology(path=TOPOLOGY):
@@ -202,6 +217,8 @@ def cmd_preflight(args):
         else:
             driver = json.loads(incus("query", "/1.0/storage-pools/default").stdout).get("driver")
             r.ok(f"daemon reachable, storage pool 'default' ({driver})")
+            used, total = pool_usage()
+            (r.ok if used <= POOL_WARN_FRACTION * total else r.warn)(f"pool {describe_pool(used, total)}")
 
     print("Kernel")
     for mod in REQUIRED_MODULES:
@@ -230,8 +247,20 @@ def cmd_preflight(args):
     (r.ok if free >= 10 else r.warn)(f"{free:.1f} GiB free on /var/lib (recommend >= 10)")
     avail = mem_available_gib()
     (r.ok if avail >= 3 else r.warn)(f"{avail:.1f} GiB RAM available (recommend >= 3)")
+    # Arch removes the running kernel's modules on upgrade: modules not loaded yet (tc, nft, K3s) fail until a reboot
+    release = os.uname().release
+    if Path("/usr/lib/modules", release).is_dir():
+        r.ok(f"running kernel {release} matches the installed modules")
+    else:
+        r.warn(f"kernel {release} has no /usr/lib/modules/{release}: upgraded but not rebooted (reboot after pacman -Syu)")
     for tool in ("shellcheck", "yamllint", "ansible-lint"):
-        (r.ok if shutil.which(tool) else r.warn)(f"{tool} {'installed' if shutil.which(tool) else 'missing (make check)'}")
+        if not shutil.which(tool):
+            r.warn(f"{tool} missing (make check)")
+        elif subprocess.run([tool, "--version"], capture_output=True).returncode != 0:
+            # e.g. shellcheck after an Arch partial upgrade (missing Haskell libraries); make check falls back to Docker
+            r.warn(f"{tool} installed but broken (partial upgrade? run pacman -Syu)")
+        else:
+            r.ok(f"{tool} installed")
 
     print("Topology")
     errors = topology_errors(load_topology())
@@ -311,6 +340,17 @@ def wait_for(cond, timeout, what):
     raise LabError(f"timed out after {timeout}s: {what}")
 
 
+def pool_usage():
+    """(used, total) bytes of the `default` storage pool: images and instances together, since btrfs without
+    quotas reports no per-instance usage."""
+    space = json.loads(incus("query", "/1.0/storage-pools/default/resources").stdout)["space"]
+    return space["used"], space["total"]
+
+
+def describe_pool(used, total):
+    return f"{used / GIB:.2f} / {total / GIB:.0f} GiB used ({100 * used / total:.0f} %)"
+
+
 def lab_instances():
     """Lab instances (tagged user.opsforge.role by `up`), with their state."""
     return [i for i in json.loads(incus("list", "--format", "json").stdout) if "user.opsforge.role" in i["config"]]
@@ -379,8 +419,52 @@ def ssh_ok(host):
         return False
 
 
-def create_instance(inst):
-    config = inst.config | {"user.opsforge.role": inst.role} | ({"user.opsforge.site": inst.site} if inst.site else {})
+def desired_config(inst):
+    """Instance config as `up` sets it: limits, the role/site tags and the fingerprint of its wiring and files."""
+    tags = {"user.opsforge.role": inst.role} | ({"user.opsforge.site": inst.site} if inst.site else {})
+    return inst.config | tags | {SPEC_KEY: render.fingerprint(inst)}
+
+
+def config_changes(current, desired):
+    return {k: v for k, v in desired.items() if current.get(k) != v}
+
+
+def nic_changes(devices, nics):
+    """(devices to remove, {device: network} to add) turning an instance's NIC devices into `nics`."""
+    current = {name: dev.get("network") for name, dev in devices.items() if dev.get("type") == "nic"}
+    remove = [name for name, net in current.items() if nics.get(name) != net]
+    return remove, {name: net for name, net in nics.items() if current.get(name) != net}
+
+
+def merge_link_state(live, desired):
+    """wan-core's link state after a topology edit: sites and the set of links from topology.yml, but links that
+    already exist keep their live conditions, so `up` never undoes `opsforge link` (`link --reset` does)."""
+    return desired | {"links": {name: live["links"].get(name, link) for name, link in desired["links"].items()}}
+
+
+def image_fingerprint(alias):
+    return json.loads(incus("query", f"/1.0/images/aliases/{alias}").stdout)["target"]
+
+
+def lab_networks():
+    return [
+        net["name"] for net in json.loads(incus("network", "list", "--format", "json").stdout)
+        if net["managed"] and net["name"].startswith("of-")
+    ]
+
+
+def close_ssh_masters():
+    """Closes our and Ansible's SSH ControlMaster sockets: after an instance restarts they hang the next connection."""
+    for sock in [*SSH_DIR.glob("cm-*"), *(Path.home() / ".ansible" / "cp").glob("*")]:
+        try:
+            subprocess.run(["ssh", "-F", "/dev/null", "-o", f"ControlPath={sock}", "-O", "exit", "lab"],
+                           capture_output=True, timeout=5, check=False)
+        except subprocess.TimeoutExpired:
+            pass
+        sock.unlink(missing_ok=True)
+
+
+def create_instance(inst, config):
     incus("create", inst.image, inst.name, "--profile", render.PROFILE, *[f"--config={k}={v}" for k, v in config.items()])
     for dev, net in inst.nics.items():
         incus("config", "device", "add", inst.name, dev, "nic", f"network={net}", f"name={dev}")
@@ -388,7 +472,42 @@ def create_instance(inst):
         push_file(inst.name, path, content, mode)
 
 
+def reconfigure_instance(inst, cur, config):
+    """Rewires a stopped instance and re-pushes its files. Routers' boot scripts and nodes' networkd config then
+    start from a fresh network namespace, so no stale address or route survives."""
+    remove, add = nic_changes(cur["devices"], inst.nics)
+    for dev in remove:
+        incus("config", "device", "remove", inst.name, dev)
+    for dev, net in add.items():
+        incus("config", "device", "add", inst.name, dev, "nic", f"network={net}", f"name={dev}")
+    for path, (content, mode) in inst.files.items():
+        push_file(inst.name, path, content, mode)
+    if changes := config_changes(cur["config"], config):
+        incus("config", "set", inst.name, *[f"{k}={v}" for k, v in changes.items()])
+
+
+def start_instances(insts):
+    """Starts stopped instances and waits until routers have run their boot script and managed hosts answer SSH."""
+    if not insts:
+        return
+    incus("start", *[inst.name for inst in insts])
+    for inst in insts:
+        if inst.image == render.ROUTER_IMAGE:
+            wait_for(
+                lambda: run_in(inst.name, "test", "-e", render.READY_FLAG).returncode == 0,
+                60,
+                f"{inst.name} configuration (see: incus exec {inst.name} -- cat {render.START_LOG})",
+            )
+    close_ssh_masters()
+    for inst in insts:
+        if inst.managed:
+            wait_for(lambda: ssh_ok(inst.name), 60, f"SSH to {inst.name} (try: ./opsforge ssh {inst.name})")
+
+
 def cmd_up(args):
+    """Creates the lab, or brings an existing one in line with topology.yml: deletes instances and networks no longer
+    in it, recreates instances whose image changed, rewires and restarts those whose NICs or files changed, applies
+    limit changes live and starts stopped instances. Live link conditions are kept."""
     topo = load_valid_topology()
     missing = [m for m in REQUIRED_MODULES if not Path("/sys/module", m).exists()]
     if missing:
@@ -406,40 +525,69 @@ def cmd_up(args):
             # No host address: the host must not route between, or into, lab networks
             incus("network", "create", net, "ipv4.address=none", "ipv6.address=none")
 
-    created = []
+    live = {i["name"]: i for i in lab_instances()}
+    changed = sorted(live.keys() - {inst.name for inst in instances})
+    for name in changed:
+        print(f"  {name}: not in topology.yml, deleting")
+        incus("delete", "--force", name)
+    # Specs come from topology.yml alone, before wan-core gets live link conditions: `link` edits are not changes
+    configs = {inst.name: desired_config(inst) for inst in instances}
+    if render.WAN_CORE in live:
+        wan_core = next(inst for inst in instances if inst.name == render.WAN_CORE)
+        wan_core.files |= render.link_files(merge_link_state(read_link_state(), render.link_state(topo)))
+
+    started = []
     for inst in instances:
-        if exists(f"/1.0/instances/{inst.name}"):
-            print(f"  {inst.name}: exists, left unchanged (opsforge down to rebuild)")
-            continue
-        print(f"  {inst.name}: creating ({inst.role}, {inst.address})")
-        if inst.managed:
-            inst.files |= render.ssh_files(client_pub, *ssh_keygen(HOST_KEYS / inst.name, inst.name))
-        create_instance(inst)
-        created.append(inst)
-    for inst in created:
-        incus("start", inst.name)
-    for inst in created:
-        if inst.image == render.ROUTER_IMAGE:
-            wait_for(
-                lambda: run_in(inst.name, "test", "-e", render.READY_FLAG).returncode == 0,
-                60,
-                f"{inst.name} configuration (see: incus exec {inst.name} -- cat {render.START_LOG})",
-            )
-    for inst in created:
-        if inst.managed:
-            wait_for(lambda: ssh_ok(inst.name), 60, f"SSH to {inst.name} (try: ./opsforge ssh {inst.name})")
+        config = configs[inst.name]
+        cur = live.get(inst.name)
+        if cur and cur["config"].get("volatile.base_image") != image_fingerprint(inst.image):
+            print(f"  {inst.name}: image is now {inst.image}, recreating")
+            incus("delete", "--force", inst.name)
+            cur = None
+        if cur is None:
+            print(f"  {inst.name}: creating ({inst.role}, {inst.address})")
+            if inst.managed:
+                inst.files |= render.ssh_files(client_pub, *ssh_keygen(HOST_KEYS / inst.name, inst.name))
+            create_instance(inst, config)
+        elif cur["config"].get(SPEC_KEY, config[SPEC_KEY]) != config[SPEC_KEY]:
+            print(f"  {inst.name}: NICs or config files changed, reconfiguring")
+            if cur["status"] != "Stopped":
+                incus("stop", inst.name)
+            reconfigure_instance(inst, cur, config)
+        else:
+            # Unchanged (instances from before user.opsforge.spec existed are assumed current and stamped)
+            if changes := config_changes(cur["config"], config):
+                shown = ", ".join(f"{k}={v}" for k, v in changes.items() if k != SPEC_KEY)
+                print(f"  {inst.name}: {f'setting {shown}' if shown else 'recording its spec'}")
+                incus("config", "set", inst.name, *[f"{k}={v}" for k, v in changes.items()])
+                changed += [inst.name] if shown else []
+            if cur["status"] == "Running":
+                continue
+            print(f"  {inst.name}: {cur['status'].lower()}, starting")
+        started.append(inst)
+        changed.append(inst.name)
+    for net in lab_networks():
+        if net not in networks:
+            print(f"  deleting network {net}")
+            incus("network", "delete", net)
+
+    start_instances(started)
+    if not changed:
+        print(f"Lab up to date: {len(instances)} instances")
+        return 0
     print(f"Lab up: {len(instances)} instances. Next: ./opsforge provision, then ./opsforge verify")
     return 0
 
 
 def cmd_down(args):
+    for fwd in active_forwards():
+        stop_forward(fwd)
     for inst in lab_instances():
         print(f"  deleting {inst['name']}")
         incus("delete", "--force", inst["name"])
-    for net in json.loads(incus("network", "list", "--format", "json").stdout):
-        if net["managed"] and net["name"].startswith("of-"):
-            print(f"  deleting network {net['name']}")
-            incus("network", "delete", net["name"])
+    for net in lab_networks():
+        print(f"  deleting network {net}")
+        incus("network", "delete", net)
     if exists(f"/1.0/profiles/{render.PROFILE}"):
         incus("profile", "delete", render.PROFILE)
     for alias in render.IMAGES if args.purge else ():
@@ -447,6 +595,109 @@ def cmd_down(args):
             print(f"  deleting image {alias}")
             incus("image", "delete", alias)
     print("Lab down")
+    return 0
+
+
+def stale_images(images, instances):
+    """Images built by older opsforge versions: every alias is an `opsforge-*` one no longer in render.IMAGES, and no
+    instance was created from it. Unaliased images are Incus' cache of remote base images, which it expires itself."""
+    used = {i["config"].get("volatile.base_image") for i in instances}
+    return [
+        img for img in images
+        if img["aliases"]
+        and all(a["name"].startswith("opsforge-") and a["name"] not in render.IMAGES for a in img["aliases"])
+        and img["fingerprint"] not in used
+    ]
+
+
+def cmd_gc(args):
+    images = json.loads(incus("image", "list", "--format", "json").stdout)
+    instances = json.loads(incus("list", "--format", "json").stdout)
+    stale = stale_images(images, instances)
+    for img in stale:
+        names = ", ".join(a["name"] for a in img["aliases"])
+        print(f"  {'would delete' if args.dry_run else 'deleting'} {names} ({img['size'] / 1024**2:.0f} MiB)")
+        if not args.dry_run:
+            incus("image", "delete", img["fingerprint"])
+    if not stale:
+        print("No stale images")
+    return 0
+
+
+def lab_snapshots(insts):
+    """{snapshot name: (created_at, [instances that have it])} across the lab's instances."""
+    snaps = {}
+    for inst in insts:
+        for snap in inst.get("snapshots") or ():
+            name = snap["name"]
+            created, names = snaps.get(name, (snap["created_at"], []))
+            snaps[name] = (min(created, snap["created_at"]), [*names, inst["name"]])
+    return snaps
+
+
+def cmd_snapshot(args):
+    """Snapshots every lab instance under one name (btrfs: copy-on-write, so near-instant and only changed blocks
+    cost space). Taken live: each instance's disk is crash-consistent, as after a power cut."""
+    insts = lab_instances()
+    if not insts:
+        raise LabError("lab is down (./opsforge up)")
+    snaps = lab_snapshots(insts)
+    if args.list:
+        if not snaps:
+            print("No snapshots (./opsforge snapshot [NAME])")
+        for name, (created, names) in sorted(snaps.items(), key=lambda kv: kv[1][0]):
+            missing = "" if len(names) == len(insts) else f", missing on {len(insts) - len(names)} instance(s)"
+            print(f"  {name:<24} {created[:19].replace('T', ' ')}  {len(names)} instances{missing}")
+        return 0
+    if args.delete:
+        if not args.name:
+            raise LabError("--delete needs a snapshot name")
+        if args.name not in snaps:
+            raise LabError(f"no snapshot named {args.name!r} (./opsforge snapshot --list)")
+        for inst in snaps[args.name][1]:
+            incus("snapshot", "delete", inst, args.name)
+        print(f"Deleted snapshot {args.name}")
+        return 0
+    name = args.name or time.strftime("%Y%m%d-%H%M%S")
+    if name in snaps:
+        raise LabError(f"snapshot {name!r} already exists (./opsforge snapshot --delete {name})")
+    for inst in insts:
+        incus("snapshot", "create", inst["name"], name)
+    used, total = pool_usage()
+    print(f"Snapshot {name}: {len(insts)} instances (pool {used / GIB:.2f}/{total / GIB:.0f} GiB). "
+          f"Back to it with: ./opsforge restore {name}")
+    return 0
+
+
+def cmd_restore(args):
+    """Rolls every lab instance back to a snapshot: disk, config and NICs, so live link conditions too. All instances
+    are stopped first and booted together, as after `up`."""
+    insts = lab_instances()
+    snaps = lab_snapshots(insts)
+    if args.name not in snaps:
+        raise LabError(f"no snapshot named {args.name!r} (./opsforge snapshot --list)")
+    if missing := sorted({i["name"] for i in insts} - set(snaps[args.name][1])):
+        raise LabError(f"snapshot {args.name!r} does not cover {', '.join(missing)} (created after it?); "
+                       "restoring part of the lab would mix states")
+    topo = load_valid_topology()
+    planned = {inst.name: inst for inst in render.plan(topo, upstream_dns())[1]}
+    for fwd in active_forwards():
+        stop_forward(fwd)
+    if running := [i["name"] for i in insts if i["status"] != "Stopped"]:
+        incus("stop", *running)
+    for inst in insts:
+        print(f"  {inst['name']}: restoring {args.name}")
+        incus("snapshot", "restore", inst["name"], args.name)
+    start_instances([planned[i["name"]] for i in insts if i["name"] in planned])
+    if rest := [i["name"] for i in insts if i["name"] not in planned]:
+        incus("start", *rest)
+    drift = sorted(
+        i["name"] for i in lab_instances()
+        if i["name"] not in planned or i["config"].get(SPEC_KEY) != desired_config(planned[i["name"]])[SPEC_KEY]
+    ) + sorted(planned.keys() - {i["name"] for i in insts})
+    print(f"Restored {args.name}: {len(insts)} instances")
+    if drift:
+        print(f"  note: topology.yml differs from the snapshot for {', '.join(drift)}; ./opsforge up applies it")
     return 0
 
 
@@ -458,7 +709,7 @@ def read_link_state():
 
 
 def describe_link(link):
-    return " ".join(f"{k}={link[k]}" for k in ("rtt", "jitter", "loss", "rate") if k in link)
+    return " ".join(f"{k}={link[k]}" for k in LINK_KEYS if k in link)
 
 
 def cmd_status(args):
@@ -485,29 +736,61 @@ def cmd_status(args):
             f"{inst['status']:<8} {mem:>5.0f} MiB  {', '.join(ips)}"
         )
     print(f"{'total':<39} {total:>5.0f} MiB")
+    print(f"\nPool default: {describe_pool(*pool_usage())}")
     print("\nLinks (live)")
+    desired = load_valid_topology()["links"]
     for name, link in sorted(read_link_state()["links"].items()):
-        print(f"  {name:<12} {describe_link(link)}")
+        drift = "" if link == desired.get(name) else f"  \033[33m(topology.yml: {describe_link(desired.get(name, {}))})\033[0m"
+        print(f"  {name:<12} {describe_link(link)}{drift}")
     return 0
 
 
 def apply_link_state(state):
-    push_file(render.WAN_CORE, "/etc/opsforge/links.json", json.dumps(state, indent=2) + "\n", "0644")
-    push_file(render.WAN_CORE, "/etc/opsforge/links.sh", render.render_links_sh(state), "0755")
+    for path, (content, mode) in render.link_files(state).items():
+        push_file(render.WAN_CORE, path, content, mode)
     res = run_in(render.WAN_CORE, "/etc/opsforge/links.sh")
     if res.returncode != 0:
         raise LabError(f"applying link conditions failed:\n{res.stderr.strip()}")
 
 
+def save_link(name, link, path=TOPOLOGY):
+    """Rewrites one `<name>: { ... }` line of topology.yml in place, keeping its comments and layout."""
+    text = path.read_text()
+    line = f"  {name}: {{ {', '.join(f'{k}: {link[k]}' for k in LINK_KEYS if k in link)} }}"
+    text, n = re.subn(rf"^  {re.escape(name)}:.*$", line, text, count=1, flags=re.M)
+    if n != 1:
+        raise LabError(f"cannot find link {name} in {path.name}; edit it by hand")
+    path.write_text(text)
+
+
 def cmd_link(args):
     state = read_link_state()
+    desired = load_valid_topology()["links"]
+    if args.reset and args.link is None:
+        state["links"] = {n: dict(link) for n, link in desired.items()}
+        apply_link_state(state)
+        print("all links reset to topology.yml")
+        return 0
+    if args.link is None:
+        raise LabError("name a link (e.g. a-b), or use --reset alone to reset every link")
     ends = set(args.link.split("-"))
     name = next((n for n in state["links"] if set(n.split("-")) == ends), None)
     if name is None:
         raise LabError(f"no link {args.link}; links: {', '.join(sorted(state['links']))}")
-    changes = {k: getattr(args, k) for k in ("rtt", "jitter", "loss", "rate") if getattr(args, k) is not None}
+    changes = {k: getattr(args, k) for k in LINK_KEYS if getattr(args, k) is not None}
+    if args.reset:
+        if changes or args.save:
+            raise LabError("--reset cannot be combined with changes or --save")
+        state["links"][name] = dict(desired[name])
+        apply_link_state(state)
+        print(f"{name}: {describe_link(state['links'][name])} (reset to topology.yml)")
+        return 0
     if not changes:
-        print(f"{name}: {describe_link(state['links'][name])}")
+        if args.save:
+            save_link(name, state["links"][name])
+            print(f"{name}: {describe_link(state['links'][name])} (saved to topology.yml)")
+        else:
+            print(f"{name}: {describe_link(state['links'][name])}")
         return 0
     link = state["links"][name] | changes
     link_schema = json.loads(SCHEMA.read_text())
@@ -518,7 +801,11 @@ def cmd_link(args):
         raise LabError(f"invalid value: {e.message}") from None
     state["links"][name] = link
     apply_link_state(state)
-    print(f"{name}: {describe_link(link)} (live only; ./opsforge up from scratch resets to topology.yml)")
+    if args.save:
+        save_link(name, link)
+        print(f"{name}: {describe_link(link)} (saved to topology.yml)")
+    else:
+        print(f"{name}: {describe_link(link)} (live only: --save keeps it, --reset reverts to topology.yml)")
     return 0
 
 
@@ -626,6 +913,35 @@ def check_pki(r, topo):
         (r.ok if res.returncode == 0 else r.fail)(f"{node}: {(res.stdout or res.stderr).strip().splitlines()[-1]}")
 
 
+def instance_mem_mib(name):
+    """Non-reclaimable memory (anon + kernel) from the instance's own cgroup; page cache is left out because
+    the kernel reclaims it under pressure, while Incus' usage figure counts it."""
+    res = run_in(name, "cat", "/sys/fs/cgroup/memory.stat")
+    if res.returncode != 0:
+        return None
+    stat = dict(line.split() for line in res.stdout.splitlines())
+    return (int(stat.get("anon", 0)) + int(stat.get("kernel", 0))) / 1024**2
+
+
+def check_memory(r, ceiling):
+    print(f"Memory (anon + kernel; page cache excluded; lab ceiling {ceiling} MiB)")
+    total = 0
+    for inst in sorted(i["name"] for i in lab_instances()):
+        mib = instance_mem_mib(inst)
+        if mib is None:
+            r.fail(f"{inst}: cannot read memory.stat")
+            continue
+        total += mib
+        print(f"          {inst:<12} {mib:6.1f} MiB")
+    (r.ok if total <= ceiling else r.fail)(f"lab total {total:.0f} MiB (ceiling {ceiling} MiB)")
+
+
+def check_disk(r, ceiling):
+    print(f"Disk (storage pool 'default': images + instances; ceiling {ceiling:g} GiB)")
+    used, total = pool_usage()
+    (r.ok if used <= ceiling * GIB else r.fail)(f"pool {describe_pool(used, total)} (ceiling {ceiling:g} GiB)")
+
+
 def cmd_verify(args):
     """Acceptance checks: latency, isolation, internet and bandwidth match topology + live link state (Phase 1);
     SSH access, DNS and PKI once provisioned (Phase 2)."""
@@ -648,6 +964,10 @@ def cmd_verify(args):
     else:
         print("Provisioning")
         r.warn("gateways run no dnsmasq: lab not provisioned, DNS and PKI checks skipped (./opsforge provision)")
+    if args.mem is not None:
+        check_memory(r, args.mem)
+    if args.disk is not None:
+        check_disk(r, args.disk)
     print("\nVerify " + ("\033[31mFAILED\033[0m" if r.failed else "\033[32mpassed\033[0m"))
     return 1 if r.failed else 0
 
@@ -673,6 +993,142 @@ def cmd_ssh(args):
     if not SSH_CONFIG.exists():
         raise LabError("no SSH config yet: run ./opsforge up")
     os.execvp("ssh", ["ssh", "-F", str(SSH_CONFIG), args.host, *args.command])
+
+
+def parse_forward(spec):
+    """`<host>:<port>` -> (host, port)."""
+    host, sep, port = spec.rpartition(":")
+    if not sep or not host or not port.isdigit() or not 0 < int(port) < 65536:
+        raise LabError(f"expected <host>:<port>, e.g. a-cp1:6443, got {spec!r}")
+    return host, int(port)
+
+
+def default_local_port(port):
+    """Same port locally, unless it is privileged (needs root to bind): 80 -> 10080, 443 -> 10443."""
+    return port if port >= 1024 else port + 10000
+
+
+def forward_socket(local):
+    return FORWARDS / f"{local}.sock"
+
+
+def ssh_control(sock, op, host):
+    return subprocess.run(
+        ["ssh", "-F", str(SSH_CONFIG), "-S", str(sock), "-O", op, host], capture_output=True, text=True
+    ).returncode == 0
+
+
+def active_forwards():
+    """Running tunnels, as recorded by start_forward; records whose ssh has died are removed."""
+    forwards = []
+    for path in sorted(FORWARDS.glob("*.json")) if FORWARDS.exists() else ():
+        fwd = json.loads(path.read_text())
+        if ssh_control(forward_socket(fwd["local"]), "check", fwd["host"]):
+            forwards.append(fwd)
+        else:
+            path.unlink()
+            forward_socket(fwd["local"]).unlink(missing_ok=True)
+    return forwards
+
+
+def describe_forward(fwd):
+    return f"127.0.0.1:{fwd['local']} -> {fwd['host']} {fwd['to']}:{fwd['port']}"
+
+
+def start_forward(host, port, local, to):
+    """Background `ssh -L` with its own control socket, over the usual path (wan-core, then the site gateway)."""
+    if any(f["local"] == local for f in active_forwards()):
+        raise LabError(f"127.0.0.1:{local} is already forwarded (./opsforge forward --list)")
+    FORWARDS.mkdir(parents=True, exist_ok=True)
+    fwd = {"host": host, "port": port, "local": local, "to": to}
+    # Not a pipe: `ssh -f` (and its ProxyJump child) keep stderr open after backgrounding, so reading a pipe hangs
+    with tempfile.TemporaryFile("w+") as err:
+        res = subprocess.run(
+            [
+                "ssh", "-F", str(SSH_CONFIG), "-f", "-N", "-M", "-S", str(forward_socket(local)),
+                "-o", "ControlPersist=no", "-o", "ExitOnForwardFailure=yes",
+                "-L", f"127.0.0.1:{local}:{to}:{port}", host,
+            ],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=err,
+        )
+        err.seek(0)
+        if res.returncode != 0:
+            raise LabError(f"forward {host}:{port} failed: {err.read().strip()}")
+    (FORWARDS / f"{local}.json").write_text(json.dumps(fwd) + "\n")
+    return fwd
+
+
+def stop_forward(fwd):
+    ssh_control(forward_socket(fwd["local"]), "exit", fwd["host"])
+    (FORWARDS / f"{fwd['local']}.json").unlink(missing_ok=True)
+    forward_socket(fwd["local"]).unlink(missing_ok=True)
+    print(f"  stopped {describe_forward(fwd)}")
+
+
+def cmd_forward(args):
+    """Reach a lab service from the host: tunnels bind 127.0.0.1 only and need neither sudo nor a route into the lab."""
+    if args.stop:
+        target = parse_forward(args.target) if args.target else None
+        for fwd in active_forwards():
+            if target is None or (fwd["host"], fwd["port"]) == target:
+                stop_forward(fwd)
+        return 0
+    if args.list or not args.target:
+        forwards = active_forwards()
+        for fwd in forwards:
+            print(describe_forward(fwd))
+        if not forwards:
+            print("No forwards (./opsforge forward <host>:<port>)")
+        return 0
+    if not SSH_CONFIG.exists():
+        raise LabError("no SSH config yet: run ./opsforge up")
+    host, port = parse_forward(args.target)
+    fwd = start_forward(host, port, args.local or default_local_port(port), args.to)
+    print(describe_forward(fwd))
+    return 0
+
+
+def capture_cmd(iface, count, seconds, bpf):
+    """tcpdump in an instance, writing the pcap to stdout unbuffered (-U) so an interrupted capture keeps what it
+    saw. `timeout` sends SIGTERM, on which tcpdump flushes and prints its statistics."""
+    cmd = ["tcpdump", "-i", iface, "-n", "-p", "-U", "-w", "-"]
+    if count:
+        cmd += ["-c", str(count)]
+    if bpf:
+        cmd.append(" ".join(bpf))
+    return ["timeout", str(seconds), *cmd] if seconds else cmd
+
+
+def cmd_capture(args):
+    """Packet evidence: runs tcpdump inside a lab instance and saves the pcap on the host."""
+    if args.instance not in {i["name"] for i in lab_instances()}:
+        raise LabError(f"{args.instance} is not a running lab instance (./opsforge status)")
+    CAPTURES.mkdir(parents=True, exist_ok=True)
+    out = args.output or CAPTURES / f"{args.instance}-{time.strftime('%Y%m%d-%H%M%S')}.pcap"
+    tcpdump = capture_cmd(args.iface, args.count, args.duration, args.filter)
+    until = f"{args.duration} s" if args.duration else "Ctrl-C"
+    print(f"capturing on {args.instance} {args.iface} ({' '.join(args.filter) or 'all traffic'}) until {until}"
+          + (f" or {args.count} packets" if args.count else ""), file=sys.stderr)
+    with open(out, "wb") as f:
+        proc = subprocess.Popen(["incus", "exec", args.instance, "--", *tcpdump], stdout=f, stderr=subprocess.PIPE)
+        try:
+            _, err = proc.communicate()
+        except KeyboardInterrupt:
+            # Ctrl-C also reaches incus, which forwards it to tcpdump: let it flush and exit
+            _, err = proc.communicate()
+    err = err.decode(errors="replace")
+    # 124: stopped by `timeout`; tcpdump itself exits 0 (count reached) or 130/143 on a signal
+    if proc.returncode not in (0, 124, 130, 143) or "packets captured" not in err:
+        Path(out).unlink(missing_ok=True)
+        raise LabError(f"tcpdump on {args.instance} failed: {err.strip()}")
+    stats = [line for line in err.splitlines() if "packets" in line]
+    print(f"{out}  ({'; '.join(stats)})")
+    if args.show:
+        decode = ["tcpdump", "-n", "-r", "-", *(["-q"] if args.show == "brief" else [])]
+        with open(out, "rb") as f:
+            res = subprocess.run(["incus", "exec", args.instance, "--", *decode], stdin=f, capture_output=True, text=True)
+        print(res.stdout, end="")
+    return 0
 
 
 def cmd_provision(args):
@@ -703,20 +1159,41 @@ def main():
     sub.add_parser("smoke", help="launch a throwaway container to prove Incus networking works").set_defaults(
         func=cmd_smoke
     )
-    sub.add_parser("up", help="create the lab from topology.yml").set_defaults(func=cmd_up)
+    sub.add_parser("up", help="create the lab, or apply topology.yml edits to it").set_defaults(func=cmd_up)
     p = sub.add_parser("down", help="destroy the lab")
     p.add_argument("--purge", action="store_true", help=f"also delete the cached {', '.join(render.IMAGES)} images")
     p.set_defaults(func=cmd_down)
+    p = sub.add_parser("gc", help="delete images built by older opsforge versions (old opsforge-* aliases)")
+    p.add_argument("--dry-run", action="store_true", help="only list what would be deleted")
+    p.set_defaults(func=cmd_gc)
+    p = sub.add_parser("snapshot", help="snapshot every lab instance under one name, e.g. after provision")
+    p.add_argument("name", nargs="?", help="snapshot name (default: the current time, YYYYmmdd-HHMMSS)")
+    p.add_argument("--list", action="store_true", help="list the lab's snapshots")
+    p.add_argument("--delete", action="store_true", help="delete the named snapshot from every instance")
+    p.set_defaults(func=cmd_snapshot)
+    p = sub.add_parser("restore", help="roll the whole lab back to a snapshot (restarts every instance)")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_restore)
     sub.add_parser("status", help="show instances, memory and live link conditions").set_defaults(func=cmd_status)
     p = sub.add_parser("link", help="show or change a WAN link's conditions live, e.g. link a-b --rtt 200ms")
-    p.add_argument("link", help="site pair, e.g. a-b")
+    p.add_argument("link", nargs="?", help="site pair, e.g. a-b (omit with --reset to reset every link)")
     p.add_argument("--rtt", help="round-trip time, e.g. 80ms")
     p.add_argument("--jitter", help="RTT standard deviation, e.g. 10ms (0ms disables)")
     p.add_argument("--loss", help="per-direction packet loss, e.g. 0.5%% (0%% disables)")
     p.add_argument("--rate", help="per-direction bandwidth, e.g. 20mbit")
+    p.add_argument("--save", action="store_true", help="also write the link's conditions to topology.yml")
+    p.add_argument("--reset", action="store_true", help="revert the link (or every link) to topology.yml")
     p.set_defaults(func=cmd_link)
     p = sub.add_parser("verify", help="check latency, isolation, internet and bandwidth against the live links")
     p.add_argument("--quick", action="store_true", help="skip the bandwidth test")
+    p.add_argument(
+        "--mem", nargs="?", type=int, const=MEM_CEILING_MIB, metavar="MIB",
+        help=f"also fail if the lab's non-reclaimable memory exceeds MIB (default {MEM_CEILING_MIB})",
+    )
+    p.add_argument(
+        "--disk", nargs="?", type=float, const=DISK_CEILING_GIB, metavar="GIB",
+        help=f"also fail if the storage pool's used space exceeds GIB (default {DISK_CEILING_GIB})",
+    )
     p.set_defaults(func=cmd_verify)
     sub.add_parser("render", help="print the generated networks, instances and config files").set_defaults(
         func=cmd_render
@@ -728,12 +1205,36 @@ def main():
     p.add_argument("host")
     p.add_argument("command", nargs=argparse.REMAINDER)
     p.set_defaults(func=cmd_ssh)
+    p = sub.add_parser("forward", help="tunnel a lab service to 127.0.0.1 on the host, e.g. forward a-cp1:6443")
+    p.add_argument("target", nargs="?", help="<host>:<port> (with --stop: only that forward)")
+    p.add_argument("--local", type=int, help="local port (default: the same port, +10000 below 1024)")
+    p.add_argument("--to", default="127.0.0.1", help="address the lab host connects to (default its own 127.0.0.1)")
+    p.add_argument("--list", action="store_true", help="list running forwards")
+    p.add_argument("--stop", action="store_true", help="stop the forward to <host>:<port>, or every forward")
+    p.set_defaults(func=cmd_forward)
+    p = sub.add_parser(
+        "capture", help="tcpdump inside a lab instance into a pcap on the host, e.g. capture wan-core udp port 51820"
+    )
+    p.add_argument("instance", help="lab instance, e.g. wan-core, a-gw, b-w1")
+    p.add_argument("filter", nargs="*", help="tcpdump (BPF) filter, e.g. icmp or 'udp port 53'")
+    p.add_argument("-i", "--iface", default="any", help="interface (default any)")
+    p.add_argument("-d", "--duration", type=int, default=10, help="seconds to capture, 0 = until Ctrl-C (default 10)")
+    p.add_argument("-c", "--count", type=int, help="stop after this many packets")
+    p.add_argument("-o", "--output", type=Path, help=f"pcap path (default {CAPTURES.relative_to(ROOT)}/<instance>-<time>.pcap)")
+    p.add_argument("--show", nargs="?", const="brief", choices=("brief", "full"),
+                   help="also print the packets (decoded by the instance's tcpdump)")
+    p.set_defaults(func=cmd_capture)
     for name, (desc, phase) in PLANNED.items():
         p = sub.add_parser(name, help=f"{desc} (Phase {phase}, not implemented)")
         p.add_argument("args", nargs=argparse.REMAINDER)
         p.set_defaults(func=lambda a, n=name, ph=phase: sys.exit(f"opsforge {n}: not implemented yet (Phase {ph})"))
 
-    args = parser.parse_args()
+    # argparse.REMAINDER drops leading options (`provision --check`), so provision takes the unknown ones
+    args, extra = parser.parse_known_args()
+    if extra and args.command != "provision":
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
+    if args.command == "provision":
+        args.ansible_args = extra + args.ansible_args
     try:
         return args.func(args)
     except LabError as e:

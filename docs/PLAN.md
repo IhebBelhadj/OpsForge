@@ -98,7 +98,8 @@ gateways and is the single place where link conditions are applied.
 - Bandwidth (`rate`) is applied per direction by netem's `rate`, which also keeps packets in order (plain
   netem jitter reorders packets and wrecks TCP). Links without a rate get 10gbit for the same reason.
 - `opsforge link` changes are live only: the state lives in `wan-core:/etc/opsforge/links.json` and survives a
-  `wan-core` restart, but `opsforge down && up` resets to `topology.yml`.
+  `wan-core` restart and an incremental `up` (even one that rebuilds `wan-core`; new links start from
+  `topology.yml`), but `opsforge down && up` resets to `topology.yml`.
 
 ### Memory budget (Incus, idle; to be verified by measurement each phase)
 
@@ -106,10 +107,12 @@ gateways and is the single place where link conditions are applied.
 |---|---|---|---|
 | wan-core | Alpine, tc/nftables | 64 MiB | ~15–25 MB |
 | a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq | 128 MiB each (Ansible's Python modules OOM at 64) | ~10–20 MB each |
-| a-cp1 | K3s server + Prometheus + Grafana | 1.5 GiB | ~700 MB–1 GB |
+| a-cp1 | K3s server | 1.5 GiB | ~500–700 MB |
+| mon | Prometheus + Grafana + blackbox, own node in site b (survives partitioning site a) | 512 MiB | ~200–300 MB |
 | b-w1, c-w1 | K3s agent | 768 MiB each | ~250–400 MB each |
 | ci (optional) | Gitea + Woodpecker + registry | 1 GiB | ~500–800 MB |
-| **Total (no CI)** | | | **≈ 1.3–1.9 GB** |
+| opsforge-cache | zot pull-through registry (outside the lab, Phase 4) | 256 MiB | ~30–60 MB |
+| **Total (no CI)** | | | **≈ 1.5–2.1 GB** |
 
 
 ## 4. Repository layout (target)
@@ -211,17 +214,103 @@ and reaches the internet through Docker's firewall, and `make check` runs green.
 **Done when** (all verified 2026-10-19 after `down && up && provision`): a second `ansible-playbook site.yml`
 run reports `changed=0`; every node resolves every other node by name; `ssh b-w1` works from the host via the CLI.
 
+### Phase 2.5: Hardening (before the VPN)
+Closes gaps found in a plan review (2026-10-20). Cheap now, expensive once WireGuard and K3s sit on top.
+- [x] Unit tests for `render.py` and `topology_errors` (`tests/`, `make test`, part of `make check`): render is pure,
+      so addressing, netem maths and the plan are covered without Incus.
+- [x] Repo CI (`.github/workflows/check.yml`): lint, topology validation and tests; needs no Incus.
+- [x] **K3s feasibility spike** (`scripts/k3s-spike.sh`, 2026-10-20): **K3s v1.36.5 runs in an unprivileged
+      Debian 13 container** (`security.nesting=true`, `/dev/kmsg` device, host-loaded modules `overlay`,
+      `br_netfilter`, `nf_conntrack`, `ip_tables`, `iptable_nat`, `xt_conntrack`, and kubelet feature gate
+      `KubeletInUserNamespace=true`). Node Ready in ~40 s, coredns + local-path Running after image pulls.
+      Single-node server idles at 414 MiB anon + 22 MiB kernel (plus ~790 MiB reclaimable page cache), so the
+      1.5 GiB limit holds with room. Not yet tested: flannel/vxlan across the VPN, agents, privileged-only features.
+- [x] **Desired vs. live link state:** `opsforge link <l> ... --save` also writes the link's line in
+      `topology.yml` (comments and layout kept); `link <l> --reset` / `link --reset` revert one / every link to
+      `topology.yml`; `status` flags links whose live state differs from the file. Phase 6's
+      `partition`/`heal`/`flap` must restore the *pre-fault* live state, not the file.
+- [x] **Memory budget enforcement:** the budget is the *non-reclaimable* figure (anon + kernel from each
+      instance's `memory.stat`), because page cache is reclaimable and Incus counts it. `verify --mem [MIB]` fails
+      above the ceiling (default `MEM_CEILING_MIB` = 150; measured 2026-10-20: 106 MiB provisioned and idle).
+- [x] **Found and fixed while testing:** after a host reboot every gateway's dnsmasq crashed (OpenRC starts it
+      before `opsforge.start` adds the addresses it listens on); now `bind-dynamic`. `opsforge provision --check`
+      (options first) failed in argparse; leading options now pass through to ansible-playbook.
+- [x] **Incremental `up`** (2026-10-22): `up` reconciles a running lab with `topology.yml` instead of requiring
+      `down && up`. Each instance records `render.fingerprint()` (address, NICs, pushed files; not limits) in
+      `user.opsforge.spec`. Instances no longer in the topology are deleted, then their `of-*` networks; an image
+      change recreates; a fingerprint change stops the instance, syncs its NIC devices, re-pushes its files and
+      starts it (a fresh network namespace, so boot scripts and networkd leave no stale address or route); limit
+      and tag changes are set live; stopped instances are started. Live link conditions are kept (new links come
+      from the file). Adding a site touches wan-core and every gateway (their firewalls list the peers' public
+      IPs), not the nodes. Measured: adding site `d` + a node took 20 s, removing it 23 s; `provision` then
+      `verify` green, live `a-b` edit kept, second `provision` `changed=0`.
+      **Found while testing:** `incus network create` reads YAML from stdin when stdin is not a terminal, so `up`
+      hung forever when run from a script; every `incus` call now gets `/dev/null` as stdin.
+      Specs are computed from `topology.yml` before wan-core's files get the live link conditions, so an `up` after
+      `opsforge link` edits is a no-op instead of restarting wan-core.
+- [x] **Snapshot/restore** (2026-10-22): `opsforge snapshot [NAME]` snapshots every lab instance under one name
+      (default `YYYYmmdd-HHMMSS`), live, so each disk is crash-consistent; `--list`, `--delete NAME`.
+      `opsforge restore NAME` stops forwards and every instance, restores each (disk, config, NICs, so also
+      wan-core's live link conditions), boots them together and waits for routers and SSH like `up`. It refuses
+      when an instance lacks the snapshot (created after it) rather than mix states, and notes instances whose
+      spec differs from `topology.yml` (`up` applies it). Snapshots are per instance, so `down` deletes them.
+      Measured on the provisioned lab: snapshot 0.45 s and no measurable pool growth (btrfs CoW); restore 13 s,
+      undoing a file write, a stopped dnsmasq and a `link` edit, then `verify --mem --disk` green (105 MiB,
+      1.54 GiB).
+- [x] `opsforge gc [--dry-run]` deletes images left by older builds: every alias an `opsforge-*` one no longer in
+      `render.IMAGES`, and no instance created from it. Unaliased images are Incus' remote-image cache (it expires
+      them itself) and are left alone. First run freed 147 MiB (`opsforge-router-2`, `opsforge-node-2`).
+- [x] **Packet evidence:** `opsforge capture <host|wan-core> [filter]` runs tcpdump in the instance and saves a
+      pcap under `.opsforge/captures/`, so "done when" claims about tcpdump are reproducible. `-d SECONDS`
+      (default 10, 0 = until Ctrl-C), `-c COUNT`, `-i IFACE` (default `any`), `--show [brief|full]` decodes it with
+      the instance's own tcpdump (the host needs none). tcpdump is now in both images (`opsforge-router-3`,
+      `opsforge-node-3`), so wan-core, which Ansible never manages, and unprovisioned nodes can capture too.
+- [x] **Host drift:** `preflight` warns when the running kernel has no `/usr/lib/modules/<release>` (Arch removed
+      it on upgrade: on-demand module loads fail until a reboot) and when a dev tool is installed but broken
+      (`--version` fails, e.g. `shellcheck` after a partial upgrade). The `pacman -Syu` + reboot step is in the README.
+- [x] **Host access to lab services:** `opsforge forward <host>:<port> [--local <port>]` opens an SSH `-L` tunnel
+      over the existing management path (wan-core → gateway → node), so the host reaches a lab service without a
+      route into the lab or sudo. Binds `127.0.0.1` only (ports below 1024 move up by 10000: 80 -> 10080);
+      `--to <addr>` targets another address as seen from that host. Each tunnel is a background `ssh -L` with its
+      own control socket in `.opsforge/forwards/`; `forward --list` / `--stop [<host>:<port>]` manage them and
+      `down` stops them all. Phase 4's kubeconfig and Phase 5's Grafana use it.
+- [x] **Disk budget:** the pool is capped at 25 GiB and images, snapshots, K3s images and TSDB data all land on
+      it. `status` shows pool used/total; `verify --disk [GIB]` fails above a ceiling (like `--mem`);
+      `preflight` warns above 80 % of the pool. Each phase's RAM snapshot also records pool usage. Pool total
+      only: btrfs without quotas reports no per-instance usage. Default ceiling `DISK_CEILING_GIB` = 3; measured
+      2026-10-22: 1.55 GiB (provisioned lab + images).
+
+**Done when:** `make check` is green in CI, the K3s spike result is written down, `link --reset` followed by
+`verify` is green after arbitrary `link` edits, the lab survives a host reboot with `verify` green,
+`opsforge forward` reaches a port on a node from `127.0.0.1`, and `verify --disk` reports pool usage.
+
 ### Phase 3: Site-to-site VPN
 - [ ] WireGuard tunnels between gateways (full mesh for 3 sites) giving routed private reachability
       between VPCs — the multi-cloud "VPN between VPCs" pattern.
 - [ ] MTU set deliberately on tunnels (e.g. 1420) and clamped (TCP MSS) so MTU problems are visible and
       reproducible on demand.
 - [ ] `topology.yml` toggle: `interconnect: vpn | none`.
+- [ ] **Dynamic routing around failed links** (`routing: static | ospf`, default `ospf`): one WireGuard
+      interface per peer (`wg-<peer>`, `AllowedIPs = 0.0.0.0/0`, so cryptokey routing does not pin a prefix to
+      one peer) and BIRD (Alpine package, a few MiB; lighter than FRR) running OSPF over the tunnels, each VPC
+      announced by its gateway. Link cost tracks the configured RTT (`cost = rtt_ms`), so the direct path wins
+      while it is up. Rerouted traffic leaves `wan-core` re-encapsulated with the transit gateway as source, so
+      it is shaped hop by hop (a-b then b-c) with no change to the netem model. `static` keeps plain full-mesh
+      routes for experiments where a dead link should stay dead.
 
-**Done when:** b-w1 reaches a-cp1's private IP; `tcpdump` on `wan-core` shows only UDP/51820 between
-sites; link conditions still apply to tunnel traffic.
+- [ ] `verify` gains tunnel checks: latest handshake < 3 min per peer, and `interconnect: none` leaves VPCs
+      isolated (the Phase 1 isolation check still passes).
+
+**Done when:** b-w1 reaches a-cp1's private IP; `opsforge capture wan-core` shows only UDP/51820 between
+sites; link conditions still apply to tunnel traffic (RTT through the tunnel ≈ the link's RTT); a large
+transfer (≥ 10 MB over TCP) succeeds with MSS clamping and stalls with it removed (proves the clamp is what
+makes it work); after `link` takes a-b down and back up, the tunnel recovers without intervention. With
+`routing: ospf` and a-c down (100 % loss), a-cp1 → c-w1 still answers at ≈ a-b + b-c RTT (130 ms) within the
+OSPF dead interval (set to 10 s), and returns to ≈ 120 ms after the link is restored.
 
 ### Phase 4: Stretched K3s (single cluster)
+- [ ] Decide CA use: K3s generates its own cluster CAs; the lab CA (`.opsforge/pki/`) signs node/service certs
+      only. Document rotation (delete `.opsforge/pki/` + `provision`) and what is lost if it goes missing.
 - [ ] `k3s_server` on a-cp1: SQLite datastore, `--disable traefik,servicelb,metrics-server`,
       `--flannel-backend=vxlan` over the site VPN with flannel MTU lowered for the double encapsulation
       (VPN + VXLAN). Experiment flag: `wireguard-native` with interconnect `none` and public node IPs.
@@ -234,14 +323,32 @@ sites; link conditions still apply to tunnel traffic.
       root is effectively host root. Alternatives if that matters more than RAM: K3s nodes as Incus VMs
       (+250–400 MB each).
 - [ ] Sample workload spread across regions (topology spread constraints).
+- [ ] **kubectl from the host:** `provision` fetches the server's kubeconfig into `.opsforge/kubeconfig` with the
+      server URL rewritten to `https://127.0.0.1:<port>`, served by `opsforge forward a-cp1:6443` (Phase 2.5);
+      `opsforge kubectl ...` wraps both. The API cert gets a `127.0.0.1` SAN (`--tls-san`).
+- [ ] **Per-site ingress:** keep servicelb disabled; re-enable K3s' bundled Traefik as a DaemonSet with hostPorts
+      80/443 on the workers, and each site's gateway forwards its public 80/443 to its own node with `expose`.
+      Each region gets its own entry point on its public IP, as a regional cloud load balancer would; a request
+      to b's public IP is served in b unless the Service routes elsewhere. Budget: ~40 MiB per Traefik pod.
+- [ ] **Image pull-through cache** (outside the lab, survives `down`; removed by `down --purge`): an Incus
+      container `opsforge-cache` on `incusbr0` running zot (single binary; on-demand sync for several upstreams:
+      `docker.io`, `ghcr.io`, `registry.k8s.io`, `quay.io`, which `registry:2` cannot do in one instance). It is
+      modelled as a CDN mirror on the internet: `wan-core` DNATs a transit address (`203.0.113.2`) to it as it
+      does for DNS, so it is reachable from every site, unshaped, without opening `wan-core`'s private-range
+      drop. K3s `registries.yaml` mirrors every upstream to it, with fallback to the upstream. Optional:
+      apt-cacher-ng in the same container to speed up `provision` from scratch.
 
 **Done when:**
 - All nodes `Ready`; sample Deployment runs pods in all three regions.
+- `opsforge kubectl get nodes` works from the host; `curl` to each site's public IP (via `forward`) is served by a
+  pod in that site.
+- After `down && up && provision`, no image is pulled from an upstream registry (the cache's log shows only hits).
 - `opsforge partition c`: c-w1 → `NotReady`, pods rescheduled after the eviction timeout;
   `opsforge heal` → node recovers cleanly without manual intervention.
 
 ### Phase 5: WAN-aware observability
-- [ ] Prometheus (`--storage.tsdb.retention.time=48h`, 30 s scrape) or VictoriaMetrics single-node;
+- [ ] Monitoring runs on its own `mon` node, in a different site than the control plane, so partitioning
+      the control-plane site does not blind it. Prometheus (`--storage.tsdb.retention.time=48h`, 30 s scrape) or VictoriaMetrics single-node;
       Grafana with provisioned datasources and dashboards from the repo.
 - [ ] node_exporter on all nodes and gateways; blackbox exporter probing every site pair
       (ICMP RTT, TCP connect, HTTP).
@@ -252,6 +359,9 @@ sites; link conditions still apply to tunnel traffic.
 ### Phase 6: Fault injection and scenarios
 - [ ] CLI: `partition <site>`, `heal`, `flap <link> --period`, `degrade <link> --loss --rate`,
       `mtu <link> <n>`.
+- [ ] Scenario runner (`opsforge scenario <name>`): each scenario in `scenarios/<name>.yml` declares `setup`,
+      `fault`, `measure`, `expect` (thresholds) and `teardown`; faults always restore the pre-fault link state
+      (even on failure); results are written as JSON to `.opsforge/results/` and compared with the last run.
 - [ ] Optional Toxiproxy for application-protocol faults.
 - [ ] `scenarios/`: scripted experiments with expected outcomes, e.g.
   - Partition site b during sustained writes → verify no data loss / measure recovery time.
@@ -269,6 +379,8 @@ sites; link conditions still apply to tunnel traffic.
 **Done when:** a push to Gitea builds an image, pushes to the registry, and Flux rolls it out across sites.
 
 ### Phase 8: Multi-cluster (realistic multi-cloud)
+- [ ] Design note: reserve `cluster:` as an optional per-node field in the schema from Phase 4, defaulting to
+      one cluster, so Phases 4-5 (labels, scrape configs, kubeconfig paths) are keyed by cluster, not global.
 - [ ] `clusters:` section in `topology.yml`; one K3s cluster per site (or per "cloud").
 - [ ] Interconnect with Submariner or Skupper (lighter) or Cilium Cluster Mesh (heavier: replaces flannel).
 - [ ] Scenarios: cross-cluster service failover, geo-aware DNS, loss of an entire "cloud".
@@ -288,7 +400,7 @@ sites; link conditions still apply to tunnel traffic.
 
 | Risk | Mitigation |
 |---|---|
-| K3s inside LXC may need privileged containers | Try unprivileged first; dedicated Incus profile; VM fallback. |
+| K3s inside LXC may need privileged containers | **Retired for a single node** (spike, Phase 2.5): works unprivileged with the `k3s-node` profile. Re-check for agents and vxlan in Phase 4. |
 | `br_netfilter` (loaded by host-setup) is system-wide: bridged traffic on all bridges, incl. Docker's, hits iptables | Accepted trade-off (Docker supports it); told to the user. |
 | Docker on host interferes with bridge forwarding | Phase 0 check + `DOCKER-USER` rules. |
 | Host kernel updates (Arch) break module availability until reboot | `opsforge up` preflight checks required modules. |
@@ -296,7 +408,9 @@ sites; link conditions still apply to tunnel traffic.
 | Double encapsulation MTU issues | Explicit MTU math in templates; Phase 3/4 acceptance tests large transfers. |
 | Linux-only host requirement | Document; KVM/libvirt or a Linux VM as the path for other OSes. |
 
-## 7. Open questions
-- Must the lab run on macOS/Windows hosts for other developers? (Affects substrate priority.)
-- How many sites by default — 3, or 2 to start with?
-- Is CI part of the default experience or opt-in only?
+## 7. Decisions on previously open questions (2026-10-20)
+- **Host OS:** Linux only. The lab depends on host netfilter/tc/kernel modules; other OSes would run it inside a
+  Linux VM, which is out of scope. (Resolved; revisit only if another developer needs it.)
+- **Default sites:** 3. Three sites give a triangle with an asymmetric link, which is the smallest topology where
+  partition and routing behaviour is interesting.
+- **CI:** opt-in (`profiles.ci`), as in Phase 7.

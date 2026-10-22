@@ -3,9 +3,12 @@ SHELL_SCRIPTS := $(shell find . -name '*.sh' -not -path './.git/*')
 SHELLCHECK := $(shell shellcheck --version >/dev/null 2>&1 && echo shellcheck || \
 	echo docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0)
 
-.PHONY: check lint-shell lint-yaml lint-python lint-ansible validate preflight smoke up down provision verify host-setup
+.PHONY: check test lint-shell lint-yaml lint-python lint-ansible validate preflight smoke up down provision verify host-setup
 
-check: lint-shell lint-yaml lint-python lint-ansible validate
+check: lint-shell lint-yaml lint-python lint-ansible validate test
+
+test:
+	python3 -m pytest -q tests
 
 lint-shell:
 	$(SHELLCHECK) $(SHELL_SCRIPTS)

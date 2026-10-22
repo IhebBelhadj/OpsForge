@@ -2,7 +2,8 @@
 # {{ inventory_hostname }}: answers for {{ lab_site }}.{{ lab_domain }}, forwards the other sites' zones to their
 # gateways across the WAN (so lookups pay the link's latency) and everything else to wan-core.
 listen-address=127.0.0.1,{{ lab_address }},{{ lab_public_ip }}
-bind-interfaces
+# bind-dynamic, not bind-interfaces: dnsmasq starts at boot before opsforge.start adds these addresses
+bind-dynamic
 no-resolv
 no-hosts
 no-poll

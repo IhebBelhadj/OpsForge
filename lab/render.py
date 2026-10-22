@@ -9,6 +9,7 @@ other directly: every inter-site packet crosses wan-core, which shapes it. No la
 address, so the host neither routes between VPCs nor leaks into them.
 """
 
+import hashlib
 import ipaddress
 import json
 import math
@@ -20,22 +21,22 @@ DEBIAN_IMAGE = "images:debian/13"
 # Built once by `opsforge up` from a base image; bump an image's suffix when its build script changes.
 # Both ship sshd + python3 so Ansible can manage instances from their first boot. SSH host keys are
 # per instance (pushed by `up`), and machine-id is regenerated on first boot.
-ROUTER_IMAGE = "opsforge-router-2"
+ROUTER_IMAGE = "opsforge-router-3"
 ROUTER_BUILD = """
 set -e
 timeout 60 sh -c 'until nslookup dl-cdn.alpinelinux.org >/dev/null 2>&1; do sleep 1; done'
-apk add --no-cache iproute2-tc nftables iperf3 openssh-server openssh-sftp-server python3
+apk add --no-cache iproute2-tc nftables iperf3 tcpdump openssh-server openssh-sftp-server python3
 rc-update add local default
 rc-update del crond default || true
 rm -f /etc/ssh/ssh_host_*
 """
-NODE_IMAGE = "opsforge-node-2"
+NODE_IMAGE = "opsforge-node-3"
 NODE_BUILD = """
 set -e
 timeout 60 sh -c 'until getent hosts deb.debian.org >/dev/null; do sleep 1; done'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends openssh-server openssh-sftp-server python3 python3-apt
+apt-get install -y --no-install-recommends openssh-server openssh-sftp-server python3 python3-apt tcpdump
 apt-get clean
 rm -rf /var/lib/apt/lists/* /var/lib/apt/periodic/update-success-stamp /etc/ssh/ssh_host_*
 # Ansible's apt cache_valid_time reads the lists' mtime: mark them stale so the first run refreshes them
@@ -43,8 +44,8 @@ touch -d @0 /var/lib/apt/lists
 truncate -s 0 /etc/machine-id
 """
 IMAGES = {
-    ROUTER_IMAGE: (ALPINE_IMAGE, ROUTER_BUILD, "OpsForge router: Alpine + tc/nftables/sshd"),
-    NODE_IMAGE: (DEBIAN_IMAGE, NODE_BUILD, "OpsForge node: Debian + sshd/python3"),
+    ROUTER_IMAGE: (ALPINE_IMAGE, ROUTER_BUILD, "OpsForge router: Alpine + tc/nftables/tcpdump/sshd"),
+    NODE_IMAGE: (DEBIAN_IMAGE, NODE_BUILD, "OpsForge node: Debian + sshd/python3/tcpdump"),
 }
 PROFILE = "opsforge"
 WAN_CORE = "wan-core"
@@ -133,6 +134,13 @@ class Instance:
     managed: bool = False  # reachable over SSH and in the Ansible inventory
 
 
+def fingerprint(inst):
+    """Digest of what an instance is wired and configured with (address, NICs, pushed files; not image or limits).
+    `up` records it as user.opsforge.spec, so a later `up` knows which instances a topology edit touched."""
+    blob = json.dumps([inst.address, inst.nics, inst.files], sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
 def ssh_files(authorized_key, host_key, host_pub):
     """Files that make an instance reachable over SSH from its first boot, with a host key known in advance."""
     return {
@@ -189,6 +197,14 @@ def render_links_sh(state):
                 f"match ip src {state['sites'][peer]}/32 flowid 1:{i:x}",
             ]
     return "\n".join(lines) + "\n"
+
+
+def link_files(state):
+    """wan-core's link state and the tc script applying it; `opsforge link` rewrites both, so they survive restarts."""
+    return {
+        "/etc/opsforge/links.sh": (render_links_sh(state), "0755"),
+        "/etc/opsforge/links.json": (json.dumps(state, indent=2) + "\n", "0644"),
+    }
 
 
 def render_wan_core(topo, upstream_dns):
@@ -248,9 +264,7 @@ table ip nat {{
     files = {
         "/etc/local.d/opsforge.start": ("\n".join(start) + "\n", "0755"),
         "/etc/opsforge/firewall.nft": (firewall, "0644"),
-        "/etc/opsforge/links.sh": (render_links_sh(link_state(topo)), "0755"),
-        "/etc/opsforge/links.json": (json.dumps(link_state(topo), indent=2) + "\n", "0644"),
-    }
+    } | link_files(link_state(topo))
     return Instance(WAN_CORE, "wan-core", None, ROUTER_IMAGE, dict(ROUTER_LIMITS), nics, str(core), files)
 
 
