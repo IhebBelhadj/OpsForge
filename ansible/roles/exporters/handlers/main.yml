@@ -1,0 +1,9 @@
+- name: Restart node exporter
+  ansible.builtin.service:
+    name: "{{ exporters_node_service[ansible_facts.os_family] }}"
+    state: restarted
+
+- name: Restart blackbox exporter
+  ansible.builtin.service:
+    name: blackbox-exporter
+    state: restarted

@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# Probe modules used by the monitoring node to measure each site pair from this gateway (job wan_* in its scrape
+# config). Timeouts leave room for the slowest links plus jitter.
+modules:
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4

@@ -41,6 +41,16 @@ def test_k3s_agents_need_a_server(topo):
     assert any("no k3s-server" in e for e in errors(topo))
 
 
+def test_monitoring_needs_the_vpn(topo):
+    topo["interconnect"] = "none"
+    assert any("needs interconnect: vpn" in e for e in errors(topo))
+
+
+def test_only_one_monitoring_node(topo):
+    topo["nodes"]["mon2"] = {"site": "a", "role": "monitoring"}
+    assert any("only one monitoring node" in e for e in errors(topo))
+
+
 def test_vpc_overlap_between_sites(topo):
     topo["sites"]["b"]["vpc"] = "10.10.0.0/24"
     assert any("overlaps" in e for e in errors(topo))

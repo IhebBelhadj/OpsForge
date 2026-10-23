@@ -1,0 +1,75 @@
+# Monitoring node (docs/PLAN.md Phase 5): outside the cluster, in another site than the control plane, so
+# partitioning the control-plane site does not blind it. Scrapes every site across the VPN.
+- name: Install VictoriaMetrics
+  ansible.builtin.apt:
+    name: victoria-metrics
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the scrape configuration directory
+  ansible.builtin.file:
+    path: /etc/victoria-metrics
+    state: directory
+    mode: "0755"
+
+- name: Copy the K3s monitoring token
+  when: groups['k3s_server'] | default([]) | length > 0
+  block:
+    - name: Read the K3s monitoring token
+      ansible.builtin.command: >-
+        k3s kubectl -n kube-system get secret opsforge-monitoring -o jsonpath={.data.token}
+      delegate_to: "{{ groups['k3s_server'][0] }}"
+      register: monitoring_k3s_token
+      check_mode: false  # read-only: --check needs the token too
+      until: monitoring_k3s_token.stdout | length > 0
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    - name: Install the K3s monitoring token
+      ansible.builtin.copy:
+        content: "{{ monitoring_k3s_token.stdout | b64decode }}"
+        dest: "{{ monitoring_k3s_token_file }}"
+        owner: root
+        group: _victoria-metrics
+        mode: "0640"
+      no_log: true
+      notify: Restart VictoriaMetrics
+
+- name: Configure scraping
+  ansible.builtin.template:
+    src: scrape.yml.j2
+    dest: /etc/victoria-metrics/scrape.yml
+    mode: "0644"
+    validate: /usr/bin/victoria-metrics -dryRun -promscrape.config=%s
+  notify: Restart VictoriaMetrics
+
+- name: Configure VictoriaMetrics
+  vars:
+    monitoring_vm_args:
+      - -storageDataPath=/var/lib/victoria-metrics
+      - -retentionPeriod={{ monitoring_retention }}
+      - -httpListenAddr=:{{ monitoring_vm_port }}
+      - -promscrape.config=/etc/victoria-metrics/scrape.yml
+      # Queries otherwise hide the last 30 s (against partial data from many ingesters; here one scraper writes
+      # everything): a link change would take ~40 s to show instead of one probe interval
+      - -search.latencyOffset=0s
+      # Caches default to 60 % of the container's memory limit; a few dozen targets need far less
+      - -memory.allowedBytes=64MiB
+  ansible.builtin.copy:
+    dest: /etc/default/victoria-metrics
+    content: |
+      # Managed by Ansible (ansible/roles/monitoring); local changes are overwritten
+      ARGS="{{ monitoring_vm_args | join(' ') }}"
+    mode: "0644"
+  notify: Restart VictoriaMetrics
+
+- name: Run VictoriaMetrics at boot
+  ansible.builtin.systemd_service:
+    name: victoria-metrics
+    state: started
+    enabled: true
+
+- name: Install Grafana
+  ansible.builtin.include_tasks: grafana.yml

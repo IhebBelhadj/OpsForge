@@ -146,6 +146,7 @@ def test_adding_a_site_touches_wan_core_and_gateways_only(topo):
 
 
 def test_moving_a_node_changes_only_that_node(topo):
+    del topo["nodes"]["mon"]  # moving c-w1 into b ahead of mon would renumber mon (and the gateways' rules for it)
     topo["nodes"]["c-w1"].pop("expose", None)
     before = fingerprints(topo)
     topo["nodes"]["c-w1"]["site"] = "b"
@@ -154,6 +155,7 @@ def test_moving_a_node_changes_only_that_node(topo):
 
 
 def test_moving_an_exposed_node_also_changes_both_gateways(topo):
+    del topo["nodes"]["mon"]
     topo["nodes"]["c-w1"]["expose"] = ["80"]
     before = fingerprints(topo)
     topo["nodes"]["c-w1"]["site"] = "b"
@@ -240,3 +242,30 @@ def test_inventory_gives_k3s_the_cache_and_path_mtu(topo, tmp_path):
     assert lab_vars["lab_path_mtu"] == render.WG_MTU
     topo["interconnect"] = "none"
     assert render.render_inventory(topo, tmp_path / "c", tmp_path)["all"]["children"]["lab"]["vars"]["lab_path_mtu"] == 1500
+
+
+def test_gateways_let_the_monitoring_node_scrape_them(topo):
+    mon_ip = str(render.node_addresses(topo)["mon"].ip)
+    for inst in render.plan(topo, "10.99.0.1")[1]:
+        if inst.role == "gateway":
+            firewall = inst.files["/etc/opsforge/firewall.nft"][0]
+            assert f'ip saddr {mon_ip} tcp dport {{ {render.NODE_EXPORTER_PORT}, {render.BLACKBOX_PORT} }} accept' in firewall
+    del topo["nodes"]["mon"]
+    for inst in render.plan(topo, "10.99.0.1")[1]:
+        assert str(render.BLACKBOX_PORT) not in inst.files.get("/etc/opsforge/firewall.nft", ("",))[0]
+
+
+def test_inventory_marks_sites_with_an_http_ingress(topo, tmp_path):
+    topo["nodes"]["c-w1"]["expose"] = ["8080:80/tcp", "80/udp"]
+    sites = render.render_inventory(topo, tmp_path / "c", tmp_path)["all"]["children"]["lab"]["vars"]["lab_sites"]
+    assert sites["a"]["ingress"] and sites["b"]["ingress"] and not sites["c"]["ingress"]
+
+
+def test_mtu_black_hole_drops_big_packets_both_ways(topo):
+    state = render.link_state(topo)
+    assert "opsforge_mtu forward" not in render.render_links_sh(state)
+    state["links"]["a-b"]["mtu"] = 1400
+    script = render.render_links_sh(state)
+    assert "ip saddr 203.0.113.10 ip daddr 203.0.113.20 ip length gt 1400 drop" in script
+    assert "ip saddr 203.0.113.20 ip daddr 203.0.113.10 ip length gt 1400 drop" in script
+    assert "mtu" not in render.netem_args(state["links"]["a-b"])

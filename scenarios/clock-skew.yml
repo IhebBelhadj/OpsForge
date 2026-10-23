@@ -1,0 +1,26 @@
+description: >
+  Clock skew, which containers cannot have (they share the host's clock): libfaketime shifts one process's clock
+  instead. 400 days ahead, b-w1's lab certificate (365 days) and K3s' serving certificate (1 year) have expired.
+measure:
+  - run: { host: b-w1, cmd: "openssl verify -CAfile /etc/opsforge/pki/ca.crt /etc/opsforge/pki/node.crt" }
+    name: cert_now
+  - run:
+      host: b-w1
+      cmd: faketime -f +400d openssl verify -CAfile /etc/opsforge/pki/ca.crt /etc/opsforge/pki/node.crt
+    name: cert_skewed
+  - run:
+      host: b-w1
+      cmd: curl -s -o /dev/null --cacert /var/lib/rancher/k3s/agent/server-ca.crt https://${ip:a-cp1}:6443/healthz
+    name: api_now
+  - run:
+      host: b-w1
+      cmd: >-
+        faketime -f +400d curl -s -o /dev/null --cacert /var/lib/rancher/k3s/agent/server-ca.crt
+        https://${ip:a-cp1}:6443/healthz
+    name: api_skewed
+expect:
+  cert_now.exit: "== 0"
+  cert_skewed.exit: "!= 0"
+  api_now.exit: "== 0"
+  # curl 60: peer certificate cannot be authenticated (expired)
+  api_skewed.exit: "== 60"

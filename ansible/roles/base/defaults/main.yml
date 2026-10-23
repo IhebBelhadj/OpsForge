@@ -1,4 +1,5 @@
 base_packages:
-  Debian: [bind9-dnsutils, ca-certificates, curl, iproute2, iputils-ping, less, procps, tcpdump]
+  # faketime: per-process clock skew for scenarios (containers share the host's clock)
+  Debian: [bind9-dnsutils, ca-certificates, curl, faketime, iproute2, iputils-ping, less, procps, tcpdump]
   Alpine: [tcpdump]
 base_journal_max_use: 32M

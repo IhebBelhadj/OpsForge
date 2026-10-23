@@ -1,0 +1,15 @@
+exporters_packages:
+  Debian: [prometheus-node-exporter]
+  Alpine: [prometheus-node-exporter, prometheus-node-exporter-openrc]
+exporters_blackbox_packages: [prometheus-blackbox-exporter, prometheus-blackbox-exporter-openrc]
+exporters_node_args_file:
+  Debian: /etc/default/prometheus-node-exporter
+  Alpine: /etc/conf.d/node-exporter
+exporters_node_service:
+  Debian: prometheus-node-exporter
+  Alpine: node-exporter
+# Collectors that report the host (shared kernel) or nothing useful in a container
+exporters_node_args: >-
+  --no-collector.arp --no-collector.bcache --no-collector.btrfs --no-collector.hwmon --no-collector.infiniband
+  --no-collector.ipvs --no-collector.mdadm --no-collector.nfs --no-collector.nfsd --no-collector.powersupplyclass
+  --no-collector.rapl --no-collector.thermal_zone --no-collector.zfs

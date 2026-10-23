@@ -17,7 +17,7 @@ lint-yaml:
 	yamllint .
 
 lint-python:
-	python3 -m py_compile opsforge lab/render.py
+	python3 -m py_compile opsforge lab/render.py lab/scenario.py
 
 lint-ansible:
 	@if [ -d ansible ]; then ansible-lint ansible; else echo "lint-ansible: no ansible/ yet, skipping"; fi

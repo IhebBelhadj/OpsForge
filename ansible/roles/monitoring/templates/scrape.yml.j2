@@ -1,0 +1,90 @@
+# {{ ansible_managed }}
+# Prometheus-format scrape config for VictoriaMetrics on {{ inventory_hostname }}. Every target is reached across
+# the VPN at its private address; opsforge's gateway firewalls let this node in.
+{% set k3s_nodes = (groups['k3s_server'] | default([])) + (groups['k3s_agent'] | default([])) %}
+global:
+  scrape_interval: {{ monitoring_scrape_interval }}
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+{% for host in groups['lab'] %}
+      - targets: ["{{ hostvars[host].lab_address }}:{{ monitoring_node_exporter_port }}"]
+        labels:
+          host: {{ host }}
+          site: {{ hostvars[host].lab_site }}
+          role: {{ hostvars[host].lab_role | default('gateway') }}
+{% endfor %}
+
+  # Site-pair probes, run by the blackbox exporter on the source site's gateway (src) towards the other site (dst):
+  #   wan_icmp: ping the peer gateway's private address, through the VPN (what workloads see, OSPF reroutes included)
+  #   wan_tcp:  TCP connect to the peer's public IP (port 22), across the WAN
+  #   wan_http: GET the peer site's public ingress (port 80), when one of its nodes exposes it
+{% for job, module in [('wan_icmp', 'icmp'), ('wan_tcp', 'tcp_connect'), ('wan_http', 'http_2xx')] %}
+  - job_name: {{ job }}
+    scrape_interval: {{ monitoring_probe_interval }}
+    metrics_path: /probe
+    params:
+      module: [{{ module }}]
+    static_configs:
+{% for src, s in lab_sites.items() %}
+{% for dst, d in lab_sites.items() if dst != src and (job != 'wan_http' or d.ingress) %}
+      - targets: ["{{ {'wan_icmp': d.gateway, 'wan_tcp': d.public_ip ~ ':22', 'wan_http': 'http://' ~ d.public_ip ~ '/'}[job] }}"]
+        labels: { src: {{ src }}, dst: {{ dst }}, prober: "{{ s.gateway }}:{{ monitoring_blackbox_port }}" }
+{% endfor %}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: target
+      - source_labels: [prober]
+        target_label: __address__
+      - action: labeldrop
+        regex: prober
+{% endfor %}
+{% if k3s_nodes %}
+
+  # K3s: kubelets, their cAdvisor and the API server with a read-only ServiceAccount token (ansible/roles/k3s
+  # templates/monitoring.yaml.j2), and kube-state-metrics on a NodePort. Only the series the dashboards use are kept.
+{% for job, path, keep in [
+  ('kubelet', '/metrics', 'kubelet_running_pods|kubelet_running_containers|kubelet_node_name'),
+  ('cadvisor', '/metrics/cadvisor', 'container_cpu_usage_seconds_total|container_memory_working_set_bytes'),
+] %}
+  - job_name: {{ job }}
+    scheme: https
+    metrics_path: {{ path }}
+    bearer_token_file: {{ monitoring_k3s_token_file }}
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+{% for host in k3s_nodes %}
+      - targets: ["{{ hostvars[host].lab_address }}:10250"]
+        labels: { node: {{ host }}, site: {{ hostvars[host].lab_site }} }
+{% endfor %}
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "{{ keep }}"
+        action: keep
+{% endfor %}
+
+  - job_name: apiserver
+    scheme: https
+    bearer_token_file: {{ monitoring_k3s_token_file }}
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ["{{ hostvars[groups['k3s_server'][0]].lab_address }}:6443"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "apiserver_request_total|apiserver_current_inflight_requests"
+        action: keep
+
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ["{{ hostvars[groups['k3s_server'][0]].lab_address }}:{{ monitoring_ksm_node_port }}"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "kube_node_status_condition|kube_node_spec_unschedulable|kube_pod_info|kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas.*|kube_daemonset_status_number_ready|kube_daemonset_status_desired_number_scheduled"
+        action: keep
+{% endif %}

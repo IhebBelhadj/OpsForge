@@ -1,0 +1,17 @@
+# VictoriaMetrics (Debian package) stores and scrapes; Grafana (Grafana's apt repository) shows the dashboards in
+# files/dashboards. Reach Grafana from the host with: ./opsforge forward mon:3000
+monitoring_retention: 2d
+monitoring_scrape_interval: 30s
+# WAN probes run more often, so a link change shows on the matrix within this interval
+monitoring_probe_interval: 15s
+monitoring_vm_port: 8428
+monitoring_grafana_port: 3000
+# Must match ansible/roles/k3s k3s_kube_state_metrics_node_port
+monitoring_ksm_node_port: 30808
+monitoring_node_exporter_port: 9100
+monitoring_blackbox_port: 9115
+monitoring_k3s_token_file: /etc/victoria-metrics/k3s-token
+# Kept on the controller; Grafana also lets anyone in as a read-only viewer
+monitoring_grafana_password: >-
+  {{ lookup('ansible.builtin.password', lab_state_dir ~ '/grafana-admin', length=24,
+     chars=['ascii_letters', 'digits']) }}

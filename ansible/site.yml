@@ -39,3 +39,14 @@
       ansible.builtin.include_role:
         name: k3s
         tasks_from: workloads.yml
+
+# Phase 5: exporters everywhere, then the monitoring node (after K3s: it copies the cluster's scrape token)
+- name: Exporters
+  hosts: lab
+  roles:
+    - exporters
+
+- name: Monitoring
+  hosts: monitoring
+  roles:
+    - monitoring

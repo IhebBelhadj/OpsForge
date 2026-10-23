@@ -108,20 +108,20 @@ gateways and is the single place where link conditions are applied.
 | Node | Role | Limit | Expected idle |
 |---|---|---|---|
 | wan-core | Alpine, tc/nftables | 64 MiB | ~15–25 MB |
-| a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq | 128 MiB each (Ansible's Python modules OOM at 64) | ~10–20 MB each |
+| a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq, node + blackbox exporters | 128 MiB each (Ansible's Python modules OOM at 64) | ~10–20 MB each (measured 28 MiB) |
 | a-cp1 | K3s server + Traefik | 1.5 GiB | ~500–700 MB (measured 757 MiB) |
-| mon | Prometheus + Grafana + blackbox, own node in site b (survives partitioning site a) | 512 MiB | ~200–300 MB |
+| mon | VictoriaMetrics + Grafana, own node in site b (survives partitioning site a) | 512 MiB | ~200–300 MB (measured 326 MiB) |
 | b-w1, c-w1 | K3s agent + Traefik | 768 MiB each | ~250–400 MB each (measured ~172 MiB) |
 | ci (optional) | Gitea + Woodpecker + registry | 1 GiB | ~500–800 MB |
 | opsforge-cache | zot pull-through registry (outside the lab, Phase 4) | 256 MiB | ~30–60 MB (measured 55 MiB) |
-| **Total (no CI)** | | | **≈ 1.5–2.1 GB** |
+| **Total (no CI)** | | | **≈ 1.5–2.1 GB (measured 1.6 GiB, Phase 5)** |
 
 
 ## 4. Repository layout (target)
 
 ```
 topology.yml              # single source of truth: sites, links, nodes, profiles
-opsforge                  # CLI entry point (Python 3): up/down/status/verify/link/ssh/partition/heal/flap
+opsforge                  # CLI entry point (Python 3): up/down/status/verify/link/ssh/partition/heal/flap/scenario
 lab/
   render.py               # topology.yml -> incus resources, tc/nft scripts (inline), later ansible inventory
   topology.schema.json    # topology.yml validation
@@ -129,7 +129,7 @@ lab/
 ansible/
   inventory/              # generated (gitignored)
   site.yml                # top-level playbook
-  roles/ base dns pki k3s monitoring ci  # routers (wan-core, gateways, WireGuard) are rendered by opsforge
+  roles/ base dns pki k3s exporters monitoring ci  # routers (wan-core, gateways, WireGuard) are rendered by opsforge
 scenarios/                # fault-injection scenarios with expected outcomes
 docs/PLAN.md
 ```
@@ -423,30 +423,67 @@ sites a and b keep serving their ingress; `heal`: c-w1 Ready 13 s later and the 
 4.13 GiB. Incus' own figures show the K3s nodes at their limits: page cache, reclaimable; no evictions or
 memory pressure seen.
 
-### Phase 5: WAN-aware observability
-- [ ] Monitoring runs on its own `mon` node, in a different site than the control plane, so partitioning
-      the control-plane site does not blind it. Prometheus (`--storage.tsdb.retention.time=48h`, 30 s scrape) or VictoriaMetrics single-node;
-      Grafana with provisioned datasources and dashboards from the repo.
-- [ ] node_exporter on all nodes and gateways; blackbox exporter probing every site pair
-      (ICMP RTT, TCP connect, HTTP).
-- [ ] Dashboards: site-to-site latency/loss matrix, node health, K3s overview.
+### Phase 5: WAN-aware observability (done 2026-10-23)
+- [x] Monitoring node **`mon`** (role `monitoring`, site b, 512 MiB) outside the cluster and away from the control
+      plane's site, so partitioning site a does not blind it. **VictoriaMetrics** (Debian's package, 1.112) rather
+      than Prometheus for RAM: retention 2 d, scrape 30 s, WAN probes 15 s; `-search.latencyOffset=0s` (by default
+      queries hide the last 30 s, which made a link change take ~40 s to show) and `-memory.allowedBytes=64MiB`.
+      **Grafana** 13.2.4 from Grafana's apt repository with provisioned datasource and dashboards (`ansible/roles/
+      monitoring/files/dashboards`, read-only in the UI), anonymous read-only access, no calls home, no
+      preinstalled app plugins. Reach it with `./opsforge forward mon:3000` (admin password in
+      `.opsforge/grafana-admin`). `topology_errors`: one monitoring node at most, and it needs `interconnect: vpn`.
+      **Found while setting up:** Grafana's package is 380 MB (1.4 GiB installed) and its CDN serves this host at
+      0.2–0.7 MB/s; it is now downloaded once to `.opsforge/cache/` (checked against the repository's SHA-512) and
+      copied over the management path. `APT::Keep-Downloaded-Packages "false"` on every node (base role): apt-get had
+      kept 430 MB of `.deb`s on mon.
+- [x] node_exporter on every node and gateway (role `exporters`; Debian/Alpine packages, collectors that only show
+      the shared host disabled), and a **blackbox exporter on each gateway**, so each site pair is measured from its
+      own end: `wan_icmp` (peer gateway's private address, through the VPN, so OSPF reroutes show), `wan_tcp` (TCP
+      connect to the peer's public IP:22) and `wan_http` (GET of the peer site's public ingress, where a node exposes
+      80). Gateways' firewalls (rendered by opsforge) accept 9100/9115 from `mon` over the tunnels. K3s:
+      kube-state-metrics v2.19.0 (NodePort 30808), kubelets, cAdvisor and the API server scraped with a read-only
+      ServiceAccount token copied to mon; only the series the dashboards use are kept. 33 targets.
+- [x] Dashboards: **WAN** (RTT, loss and HTTP matrices src × dst, per-pair RTT and TCP connect, failing probes),
+      **Lab hosts** (exporters up, memory, CPU, network) and **K3s overview** (nodes Ready as the control plane sees
+      them, kubelets reachable from mon, pods per node and phase, working set per node and namespace, API requests,
+      restarts).
+- [x] `verify` checks, once mon is provisioned: every scrape target up, a successful ICMP probe for every ordered
+      site pair, Grafana healthy.
 
 **Done when:** changing a link's RTT with `opsforge link` appears on the matrix within one scrape interval.
+**Met 2026-10-23:** scenario `matrix-follows-link` (a-b to 200 ms, both directions): seen after 11.7–17.0 s, reset
+seen after 16 s, within the 30 s scrape interval; the bound is one probe interval (15 s, each direction scheduled
+independently) plus ~1 s of ingestion. Fresh `down && up && provision` 7.7 min (Grafana's install), a no-op
+`provision` 57 s with `changed=0`. `verify --mem --disk`: **1635 MiB** anon + kernel idle (a-cp1 746, b-w1 223, c-w1
+190, mon 326 of which Grafana ~175 and VictoriaMetrics ~67, cache 64, gateways 28 each with two exporters), pool
+6.47 GiB.
 
-### Phase 6: Fault injection and scenarios
-- [ ] CLI: `flap <link> --period`, `degrade <link> --loss --rate`,
-      `mtu <link> <n>`.
-- [ ] Scenario runner (`opsforge scenario <name>`): each scenario in `scenarios/<name>.yml` declares `setup`,
-      `fault`, `measure`, `expect` (thresholds) and `teardown`; faults always restore the pre-fault link state
-      (even on failure); results are written as JSON to `.opsforge/results/` and compared with the last run.
-- [ ] Optional Toxiproxy for application-protocol faults.
-- [ ] `scenarios/`: scripted experiments with expected outcomes, e.g.
-  - Partition site b during sustained writes → verify no data loss / measure recovery time.
-  - Raise a-c RTT to 300 ms → measure API latency impact on cross-site calls.
-  - Path-MTU black hole on a-b → reproduce the classic "small requests work, large ones hang" bug.
-- [ ] Clock-skew scenarios via `libfaketime` (documented limitation of containers).
+### Phase 6: Fault injection and scenarios (done 2026-10-23)
+- [x] CLI, all undone by `heal` (they share `partition`'s pre-fault state on wan-core): `degrade <link> --rtt
+      --jitter --loss --rate --mtu`; `mtu <link> <bytes>`, a path-MTU black hole (wan-core drops packets longer than
+      that between the two sites' public IPs and sends no ICMP; also a link property, `link --mtu`, schema `mtu`);
+      `flap <link> --period 10s [--duration 60s]`, foreground, restores the link when it stops (measured: a 10 s
+      flap at 4 s period, 56 % ping loss, link and state clean afterwards).
+- [x] Scenario runner `opsforge scenario <name>` (`--list`): `scenarios/<name>.yml` has `setup`, `fault`, `measure`
+      and `teardown` step lists and `expect` (metric → condition or list of conditions, e.g. `">= base.p50_ms +
+      300"`). Steps: `sleep`, `partition`, `heal`, `degrade`, `mtu`, `flap`/`stop_flap` (background), `run` (host or
+      instance shell), `ping`, `http` (latency percentiles), `transfer`, `wait_until` (shell or PromQL condition) and
+      `promql`; `${ip:<host>}` / `${public:<site>}` placeholders. Teardown always runs after `heal`, even when a step
+      fails; a scenario refuses to start while a fault is in place. Results go to `.opsforge/results/<name>-<time>.json`
+      and are compared with the previous run. Format and checks in `lab/scenario.py` (unit-tested).
+- [ ] Toxiproxy (optional): not added; `degrade`/`mtu`/`flap` cover the network faults so far.
+- [x] Scenarios, all passing on a fresh lab (2026-10-23):
+  - `partition-b-writes`: a Job in b writes 120 ConfigMaps through the API server in a, retrying each; b is
+    partitioned for 60 s. **No write lost** (120/120), writes stalled 67–72 s, then resumed. 216 s.
+  - `latency-a-c`: a-c from 120 to 300 ms; HTTP from c to a's ingress p50 **257 → 625 ms** (two extra round trips
+    of +180 ms: TCP handshake and request), back to 252 ms after heal.
+  - `pmtu-blackhole-a-b`: `mtu a-b 1400`; small requests 100 % OK, a 2 MB response **stalls** at 512 bytes, works
+    again after heal. MSS clamping cannot help: the hole is below the tunnel MTU.
+  - `clock-skew`: libfaketime (`faketime` on every node) +400 days: the node certificate (365 d) fails `openssl
+    verify`, and curl to K3s' API fails with 60 (expired serving certificate).
+  - `matrix-follows-link`: Phase 5's acceptance as a repeatable check.
 
-**Done when:** each scenario runs from one command and prints pass/fail against its expectation.
+**Done when:** each scenario runs from one command and prints pass/fail against its expectation. **Met.**
 
 ### Phase 7: Lightweight CI/CD (optional profile `ci: true`)
 - [ ] Gitea (+ Actions) or Woodpecker, and `registry:2`, on a `ci` node in site a.

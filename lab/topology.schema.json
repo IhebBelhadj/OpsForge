@@ -39,7 +39,11 @@
           "rtt": { "$ref": "#/$defs/duration" },
           "jitter": { "$ref": "#/$defs/duration" },
           "loss": { "type": "string", "pattern": "^\\d+(\\.\\d+)?%$" },
-          "rate": { "type": "string", "pattern": "^\\d+(kbit|mbit|gbit)$" }
+          "rate": { "type": "string", "pattern": "^\\d+(kbit|mbit|gbit)$" },
+          "mtu": {
+            "$comment": "path-MTU black hole: packets longer than this are dropped, with no ICMP (opsforge mtu)",
+            "type": "integer", "minimum": 576, "maximum": 9000
+          }
         }
       }
     },
@@ -53,7 +57,7 @@
         "additionalProperties": false,
         "properties": {
           "site": { "type": "string" },
-          "role": { "enum": ["k3s-server", "k3s-agent", "ci", "plain"] },
+          "role": { "enum": ["k3s-server", "k3s-agent", "monitoring", "ci", "plain"] },
           "cpu": { "type": "integer", "minimum": 1, "maximum": 16 },
           "memory": { "type": "string", "pattern": "^\\d+(MiB|GiB)$" },
           "expose": {

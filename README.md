@@ -8,9 +8,10 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 4 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
-> SSH, a WireGuard + OSPF mesh between sites, and a K3s cluster stretched across them (unprivileged containers,
-> per-site ingress, a local image cache). WAN-aware monitoring (Phase 5) comes next.
+> **Status:** Phase 6 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
+> SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, WAN-aware monitoring
+> (VictoriaMetrics + Grafana, site-pair probes) and scripted fault-injection scenarios. Optional CI/CD (Phase 7) and
+> multi-cluster (Phase 8) come next.
 
 ## Requirements
 
@@ -39,6 +40,9 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 ./opsforge forward b-w1:8080   # tunnel a lab service to 127.0.0.1:8080 (--list, --stop)
 ./opsforge capture wan-core icmp -d 5 --show   # tcpdump inside an instance, pcap in .opsforge/captures/
 ./opsforge partition c         # cut site c off the other sites; ./opsforge heal puts the links back
+./opsforge degrade a-c --rtt 300ms   # other faults heal undoes: mtu a-b 1400 (black hole), flap a-b --period 10s
+./opsforge scenario --list     # scripted experiments with expectations; ./opsforge scenario pmtu-blackhole-a-b
+./opsforge forward mon:3000    # Grafana on http://127.0.0.1:3000: WAN matrix, lab hosts, K3s
 ./opsforge down                # delete the lab (keeps cached images and the image cache; --purge drops them)
 ./opsforge gc                  # delete images left by older opsforge builds
 ./opsforge snapshot provisioned   # snapshot every instance (btrfs CoW, <1 s); --list, --delete NAME
@@ -71,6 +75,9 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
   flannel's VXLAN inside the WireGuard tunnels. Each gateway forwards its public 80/443 to its site's Traefik, so
   each site has its own entry point, like a regional load balancer. Images come through `opsforge-cache` (zot,
   outside the lab, kept across `down`), which wan-core serves at `203.0.113.2:5000` like a CDN.
+- **`mon`** (site b, outside the cluster) scrapes every host across the VPN. Each gateway runs a blackbox exporter
+  probing the other sites, so the WAN dashboard shows RTT, loss and HTTP time for every site pair as measured from
+  its own end, and follows `opsforge link`/faults within one probe interval.
 
 ## Measured footprint
 
@@ -81,6 +88,7 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 | 2 | Phase 1 + sshd, dnsmasq, Ansible-provisioned | 1042 MiB as reported, of which 921 MiB reclaimable page cache; 101 MiB anon + kernel | node image 126 MiB, router image 21 MiB, 1.5 GiB pool |
 | 3 | Phase 2 + WireGuard mesh + BIRD (OSPF) on the gateways | 945 MiB as reported; 111 MiB anon + kernel (gateways 6 MiB each) | router image 22.6 MiB, 1.9 GiB pool |
 | 4 | Phase 3 + K3s (server + 2 agents, Traefik on each, demo pods) + zot image cache | 1182 MiB anon + kernel (a-cp1 757, agents ~172 each, cache 55) | cache image 67 MiB, 4.1 GiB pool |
+| 5–6 | Phase 4 + `mon` (VictoriaMetrics + Grafana) + node/blackbox exporters | 1635 MiB anon + kernel (mon 326, gateways 28 each) | 6.5 GiB pool (Grafana 1.4 GiB) |
 
 Incus reports memory including page cache, which the kernel reclaims under pressure; after provisioning most of
 it is apt and Python files read once.

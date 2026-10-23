@@ -1,0 +1,29 @@
+description: >
+  Phase 5 acceptance: raise a-b's RTT to 200 ms and time how long the monitoring node's site-pair probes take to
+  show it in both directions, and to show the reset. Bound: one probe interval (15 s, each direction scheduled
+  independently) + the probe and ~1 s of ingestion + this scenario's 1 s polling.
+setup:
+  - promql: { query: 'max(probe_icmp_duration_seconds{job="wan_icmp",phase="rtt",src=~"a|b",dst=~"a|b"}) * 1000' }
+    name: base
+fault:
+  - degrade: { link: a-b, rtt: 200ms }
+measure:
+  - wait_until:
+      promql: 'min(probe_icmp_duration_seconds{job="wan_icmp",phase="rtt",src=~"a|b",dst=~"a|b"}) * 1000'
+      until: "> 150"
+      timeout: 60s
+      interval: 1s
+    name: seen
+teardown:
+  - wait_until:
+      promql: 'max(probe_icmp_duration_seconds{job="wan_icmp",phase="rtt",src=~"a|b",dst=~"a|b"}) * 1000'
+      until: "< 100"
+      timeout: 60s
+      interval: 1s
+    name: back
+expect:
+  base.value: "< 100"
+  seen.ok: "== 1"
+  seen.seconds: "<= 20"
+  back.ok: "== 1"
+  back.seconds: "<= 20"

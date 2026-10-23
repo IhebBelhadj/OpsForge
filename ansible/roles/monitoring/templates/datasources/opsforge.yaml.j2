@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+apiVersion: 1
+datasources:
+  - name: VictoriaMetrics
+    uid: victoriametrics
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:{{ monitoring_vm_port }}
+    isDefault: true
+    jsonData:
+      timeInterval: {{ monitoring_probe_interval }}

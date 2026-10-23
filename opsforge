@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "lab"))
 import render  # noqa: E402
+import scenario  # noqa: E402
 
 TOPOLOGY = ROOT / "topology.yml"
 SCHEMA = ROOT / "lab" / "topology.schema.json"
@@ -46,6 +48,12 @@ K3S_API_PORT = 6443
 # Sample workload deployed by ansible/roles/k3s (templates/demo.yaml.j2); verify checks it
 DEMO_NAMESPACE = "demo"
 DEMO_APP = "whoami"
+# Monitoring node (ansible/roles/monitoring): VictoriaMetrics and Grafana ports
+VM_PORT = 8428
+GRAFANA_PORT = 3000
+# `opsforge scenario`: definitions in the repo, results (JSON per run) in the controller state
+SCENARIOS = ROOT / "scenarios"
+RESULTS = STATE / "results"
 # wan-core: live link state saved by `partition`, put back by `heal`
 PRE_FAULT = "/etc/opsforge/pre-fault.json"
 
@@ -64,16 +72,17 @@ RESERVED_NETS = {
     "k3s pods": ipaddress.ip_network("10.42.0.0/16"),
     "k3s services": ipaddress.ip_network("10.43.0.0/16"),
 }
-LINK_KEYS = ("rtt", "jitter", "loss", "rate")
+LINK_KEYS = ("rtt", "jitter", "loss", "rate", "mtu")
 # Instance config key holding render.fingerprint(): what `up` last wired and pushed into it
 SPEC_KEY = "user.opsforge.spec"
 # verify: a WireGuard tunnel whose latest handshake is older than this is down (rekeys every 2 min when in use)
 VPN_HANDSHAKE_MAX = 180
 # verify --mem: default ceiling for the whole lab's non-reclaimable memory (anon + kernel, image cache included), per
-# phase. Phase 4 measured 2026-10-22: 1182 MiB idle (a-cp1 757, agents ~172 each, cache 55, routers 3-7 each)
-MEM_CEILING_MIB = 1400
-# verify --disk: default ceiling for the storage pool's used space (images + instances), per phase (Phase 4: 4.13)
-DISK_CEILING_GIB = 5
+# phase. Phase 5 measured 2026-10-23: 1635 MiB idle (a-cp1 746, agents 190-223, mon 326, cache 64, gateways 28 each)
+MEM_CEILING_MIB = 1900
+# verify --disk: default ceiling for the storage pool's used space (images + instances), per phase (Phase 5: 6.47,
+# Grafana alone 1.4 GiB)
+DISK_CEILING_GIB = 8
 # preflight warns when the pool (capped in lab/host/incus-preseed.yaml) is fuller than this
 POOL_WARN_FRACTION = 0.8
 SMOKE_IMAGE = "images:debian/13"
@@ -180,6 +189,11 @@ def topology_errors(topo):
     servers = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"]
     if len(servers) > 1:
         errors.append(f"nodes: only one k3s-server is supported per cluster, found {servers}")
+    monitors = [n for n, node in topo["nodes"].items() if node["role"] == "monitoring"]
+    if len(monitors) > 1:
+        errors.append(f"nodes: only one monitoring node is supported, found {monitors}")
+    if monitors and topo.get("interconnect", "none") != "vpn":
+        errors.append(f"nodes/{monitors[0]}: monitoring scrapes every site across the VPN: needs interconnect: vpn")
     agents = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-agent"]
     if agents and not servers:
         errors.append(f"nodes: k3s-agent nodes {agents} have no k3s-server to join")
@@ -859,6 +873,29 @@ def save_link(name, link, path=TOPOLOGY):
     path.write_text(text)
 
 
+def find_link(state, spec):
+    """The live link joining the two sites of `spec` (a-b or b-a)."""
+    ends = set(spec.split("-"))
+    name = next((n for n in state["links"] if set(n.split("-")) == ends), None)
+    if name is None:
+        raise LabError(f"no link {spec}; links: {', '.join(sorted(state['links']))}")
+    return name
+
+
+def edit_link(link, changes):
+    """`link` with `changes` applied and validated against the schema; mtu 0 removes the black hole."""
+    link = link | changes
+    if link.get("mtu") == 0:
+        del link["mtu"]
+    link_schema = json.loads(SCHEMA.read_text())
+    link_schema = link_schema["properties"]["links"]["additionalProperties"] | {"$defs": link_schema["$defs"]}
+    try:
+        jsonschema.validate(link, link_schema)
+    except jsonschema.ValidationError as e:
+        raise LabError(f"invalid value: {e.message}") from None
+    return link
+
+
 def cmd_link(args):
     state = read_link_state()
     desired = load_valid_topology()["links"]
@@ -869,10 +906,7 @@ def cmd_link(args):
         return 0
     if args.link is None:
         raise LabError("name a link (e.g. a-b), or use --reset alone to reset every link")
-    ends = set(args.link.split("-"))
-    name = next((n for n in state["links"] if set(n.split("-")) == ends), None)
-    if name is None:
-        raise LabError(f"no link {args.link}; links: {', '.join(sorted(state['links']))}")
+    name = find_link(state, args.link)
     changes = {k: getattr(args, k) for k in LINK_KEYS if getattr(args, k) is not None}
     if args.reset:
         if changes or args.save:
@@ -888,14 +922,7 @@ def cmd_link(args):
         else:
             print(f"{name}: {describe_link(state['links'][name])}")
         return 0
-    link = state["links"][name] | changes
-    link_schema = json.loads(SCHEMA.read_text())
-    link_schema = link_schema["properties"]["links"]["additionalProperties"] | {"$defs": link_schema["$defs"]}
-    try:
-        jsonschema.validate(link, link_schema)
-    except jsonschema.ValidationError as e:
-        raise LabError(f"invalid value: {e.message}") from None
-    state["links"][name] = link
+    link = state["links"][name] = edit_link(state["links"][name], changes)
     apply_link_state(state)
     if args.save:
         save_link(name, link)
@@ -1135,10 +1162,46 @@ def check_k3s(r, topo):
         (r.ok if served == site else r.fail)(msg)
 
 
+def vm_query(mon, path, **params):
+    """GET a VictoriaMetrics API path on the monitoring node, from inside it."""
+    url = f"http://127.0.0.1:{VM_PORT}{path}"
+    args = [arg for k, v in params.items() for arg in ("--data-urlencode", f"{k}={v}")]
+    res = run_in(mon, "curl", "-sf", "-G", url, *args)
+    return json.loads(res.stdout)["data"] if res.returncode == 0 else None
+
+
+def check_monitoring(r, topo):
+    """Every scrape target up, a successful ICMP probe for every ordered site pair, Grafana healthy."""
+    mon = render.monitoring_node(topo)
+    print(f"Monitoring ({mon}: every scrape target up, every site pair probed, Grafana healthy)")
+    targets = vm_query(mon, "/api/v1/targets")
+    if targets is None:
+        r.fail(f"{mon}: VictoriaMetrics does not answer on port {VM_PORT}")
+        return
+    jobs = {}
+    for t in targets["activeTargets"]:
+        jobs.setdefault(t["labels"]["job"], []).append(t)
+    for job, ts in sorted(jobs.items()):
+        down = [f"{t['scrapeUrl']} ({t.get('lastError', '')[:80]})" for t in ts if t["health"] != "up"]
+        (r.fail if down else r.ok)(f"{job}: {len(ts) - len(down)}/{len(ts)} targets up" +
+                                   (f"; down: {', '.join(down)}" if down else ""))
+    probes = vm_query(mon, "/api/v1/query", query='probe_success{job="wan_icmp"}') or {"result": []}
+    ok = {(p["metric"]["src"], p["metric"]["dst"]) for p in probes["result"] if p["value"][1] == "1"}
+    pairs = [(a, b) for a in topo["sites"] for b in topo["sites"] if a != b]
+    missing = [f"{a}->{b}" for a, b in pairs if (a, b) not in ok]
+    (r.fail if missing else r.ok)(f"wan_icmp: {len(pairs) - len(missing)}/{len(pairs)} site pairs answering" +
+                                  (f"; failing: {', '.join(missing)}" if missing else ""))
+    health = run_in(mon, "curl", "-sf", f"http://127.0.0.1:{GRAFANA_PORT}/api/health")
+    (r.ok if health.returncode == 0 else r.fail)(
+        f"Grafana {json.loads(health.stdout)['version'] if health.returncode == 0 else 'not answering'} "
+        f"(./opsforge forward {mon}:{GRAFANA_PORT})"
+    )
+
+
 def cmd_verify(args):
     """Acceptance checks: latency, isolation, internet and bandwidth match topology + live link state (Phase 1);
     SSH access, DNS and PKI once provisioned (Phase 2); with interconnect: vpn, the tunnels (Phase 3); the K3s
-    cluster, its spread and per-site ingress once installed (Phase 4)."""
+    cluster, its spread and per-site ingress once installed (Phase 4); monitoring targets and probes (Phase 5)."""
     topo = load_valid_topology()
     links = read_link_state()["links"]
     # One probe host per site: its first node, or the gateway if the site has none
@@ -1160,6 +1223,8 @@ def cmd_verify(args):
         check_pki(r, topo)
         if (server := k3s_server(topo)) and run_in(server, "test", "-x", "/usr/local/bin/k3s").returncode == 0:
             check_k3s(r, topo)
+        if (mon := render.monitoring_node(topo)) and run_in(mon, "test", "-x", "/usr/bin/victoria-metrics").returncode == 0:
+            check_monitoring(r, topo)
     else:
         print("Provisioning")
         r.warn("gateways run no dnsmasq: lab not provisioned, DNS and PKI checks skipped (./opsforge provision)")
@@ -1350,15 +1415,32 @@ def read_pre_fault():
     return json.loads(res.stdout) if res.returncode == 0 else None
 
 
+def begin_fault(state):
+    """Saves the live link state before the first fault (later faults stack on top), for `heal`."""
+    if read_pre_fault() is None:
+        push_file(render.WAN_CORE, PRE_FAULT, json.dumps(state, indent=2) + "\n", "0644")
+
+
+def heal_links():
+    """Every link back to its live state from before the first fault; False if there was no fault."""
+    pre = read_pre_fault()
+    if pre is None:
+        return False
+    state = read_link_state()
+    state["links"] = {name: pre["links"].get(name, link) for name, link in state["links"].items()}
+    apply_link_state(state)
+    run_in(render.WAN_CORE, "rm", "-f", PRE_FAULT)
+    return True
+
+
 def cmd_partition(args):
-    """Cuts a site off the other sites (100 % loss on each of its links), keeping the live state from before the first
-    fault so `heal` puts it back. The site keeps its internet access and the host's management path."""
+    """Cuts a site off the other sites (100 % loss on each of its links). The site keeps its internet access and the
+    host's management path."""
     topo = load_valid_topology()
     if args.site not in topo["sites"]:
         raise LabError(f"no site {args.site}; sites: {', '.join(topo['sites'])}")
     state = read_link_state()
-    if read_pre_fault() is None:
-        push_file(render.WAN_CORE, PRE_FAULT, json.dumps(state, indent=2) + "\n", "0644")
+    begin_fault(state)
     cut = sorted(n for n in state["links"] if args.site in n.split("-"))
     for name in cut:
         state["links"][name] = state["links"][name] | {"loss": "100%"}
@@ -1367,18 +1449,254 @@ def cmd_partition(args):
     return 0
 
 
-def cmd_heal(args):
-    """Restores every link to its live state from before the first `partition` (not to topology.yml)."""
-    pre = read_pre_fault()
-    if pre is None:
-        print("nothing to heal (no partition in place)")
-        return 0
+def degrade_link(spec, changes):
     state = read_link_state()
-    state["links"] = {name: pre["links"].get(name, link) for name, link in state["links"].items()}
+    name = find_link(state, spec)
+    link = edit_link(state["links"][name], changes)
+    begin_fault(state)
+    state["links"][name] = link
     apply_link_state(state)
-    run_in(render.WAN_CORE, "rm", "-f", PRE_FAULT)
-    print("healed: links back to their pre-partition state")
+    return name, link
+
+
+def cmd_degrade(args):
+    """A link change that `heal` undoes (`link` changes are kept until `link --reset`)."""
+    changes = {k: getattr(args, k) for k in LINK_KEYS if getattr(args, k) is not None}
+    if not changes:
+        raise LabError("nothing to change: give --rtt, --jitter, --loss, --rate or --mtu")
+    name, link = degrade_link(args.link, changes)
+    print(f"{name} degraded: {describe_link(link)} (./opsforge heal restores it)")
     return 0
+
+
+def cmd_mtu(args):
+    """Path-MTU black hole between two sites: packets longer than BYTES vanish, no ICMP tells the sender."""
+    name, _ = degrade_link(args.link, {"mtu": args.bytes})
+    print(f"{name}: packets over {args.bytes} bytes dropped silently (./opsforge heal restores it)")
+    return 0
+
+
+def flap_link(spec, period, duration=None, stop=None):
+    """Takes a link down (100 % loss) and up again every period/2 seconds until `duration` has passed or `stop` (a
+    threading.Event) is set, then restores it. A killed flap leaves the pre-fault state for `heal`."""
+    state = read_link_state()
+    name = find_link(state, spec)
+    begin_fault(state)
+    base = dict(state["links"][name])
+    end = time.monotonic() + duration if duration else None
+    down = False
+    try:
+        while not (stop and stop.is_set()) and (end is None or time.monotonic() < end):
+            down = not down
+            state = read_link_state()
+            state["links"][name] = base | {"loss": "100%"} if down else base
+            apply_link_state(state)
+            if stop:
+                stop.wait(period / 2)
+            else:
+                time.sleep(period / 2)
+    finally:
+        state = read_link_state()
+        state["links"][name] = base
+        apply_link_state(state)
+        if read_pre_fault() == state:
+            # This flap was the only fault: nothing left for heal to do
+            run_in(render.WAN_CORE, "rm", "-f", PRE_FAULT)
+    return name
+
+
+def cmd_flap(args):
+    period = render.time_us(args.period) / 1e6
+    if period < 2:
+        raise LabError("--period must be at least 2s (each change takes a fraction of a second)")
+    duration = render.time_us(args.duration) / 1e6 if args.duration else None
+    print(f"flapping {args.link}: down/up every {period / 2:g}s "
+          f"{'for ' + args.duration if duration else 'until Ctrl-C'}", file=sys.stderr)
+    try:
+        name = flap_link(args.link, period, duration)
+    except KeyboardInterrupt:
+        name = args.link
+    print(f"{name}: flapping stopped, link restored")
+    return 0
+
+
+def cmd_heal(args):
+    """Restores every link to its live state from before the first fault (not to topology.yml)."""
+    print("healed: links back to their pre-fault state" if heal_links() else "nothing to heal (no fault in place)")
+    return 0
+
+
+class ScenarioRun:
+    """Runs scenario steps against the lab (lab/scenario.py describes the file format) and collects metrics."""
+
+    def __init__(self, topo):
+        self.topo = topo
+        self.metrics = {}
+        self.flapping = None  # (thread, stop event) of a background `flap` step
+        self.start = time.monotonic()
+
+    def log(self, phase, text):
+        print(f"  {time.monotonic() - self.start:6.1f}s  [{phase}] {text}")
+
+    def target(self, name):
+        """A lab host's name -> its private address (a gateway's VPC address); anything else unchanged."""
+        if name in render.node_addresses(self.topo) or name.endswith("-gw"):
+            return scenario.substitute(f"${{ip:{name}}}", self.topo)
+        return scenario.substitute(str(name), self.topo)
+
+    def shell(self, on, cmd, timeout):
+        """(exit code, stdout) of a shell command on the host (from the repo root, so ./opsforge works) or in an
+        instance."""
+        cmd = scenario.substitute(cmd, self.topo)
+        if on == "host":
+            try:
+                res = subprocess.run(["bash", "-c", cmd], cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True,
+                                     text=True, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return 124, ""
+        else:
+            res = run_in(on, "timeout", str(int(timeout)), "sh", "-c", cmd)
+        return res.returncode, res.stdout
+
+    def promql(self, query):
+        mon = render.monitoring_node(self.topo)
+        if mon is None:
+            raise LabError("promql steps need a monitoring node")
+        data = vm_query(mon, "/api/v1/query", query=query)
+        return float(data["result"][0]["value"][1]) if data and data["result"] else None
+
+    def step(self, phase, step):
+        kind = scenario.step_type(step)
+        arg = step[kind]
+        name = step.get("name")
+        shown = arg if not isinstance(arg, dict) else " ".join(f"{k}={v}" for k, v in arg.items())
+        self.log(phase, f"{kind} {scenario.substitute(str(shown), self.topo)}" + (f"  -> {name}" if name else ""))
+        got = {}
+        if kind == "sleep":
+            time.sleep(scenario.seconds(arg))
+        elif kind == "partition":
+            cmd_partition(argparse.Namespace(site=str(arg)))
+        elif kind == "heal":
+            heal_links()
+        elif kind in ("degrade", "mtu"):
+            changes = {"mtu": arg["bytes"]} if kind == "mtu" else {k: arg[k] for k in LINK_KEYS if k in arg}
+            degrade_link(arg["link"], changes)
+        elif kind == "flap":
+            stop = threading.Event()
+            period = scenario.seconds(arg.get("period", "10s"))
+            thread = threading.Thread(target=flap_link, args=(arg["link"], period), kwargs={"stop": stop}, daemon=True)
+            thread.start()
+            self.flapping = (thread, stop)
+        elif kind == "stop_flap":
+            self.stop_flap()
+        elif kind == "run":
+            began = time.monotonic()
+            code, out = self.shell(arg.get("host", "host"), arg["cmd"], scenario.seconds(arg.get("timeout", 300)))
+            got = {"exit": code, "seconds": time.monotonic() - began}
+            last = out.strip().splitlines()[-1] if out.strip() else ""
+            if re.fullmatch(r"-?\d+(\.\d+)?", last):
+                got["value"] = float(last)
+        elif kind == "ping":
+            count, interval = int(arg.get("count", 20)), arg.get("interval", 0.2)
+            out = run_in(arg["from"], "ping", "-q", "-c", str(count), "-i", str(interval), self.target(arg["to"])).stdout
+            got = scenario.parse_ping(out)
+        elif kind == "http":
+            count, timeout = int(arg.get("count", 10)), scenario.seconds(arg.get("timeout", 10))
+            url = scenario.substitute(arg["url"], self.topo)
+            loop = (f"for i in $(seq {count}); do curl -s -o /dev/null -m {timeout:g} "
+                    f"-w '%{{http_code}} %{{time_total}}\\n' '{url}'; done")
+            got = scenario.parse_http(run_in(arg["from"], "sh", "-c", loop).stdout)
+        elif kind == "transfer":
+            timeout = scenario.seconds(arg.get("timeout", 30))
+            res = run_in(arg["from"], "curl", "-s", "-o", "/dev/null", "-m", f"{timeout:g}", "-w",
+                         "%{http_code} %{size_download} %{time_total}", scenario.substitute(arg["url"], self.topo))
+            got = scenario.parse_transfer(res.stdout, res.returncode)
+        elif kind == "wait_until":
+            timeout, interval = scenario.seconds(arg.get("timeout", 300)), scenario.seconds(arg.get("interval", 2))
+            began, ok = time.monotonic(), False
+            while not ok and time.monotonic() - began < timeout:
+                if "promql" in arg:
+                    value = self.promql(arg["promql"])
+                    ok = value is not None and scenario.check("v", arg["until"], {"v": value})[0]
+                else:
+                    ok = self.shell(arg.get("host", "host"), arg["cmd"], min(timeout, 60))[0] == 0
+                if not ok:
+                    time.sleep(interval)
+            got = {"ok": int(ok), "seconds": time.monotonic() - began}
+        elif kind == "promql":
+            value = self.promql(arg["query"])
+            got = {} if value is None else {"value": value}
+        if name:
+            self.metrics |= {f"{name}.{k}": v for k, v in got.items()}
+            if got:
+                self.log(phase, "    " + ", ".join(f"{k}={v:.4g}" for k, v in got.items()))
+
+    def stop_flap(self):
+        if self.flapping:
+            thread, stop = self.flapping
+            stop.set()
+            thread.join()
+            self.flapping = None
+
+
+def cmd_scenario(args):
+    """Runs a scripted experiment (scenarios/<name>.yml) and checks its expectations; the links are always healed."""
+    files = {f.stem: f for f in sorted(SCENARIOS.glob("*.yml"))}
+    if args.list or not args.name:
+        for name, path in files.items():
+            doc = yaml.safe_load(path.read_text())
+            print(f"{name:<24} {' '.join(str(doc.get('description', '')).split())}")
+        return 0
+    if args.name not in files:
+        raise LabError(f"no scenario {args.name}; scenarios: {', '.join(files)}")
+    doc = yaml.safe_load(files[args.name].read_text())
+    if errs := scenario.errors(doc):
+        raise LabError(f"{files[args.name].relative_to(ROOT)}: " + "; ".join(errs))
+    topo = load_valid_topology()
+    if read_pre_fault() is not None:
+        raise LabError("a fault is in place (./opsforge heal first): the scenario would heal it")
+    print(f"Scenario {args.name}: {' '.join(str(doc['description']).split())}")
+    run = ScenarioRun(topo)
+    error = None
+    try:
+        for phase in ("setup", "fault", "measure"):
+            for step in doc.get(phase) or []:
+                run.step(phase, step)
+    except (LabError, subprocess.CalledProcessError, KeyboardInterrupt) as e:
+        error = f"{type(e).__name__}: {e}"
+        print(f"  step failed: {error}")
+    finally:
+        run.stop_flap()
+        heal_links()
+        for step in doc.get("teardown") or []:
+            try:
+                run.step("teardown", step)
+            except (LabError, subprocess.CalledProcessError) as e:
+                print(f"  teardown step failed: {e}")
+    print("Expectations")
+    results, passed = [], error is None
+    for metric, condition in scenario.expectations(doc):
+        ok, value, threshold = scenario.check(metric, condition, run.metrics)
+        passed &= ok
+        shown = "missing" if value is None else f"{value:.4g}"
+        bound = "" if threshold is None or re.fullmatch(r"[<>=!]+\s*[\d.]+", str(condition)) else f" (= {threshold:.4g})"
+        verdict = "\033[32mPASS\033[0m" if ok else "\033[31mFAIL\033[0m"
+        print(f"  {verdict}  {metric} = {shown}, want {condition}{bound}")
+        results.append({"metric": metric, "condition": str(condition), "value": value, "passed": ok})
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    previous = sorted(RESULTS.glob(f"{args.name}-*.json"))
+    out = RESULTS / f"{args.name}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    out.write_text(json.dumps({
+        "scenario": args.name, "finished": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "passed": passed, "error": error,
+        "seconds": round(time.monotonic() - run.start, 1), "metrics": run.metrics, "expectations": results,
+    }, indent=2) + "\n")
+    if previous and (moved := scenario.compare(json.loads(previous[-1].read_text())["metrics"], run.metrics)):
+        print(f"Since the last run ({previous[-1].name})")
+        for line in moved:
+            print(f"  {line}")
+    print(f"\nScenario {args.name} " + ("\033[32mpassed\033[0m" if passed else "\033[31mFAILED\033[0m")
+          + f" ({out.relative_to(ROOT)})")
+    return 0 if passed else 1
 
 
 def cmd_provision(args):
@@ -1388,12 +1706,6 @@ def cmd_provision(args):
         raise LabError("lab is down (./opsforge up)")
     write_access(topo, lab_plan(topo)[1])
     return subprocess.run(["ansible-playbook", "site.yml", *args.ansible_args], cwd=ANSIBLE_DIR).returncode
-
-
-# Commands planned in docs/PLAN.md, with the phase that implements them.
-PLANNED = {
-    "flap": ("periodically drop a link", 6),
-}
 
 
 def main():
@@ -1429,6 +1741,7 @@ def main():
     p.add_argument("--jitter", help="RTT standard deviation, e.g. 10ms (0ms disables)")
     p.add_argument("--loss", help="per-direction packet loss, e.g. 0.5%% (0%% disables)")
     p.add_argument("--rate", help="per-direction bandwidth, e.g. 20mbit")
+    p.add_argument("--mtu", type=int, help="drop packets longer than this, silently (path-MTU black hole; 0 removes)")
     p.add_argument("--save", action="store_true", help="also write the link's conditions to topology.yml")
     p.add_argument("--reset", action="store_true", help="revert the link (or every link) to topology.yml")
     p.set_defaults(func=cmd_link)
@@ -1478,14 +1791,29 @@ def main():
     p = sub.add_parser("partition", help="cut a site off the other sites (100 %% loss on its links)")
     p.add_argument("site")
     p.set_defaults(func=cmd_partition)
-    sub.add_parser("heal", help="undo partition: links back to their pre-partition live state").set_defaults(
+    p = sub.add_parser("degrade", help="change a link until heal, e.g. degrade a-c --rtt 300ms --loss 2%%")
+    p.add_argument("link")
+    for key, help_ in (("rtt", "round-trip time"), ("jitter", "RTT standard deviation"), ("loss", "per-direction loss"),
+                       ("rate", "per-direction bandwidth")):
+        p.add_argument(f"--{key}", help=help_)
+    p.add_argument("--mtu", type=int, help="drop packets longer than this, silently")
+    p.set_defaults(func=cmd_degrade)
+    p = sub.add_parser("mtu", help="path-MTU black hole until heal: drop packets over BYTES between two sites")
+    p.add_argument("link")
+    p.add_argument("bytes", type=int)
+    p.set_defaults(func=cmd_mtu)
+    p = sub.add_parser("flap", help="take a link down and up repeatedly (foreground), e.g. flap a-b --period 10s")
+    p.add_argument("link")
+    p.add_argument("--period", default="10s", help="full down+up cycle (default 10s, at least 2s)")
+    p.add_argument("--duration", help="stop after this long, e.g. 60s (default: until Ctrl-C)")
+    p.set_defaults(func=cmd_flap)
+    sub.add_parser("heal", help="undo every partition/degrade/mtu/flap: links back to their pre-fault state").set_defaults(
         func=cmd_heal
     )
-    for name, (desc, phase) in PLANNED.items():
-        p = sub.add_parser(name, help=f"{desc} (Phase {phase}, not implemented)")
-        p.add_argument("args", nargs=argparse.REMAINDER)
-        p.set_defaults(func=lambda a, n=name, ph=phase: sys.exit(f"opsforge {n}: not implemented yet (Phase {ph})"))
-
+    p = sub.add_parser("scenario", help="run a scripted experiment from scenarios/ and check its expectations")
+    p.add_argument("name", nargs="?", help="scenario (omit, or --list, to list them)")
+    p.add_argument("--list", action="store_true", help="list the scenarios")
+    p.set_defaults(func=cmd_scenario)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take
     # the unknown ones
     args, extra = parser.parse_known_args()

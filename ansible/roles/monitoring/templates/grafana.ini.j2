@@ -1,0 +1,32 @@
+# {{ ansible_managed }}
+# Only what differs from Grafana's defaults (/usr/share/grafana/conf/defaults.ini).
+[server]
+http_port = {{ monitoring_grafana_port }}
+
+[security]
+# Used when Grafana first creates its database; the password is in .opsforge/grafana-admin on the controller
+admin_user = admin
+admin_password = {{ monitoring_grafana_password }}
+
+# A lab: anyone who can reach port {{ monitoring_grafana_port }} (through `opsforge forward`) may look
+[auth.anonymous]
+enabled = true
+org_role = Viewer
+
+[dashboards]
+default_home_dashboard_path = /var/lib/grafana/dashboards/opsforge/wan.json
+
+# No calls home from the lab
+[analytics]
+reporting_enabled = false
+check_for_updates = false
+check_for_plugin_updates = false
+feedback_links_enabled = false
+
+[news]
+news_feed_enabled = false
+
+# No app plugins downloaded at start (Logs/Traces/Profiles drilldown): each runs its own process and needs a backend
+# this lab does not have
+[plugins]
+preinstall_disabled = true

@@ -1,3 +1,12 @@
+# apt-get keeps every downloaded .deb in /var/cache/apt/archives (430 MB after Grafana alone): disk is the pool's
+- name: Do not keep downloaded packages
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/10-opsforge-no-cache
+    content: |
+      // Managed by Ansible (ansible/roles/base); local changes are overwritten
+      APT::Keep-Downloaded-Packages "false";
+    mode: "0644"
+
 - name: Install the base packages
   ansible.builtin.apt:
     name: "{{ base_packages.Debian }}"

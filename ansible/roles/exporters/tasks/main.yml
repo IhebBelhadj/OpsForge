@@ -1,0 +1,36 @@
+# node_exporter on every managed host; gateways also run a blackbox exporter that probes the other sites, so each
+# site pair is measured from its own end (docs/PLAN.md Phase 5). opsforge's firewalls let the monitoring node in.
+- name: Install the exporters
+  ansible.builtin.package:
+    name: >-
+      {{ exporters_packages[ansible_facts.os_family]
+      + (exporters_blackbox_packages if inventory_hostname in groups['gateways'] else []) }}
+
+- name: Configure the node exporter
+  ansible.builtin.lineinfile:
+    path: "{{ exporters_node_args_file[ansible_facts.os_family] }}"
+    regexp: "^ARGS="
+    line: 'ARGS="{{ exporters_node_args }}"'
+  notify: Restart node exporter
+
+- name: Run the node exporter at boot
+  ansible.builtin.service:
+    name: "{{ exporters_node_service[ansible_facts.os_family] }}"
+    state: started
+    enabled: true
+
+- name: Configure the blackbox exporter
+  when: inventory_hostname in groups['gateways']
+  block:
+    - name: Install the probe modules
+      ansible.builtin.template:
+        src: blackbox.yml.j2
+        dest: /etc/prometheus/blackbox.yml
+        mode: "0644"
+      notify: Restart blackbox exporter
+
+    - name: Run the blackbox exporter at boot
+      ansible.builtin.service:
+        name: blackbox-exporter
+        state: started
+        enabled: true

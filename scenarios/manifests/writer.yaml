@@ -1,0 +1,79 @@
+# Used by scenarios/partition-b-writes.yml: a Job in site b creating numbered ConfigMaps through the API server in
+# site a, retrying each until it is accepted (201, or 409 if a retried request had in fact succeeded).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: writer
+  namespace: scenario
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: writer
+  namespace: scenario
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: writer
+  namespace: scenario
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: writer
+subjects:
+  - kind: ServiceAccount
+    name: writer
+    namespace: scenario
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: writer
+  namespace: scenario
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: writer
+      restartPolicy: Never
+      nodeSelector:
+        topology.kubernetes.io/region: b
+      containers:
+        - name: writer
+          image: curlimages/curl:8.11.0
+          env:
+            - name: WRITES
+              value: "120"
+          command:
+            - sh
+            - -c
+            - |
+              sa=/var/run/secrets/kubernetes.io/serviceaccount
+              api="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/scenario/configmaps"
+              for i in $(seq "$WRITES"); do
+                body="{\"metadata\":{\"name\":\"w-$i\",\"labels\":{\"app\":\"writer\"}},\"data\":{\"i\":\"$i\"}}"
+                until code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 --cacert "$sa/ca.crt" \
+                    -H "Authorization: Bearer $(cat "$sa/token")" -H 'Content-Type: application/json' \
+                    -X POST "$api" -d "$body") && { [ "$code" = 201 ] || [ "$code" = 409 ]; }; do
+                  sleep 1
+                done
+                echo "$i $(date +%s)"
+                sleep 1
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

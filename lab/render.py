@@ -119,6 +119,10 @@ WG_KEEPALIVE = 25  # seconds; keeps handshakes fresh (and NAT/conntrack state al
 # routing: ospf. A neighbour is declared dead after OSPF_DEAD seconds without hellos, then traffic reroutes
 OSPF_HELLO = 2
 OSPF_DEAD = 10
+# Phase 5: exporters on every managed host, scraped by the monitoring node across the VPN. Gateways also run a
+# blackbox exporter that probes the other sites, so each site pair is measured from its own end.
+NODE_EXPORTER_PORT = 9100
+BLACKBOX_PORT = 9115
 LAB_DOMAIN = "lab"  # each site's zone is <site>.lab, served by its gateway (ansible/roles/dns)
 # The controller (host) enters the lab like an operator on the internet: through wan-core, which it can
 # reach over incusbr0, to the gateways' public IPs. That first hop is wan-core's own traffic: unshaped.
@@ -339,6 +343,19 @@ def render_links_sh(state):
                 f"tc filter add dev {dev} parent 1: protocol ip prio 1 u32 "
                 f"match ip src {state['sites'][peer]}/32 flowid 1:{i:x}",
             ]
+    # mtu: a path-MTU black hole, as a misconfigured link or a firewall eating ICMP "fragmentation needed" makes one.
+    # The tunnels' UDP between the two gateways is dropped above that size, so small packets pass and big ones vanish.
+    lines += ["", "nft delete table inet opsforge_mtu 2>/dev/null || true"]
+    holes = [(name, link["mtu"]) for name, link in links if "mtu" in link]
+    if holes:
+        lines += [
+            "nft add table inet opsforge_mtu",
+            "nft add chain inet opsforge_mtu forward '{ type filter hook forward priority filter - 10; }'",
+        ]
+        for name, mtu in holes:
+            a, b = (state["sites"][s] for s in name.split("-"))
+            for src, dst in ((a, b), (b, a)):
+                lines.append(f"nft add rule inet opsforge_mtu forward ip saddr {src} ip daddr {dst} ip length gt {mtu} drop")
     return "\n".join(lines) + "\n"
 
 
@@ -416,6 +433,10 @@ table ip nat {{
     return Instance(WAN_CORE, "wan-core", None, ROUTER_IMAGE, dict(ROUTER_LIMITS), nics, str(core), files)
 
 
+def monitoring_node(topo):
+    return next((n for n, node in topo["nodes"].items() if node["role"] == "monitoring"), None)
+
+
 def render_gateway(topo, name, addrs, wg_keys):
     site = topo["sites"][name]
     core = core_address(topo)
@@ -437,6 +458,9 @@ def render_gateway(topo, name, addrs, wg_keys):
             *([f"ip route replace {other['vpc']} dev {dev}"] if routing(topo) == "static" else []),
         ]
         wg_input.append(f'\t\tiifname "wan" ip saddr {other["public_ip"]} udp dport {port} accept  # WireGuard from {peer}')
+    if mesh and (mon := monitoring_node(topo)):
+        wg_input.append(f'\t\tiifname "wg-*" ip saddr {addrs[mon].ip} tcp dport {{ {NODE_EXPORTER_PORT}, {BLACKBOX_PORT} }} '
+                        f'accept  # metrics, scraped by {mon}')
     if mesh and routing(topo) == "ospf":
         wg_files["/etc/bird.conf"] = (render_bird_conf(topo, name), "0640")
         wg_start.append("rc-service bird start")
@@ -657,7 +681,17 @@ def render_inventory(topo, ssh_config, state_dir):
                 "lab_registry_cache": f"{cache_public_address(topo)}:{CACHE_PORT}",
                 "lab_registry_upstreams": list(CACHE_UPSTREAMS),
                 "lab_sites": {
-                    name: {"vpc": site["vpc"], "public_ip": site["public_ip"], "gateway": str(gateway_address(site).ip)}
+                    name: {
+                        "vpc": site["vpc"],
+                        "public_ip": site["public_ip"],
+                        "gateway": str(gateway_address(site).ip),
+                        # A node exposes HTTP on the public IP: the monitoring node probes it from the other sites
+                        "ingress": any(
+                            parse_expose(spec)[::2] == (80, "tcp")
+                            for node in topo["nodes"].values() if node["site"] == name
+                            for spec in node.get("expose", [])
+                        ),
+                    }
                     for name, site in topo["sites"].items()
                 },
             },

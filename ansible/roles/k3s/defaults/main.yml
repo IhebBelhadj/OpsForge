@@ -22,3 +22,6 @@ k3s_image_gc: { high: 80, low: 70 }
 k3s_toleration_seconds: 60
 # Sample workload (verify checks it: opsforge DEMO_NAMESPACE / DEMO_APP)
 k3s_demo_image: traefik/whoami:v1.11.0
+# Phase 5, with a monitoring node: kube-state-metrics, scraped on this NodePort of the server
+k3s_kube_state_metrics_image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
+k3s_kube_state_metrics_node_port: 30808

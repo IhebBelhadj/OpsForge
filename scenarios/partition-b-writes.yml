@@ -1,0 +1,42 @@
+description: >
+  Partition site b for 60 s while a pod in b writes 120 ConfigMaps (one per second, each retried until the API
+  server in site a accepts it). No write may be lost, writes must stall during the partition, and resume once healed.
+setup:
+  - run:
+      cmd: >-
+        ./opsforge kubectl delete namespace scenario --ignore-not-found --wait=true &&
+        ./opsforge kubectl apply -f scenarios/manifests/writer.yaml
+    name: deploy
+  - wait_until:
+      cmd: >-
+        ./opsforge kubectl -n scenario get pods -l job-name=writer -o jsonpath='{.items[0].status.phase}' |
+        grep -qx Running
+      timeout: 120s
+    name: started
+fault:
+  - sleep: 20s
+  - partition: b
+  - sleep: 60s
+  - heal: true
+measure:
+  - wait_until:
+      cmd: ./opsforge kubectl -n scenario wait --for=condition=complete job/writer --timeout=5s
+      timeout: 400s
+    name: done
+  - run:
+      cmd: ./opsforge kubectl -n scenario get configmaps -l app=writer -o name | wc -l
+    name: written
+  # The writer logs "<i> <epoch>" per write: the largest gap between two writes is how long writing stalled
+  - run:
+      cmd: >-
+        ./opsforge kubectl -n scenario logs job/writer |
+        awk '{ if (NR > 1 && $2 - p > m) m = $2 - p; p = $2 } END { print m }'
+    name: stall
+teardown:
+  - run:
+      cmd: ./opsforge kubectl delete namespace scenario --wait=false
+expect:
+  started.ok: "== 1"
+  done.ok: "== 1"
+  written.value: "== 120"
+  stall.value: [">= 50", "< 120"]

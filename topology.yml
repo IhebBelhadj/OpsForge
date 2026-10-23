@@ -25,6 +25,8 @@ nodes:
   a-cp1: { site: a, role: k3s-server, cpu: 2, memory: 1536MiB, expose: ["80", "443"] }
   b-w1: { site: b, role: k3s-agent, cpu: 1, memory: 768MiB, expose: ["80", "443"] }
   c-w1: { site: c, role: k3s-agent, cpu: 1, memory: 768MiB, expose: ["80", "443"] }
+  # VictoriaMetrics + Grafana, outside the cluster and away from the control plane's site
+  mon: { site: b, role: monitoring, cpu: 1, memory: 512MiB }
 
 profiles:
   ci: false

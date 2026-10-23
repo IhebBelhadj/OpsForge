@@ -1,0 +1,113 @@
+- name: Trust Grafana's apt signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /etc/apt/keyrings/grafana.asc
+    mode: "0644"
+
+- name: Add Grafana's apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/grafana.sources
+    content: |
+      # Managed by Ansible (ansible/roles/monitoring); local changes are overwritten
+      Types: deb
+      URIs: https://apt.grafana.com
+      Suites: stable
+      Components: main
+      Signed-By: /etc/apt/keyrings/grafana.asc
+    mode: "0644"
+  notify: Refresh the package lists
+
+- name: Read Grafana's repository before looking up its package
+  ansible.builtin.meta: flush_handlers
+
+# Grafana's package is 380 MB and its CDN serves this lab at under 1 MB/s: it is downloaded once to the controller
+# (.opsforge/cache, kept across `down`), checked against the repository's hash, and copied over the management path.
+- name: Find the Grafana package apt would install
+  # noqa: command-instead-of-module (no module prints the URI and hash)
+  ansible.builtin.command: apt-get download --print-uris grafana
+  register: monitoring_grafana_uri
+  changed_when: false
+  check_mode: false
+
+- name: Read the installed Grafana version
+  ansible.builtin.command: dpkg-query -W -f '${Status} ${Version}' grafana
+  register: monitoring_grafana_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install Grafana from the controller's copy
+  vars:
+    monitoring_grafana_deb: "{{ monitoring_grafana_uri.stdout.split() }}"
+    # '<url>' grafana_<version>_amd64.deb <size> SHA512:<hash>
+    monitoring_grafana_file: "{{ monitoring_grafana_deb[1] }}"
+  when: monitoring_grafana_installed.stdout != 'install ok installed ' ~ monitoring_grafana_file.split('_')[1]
+  block:
+    - name: Create the controller's download cache
+      ansible.builtin.file:
+        path: "{{ lab_state_dir }}/cache"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+
+    - name: Download the Grafana package to the controller
+      ansible.builtin.get_url:
+        url: "{{ monitoring_grafana_deb[0][1:-1] }}"  # quoted by apt
+        dest: "{{ lab_state_dir }}/cache/{{ monitoring_grafana_file }}"
+        checksum: "{{ monitoring_grafana_deb[3] | lower }}"  # sha512:<hex>
+        mode: "0644"
+        timeout: 1800
+      delegate_to: localhost
+
+    - name: Copy the Grafana package
+      ansible.builtin.copy:
+        src: "{{ lab_state_dir }}/cache/{{ monitoring_grafana_file }}"
+        dest: "/var/cache/{{ monitoring_grafana_file }}"
+        mode: "0644"
+
+    - name: Install Grafana
+      ansible.builtin.apt:
+        deb: "/var/cache/{{ monitoring_grafana_file }}"
+
+    - name: Remove the copied package
+      ansible.builtin.file:
+        path: "/var/cache/{{ monitoring_grafana_file }}"
+        state: absent
+
+- name: Configure Grafana
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana
+
+- name: Provision the datasource and dashboard folder
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/grafana/provisioning/{{ item }}"
+    owner: root
+    group: grafana
+    mode: "0640"
+  loop: [datasources/opsforge.yaml, dashboards/opsforge.yaml]
+  notify: Restart Grafana
+
+- name: Create the dashboard directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards/opsforge
+    state: directory
+    mode: "0755"
+
+# Grafana reloads these files by itself (dashboards/opsforge.yaml); edit them in the repo, not in the UI
+- name: Install the dashboards
+  ansible.builtin.copy:
+    src: dashboards/
+    dest: /var/lib/grafana/dashboards/opsforge/
+    mode: "0644"
+
+- name: Run Grafana at boot
+  ansible.builtin.systemd_service:
+    name: grafana-server
+    state: started
+    enabled: true

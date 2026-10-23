@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+apiVersion: 1
+providers:
+  - name: opsforge
+    folder: OpsForge
+    type: file
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/opsforge
