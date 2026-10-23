@@ -22,6 +22,7 @@ def test_units():
 
 
 def test_node_addresses_follow_topology_order(topo):
+    topo["nodes"].pop("ci", None)  # optional (Phase 7): would take .12
     topo["nodes"]["a-w2"] = {"site": "a", "role": "k3s-agent"}
     addrs = render.node_addresses(topo)
     assert str(addrs["a-cp1"]) == "10.10.0.11/24"

@@ -51,6 +51,19 @@ def test_only_one_monitoring_node(topo):
     assert any("only one monitoring node" in e for e in errors(topo))
 
 
+def test_only_one_ci_node(topo):
+    topo["nodes"]["ci2"] = {"site": "b", "role": "ci"}
+    assert any("only one ci node" in e for e in errors(topo))
+
+
+def test_ci_needs_a_cluster_and_the_vpn(topo):
+    topo["nodes"]["ci"] = {"site": "a", "role": "ci"}
+    topo["nodes"]["a-cp1"]["role"] = "plain"
+    assert any("ci deploys to the K3s cluster" in e for e in errors(topo))
+    topo["interconnect"] = "none"
+    assert any("pulls images from ci's registry" in e for e in errors(topo))
+
+
 def test_vpc_overlap_between_sites(topo):
     topo["sites"]["b"]["vpc"] = "10.10.0.0/24"
     assert any("overlaps" in e for e in errors(topo))

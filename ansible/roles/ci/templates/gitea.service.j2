@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Gitea
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=git
+Group=git
+WorkingDirectory=/var/lib/gitea
+Environment=GITEA_WORK_DIR=/var/lib/gitea HOME=/var/lib/gitea
+ExecStart=/usr/local/bin/gitea web --config /etc/gitea/app.ini
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -13,6 +13,16 @@
     line: 'ARGS="{{ exporters_node_args }}"'
   notify: Restart node exporter
 
+# Debian's node exporter recommends its textfile collectors; the apt one loads the whole apt cache in Python every
+# 15 min (~100 MiB), which pushed mon past its memory limit during a provision. Not scraped: off.
+- name: Disable the apt textfile collector
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter-apt.timer
+    state: stopped
+    enabled: false
+    masked: true
+  when: ansible_facts.os_family == 'Debian'
+
 - name: Run the node exporter at boot
   ansible.builtin.service:
     name: "{{ exporters_node_service[ansible_facts.os_family] }}"

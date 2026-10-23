@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# The lab's image registry: TLS with this node's lab certificate, no authentication (reachable from the lab's VPCs
+# only, never exposed on a public IP). Images are pulled from it across the WAN by every site.
+version: 0.1
+log:
+  level: warn
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/docker-registry
+  delete:
+    enabled: true
+http:
+  addr: :{{ ci_registry_port }}
+  tls:
+    certificate: /etc/docker/registry/tls/node.crt
+    key: /etc/docker/registry/tls/node.key
+  headers:
+    X-Content-Type-Options: [nosniff]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3

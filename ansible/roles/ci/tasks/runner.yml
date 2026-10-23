@@ -1,0 +1,60 @@
+# One runner on the ci node itself, label `lab` in host mode: jobs run as root on this node (buildah, git), no Docker
+- name: Install the runner binary
+  ansible.builtin.copy:
+    src: "{{ lab_state_dir }}/cache/gitea-runner-{{ ci_runner_version }}-linux-amd64"
+    dest: /usr/local/bin/gitea-runner
+    mode: "0755"
+  notify: Restart the runner
+
+- name: Create the runner's directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop: [/etc/gitea-runner, /var/lib/gitea-runner]
+
+- name: Configure the runner
+  ansible.builtin.template:
+    src: gitea-runner.yaml.j2
+    dest: /etc/gitea-runner/config.yaml
+    mode: "0644"
+  notify: Restart the runner
+
+- name: Install the runner unit
+  ansible.builtin.template:
+    src: gitea-runner.service.j2
+    dest: /etc/systemd/system/gitea-runner.service
+    mode: "0644"
+  notify: Restart the runner
+
+- name: Check the runner's registration
+  ansible.builtin.stat:
+    path: /var/lib/gitea-runner/.runner
+  register: ci_runner_file
+
+- name: Register the runner
+  when: not ci_runner_file.stat.exists
+  block:
+    - name: Get a registration token
+      ansible.builtin.command: runuser -u git -- gitea --config /etc/gitea/app.ini actions generate-runner-token
+      register: ci_runner_token
+      changed_when: false
+      no_log: true
+
+    - name: Register with Gitea
+      ansible.builtin.command:
+        cmd: >-
+          gitea-runner register --no-interactive --config /etc/gitea-runner/config.yaml
+          --instance {{ ci_gitea_url }} --token {{ ci_runner_token.stdout | trim }} --name {{ inventory_hostname }}
+        chdir: /var/lib/gitea-runner
+        creates: /var/lib/gitea-runner/.runner
+      no_log: true
+
+- name: Apply configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Run the runner at boot
+  ansible.builtin.systemd_service:
+    name: gitea-runner
+    state: started
+    enabled: true

@@ -25,3 +25,13 @@ k3s_demo_image: traefik/whoami:v1.11.0
 # Phase 5, with a monitoring node: kube-state-metrics, scraped on this NodePort of the server
 k3s_kube_state_metrics_image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
 k3s_kube_state_metrics_node_port: 30808
+# Phase 7, with a ci node: Flux (source + kustomize controllers only; the pipeline commits image tags itself) applies
+# the deploy repository on the ci node's Gitea. Must match ansible/roles/ci (ci_gitea_port, ci_admin_user,
+# ci_deploy_repo).
+k3s_flux_version: 2.9.6
+k3s_flux_archive: flux_{{ k3s_flux_version }}_linux_amd64.tar.gz
+k3s_flux_sha256: b4d22673e9246cbd628881f1a9ef3b090085dced291e42d804555cee8e8d42c5
+k3s_flux_components: [source-controller, kustomize-controller]
+k3s_gitops_url: >-
+  http://{{ groups['ci'][0] }}.{{ hostvars[groups['ci'][0]].lab_site }}.{{ lab_domain }}:3000/opsforge/deploy.git
+k3s_gitops_interval: 30s

@@ -1,0 +1,62 @@
+description: >
+  Phase 7's acceptance: a developer on the host pushes a commit to the webapp repository on Gitea (site a, reached
+  like any remote forge, through a forward). The runner builds and pushes the image, commits its tag to the deploy
+  repository, and Flux rolls it out; each site's ingress must then serve the new version (pulled across the WAN).
+setup:
+  - run:
+      cmd: >-
+        ./opsforge forward --list | grep -q '127.0.0.1:13000 ' || ./opsforge forward ci:3000 --local 13000
+    name: forward
+  - run:
+      cmd: >-
+        rm -rf .opsforge/ci/work && mkdir -p .opsforge/ci/work &&
+        git clone -q "http://opsforge:$(cat .opsforge/gitea-admin)@127.0.0.1:13000/opsforge/webapp.git"
+        .opsforge/ci/work/webapp
+    name: clone
+fault:
+  # An empty change is enough: the version every replica reports is the commit it was built from
+  - run:
+      cmd: >-
+        cd .opsforge/ci/work/webapp &&
+        git -c user.name=opsforge -c user.email=opsforge@noreply.lab commit -q --allow-empty -m "scenario ci-rollout" &&
+        git push -q origin HEAD:main && git rev-parse --short=12 HEAD > ../pushed
+    name: push
+measure:
+  - wait_until:
+      cmd: >-
+        curl -sf -u "opsforge:$(cat .opsforge/gitea-admin)"
+        'http://127.0.0.1:13000/api/v1/repos/opsforge/webapp/actions/runs?limit=1' |
+        python3 -c 'import json, sys; r = json.load(sys.stdin)["workflow_runs"][0];
+        sys.exit(not (r["head_sha"].startswith(open(".opsforge/ci/work/pushed").read().strip())
+        and r["conclusion"] == "success"))'
+      timeout: 600s
+      interval: 3s
+    name: built
+  # Sequential: each wait starts when the previous site serves the new version, from a replica in that site
+  - wait_until:
+      cmd: >-
+        out=$(incus exec wan-core -- wget -qO- -T 5 http://${public:a}/app) &&
+        grep -qx "Version: $(cat .opsforge/ci/work/pushed)" <<<"$out" && grep -qx "Region: a" <<<"$out"
+      timeout: 300s
+    name: site_a
+  - wait_until:
+      cmd: >-
+        out=$(incus exec wan-core -- wget -qO- -T 5 http://${public:b}/app) &&
+        grep -qx "Version: $(cat .opsforge/ci/work/pushed)" <<<"$out" && grep -qx "Region: b" <<<"$out"
+      timeout: 300s
+    name: site_b
+  - wait_until:
+      cmd: >-
+        out=$(incus exec wan-core -- wget -qO- -T 5 http://${public:c}/app) &&
+        grep -qx "Version: $(cat .opsforge/ci/work/pushed)" <<<"$out" && grep -qx "Region: c" <<<"$out"
+      timeout: 300s
+    name: site_c
+teardown:
+  - run:
+      cmd: rm -rf .opsforge/ci/work
+expect:
+  push.exit: "== 0"
+  built.ok: "== 1"
+  site_a.ok: "== 1"
+  site_b.ok: "== 1"
+  site_c.ok: "== 1"

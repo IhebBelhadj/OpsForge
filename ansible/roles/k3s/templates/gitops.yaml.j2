@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+# GitOps across the WAN: Flux polls the deploy repository on {{ groups['ci'][0] }} (site
+# {{ hostvars[groups['ci'][0]].lab_site }}) and applies it. The webapp's pipeline commits each new image tag there.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: opsforge-deploy
+  namespace: flux-system
+spec:
+  url: {{ k3s_gitops_url }}
+  ref:
+    branch: main
+  interval: {{ k3s_gitops_interval }}
+  timeout: 60s
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: opsforge-deploy
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: GitRepository
+    name: opsforge-deploy
+  path: ./
+  prune: true
+  interval: 10m
+  retryInterval: 30s
+  timeout: 3m

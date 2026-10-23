@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: webapp
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - webapp.yaml
+# newTag is set by the webapp repository's pipeline after each build
+images:
+  - name: webapp
+    newName: {{ ci_registry }}/{{ ci_admin_user }}/{{ ci_app_repo }}
+    newTag: "none"

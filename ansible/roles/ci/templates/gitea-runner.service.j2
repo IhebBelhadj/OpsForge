@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Gitea Actions runner
+After=gitea.service network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/var/lib/gitea-runner
+ExecStart=/usr/local/bin/gitea-runner daemon --config /etc/gitea-runner/config.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# One job at a time, in host mode: steps run on this node as root, building images with buildah
+log:
+  level: info
+runner:
+  file: /var/lib/gitea-runner/.runner
+  capacity: 1
+  timeout: 30m
+  fetch_interval: 2s
+  labels: ["lab:host"]
+host:
+  workdir_parent: /var/lib/gitea-runner/work
+cache:
+  enabled: false

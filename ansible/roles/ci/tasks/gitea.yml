@@ -1,0 +1,114 @@
+# Accounts, repositories and the pipeline's variables, through Gitea's API (as the admin) once it runs.
+- name: Check the admin account
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/user"
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 401]
+  register: ci_admin
+
+# The first account can only come from the CLI. Gitea refuses to run as root, hence runuser.
+- name: Create the admin account
+  ansible.builtin.command: >-
+    runuser -u git -- gitea --config /etc/gitea/app.ini admin user create --admin --username {{ ci_admin_user }}
+    --password {{ ci_admin_password }} --email {{ ci_admin_user }}@noreply.{{ lab_domain }} --must-change-password=false
+  when: ci_admin.status == 401
+  changed_when: true
+  no_log: true
+
+- name: Create the pipeline's account
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/admin/users"
+    method: POST
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      username: "{{ ci_bot_user }}"
+      password: "{{ ci_bot_password }}"
+      email: "{{ ci_bot_user }}@noreply.{{ lab_domain }}"
+      must_change_password: false
+    status_code: [201, 409]  # 409: already exists
+  register: ci_bot
+  changed_when: ci_bot.status == 201
+  no_log: true
+
+- name: Create the repositories
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/user/repos"
+    method: POST
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    # Public: Flux and the runner read them without credentials (Gitea is reachable from the lab's VPCs only)
+    body: { name: "{{ item }}", private: false, default_branch: main }
+    status_code: [201, 409]  # 409: already exists
+  loop: ["{{ ci_app_repo }}", "{{ ci_deploy_repo }}"]
+  register: ci_repos
+  changed_when: ci_repos.status == 201
+
+- name: Check the pipeline's access to the deploy repository
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/repos/{{ ci_deploy_owner_repo }}/collaborators/{{ ci_bot_user }}"
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    status_code: [204, 404]
+  register: ci_collaborator
+
+- name: Let the pipeline push to the deploy repository
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/repos/{{ ci_deploy_owner_repo }}/collaborators/{{ ci_bot_user }}"
+    method: PUT
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: { permission: write }
+    status_code: 204
+  when: ci_collaborator.status == 404
+  changed_when: true
+
+- name: Read the pipeline's variables
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/repos/{{ ci_app_owner_repo }}/actions/variables/{{ item.key }}"
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop: "{{ ci_variables | dict2items }}"
+  register: ci_current_variables
+
+- name: Set the pipeline's variables
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/repos/{{ ci_app_owner_repo }}/actions/variables/{{ item.item.key }}"
+    method: "{{ 'POST' if item.status == 404 else 'PUT' }}"
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: { name: "{{ item.item.key }}", value: "{{ item.item.value }}" }
+    status_code: [201, 204]
+  loop: "{{ ci_current_variables.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.status == 404 or item.json.data != item.item.value
+  changed_when: true
+
+# Secrets cannot be read back: 201 when created, 204 when (re)written with the same value
+- name: Set the pipeline's deploy password
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/repos/{{ ci_app_owner_repo }}/actions/secrets/DEPLOY_PASSWORD"
+    method: PUT
+    url_username: "{{ ci_admin_user }}"
+    url_password: "{{ ci_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: { data: "{{ ci_bot_password }}" }
+    status_code: [201, 204]
+  register: ci_secret
+  changed_when: ci_secret.status == 201
+  no_log: true

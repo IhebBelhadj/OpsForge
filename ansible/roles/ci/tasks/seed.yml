@@ -1,0 +1,13 @@
+# First provision only: an empty repository gets its initial commit (the deploy manifests, then the webapp, whose
+# push starts the first build). Afterwards Gitea is the source of truth and provision never touches the content.
+- name: Read the repositories
+  ansible.builtin.uri:
+    url: "{{ ci_api }}/repos/{{ ci_admin_user }}/{{ item }}"
+  loop: ["{{ ci_deploy_repo }}", "{{ ci_app_repo }}"]
+  register: ci_repo_info
+
+- name: Seed the empty repositories
+  ansible.builtin.include_tasks: seed-repo.yml
+  loop: "{{ ci_repo_info.results | selectattr('json.empty') | map(attribute='item') | list }}"
+  loop_control:
+    loop_var: ci_seed_repo

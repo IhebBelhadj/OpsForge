@@ -1,0 +1,76 @@
+# One PostgreSQL in region {{ ci_db_region }} (with the control plane); replicas in the other regions query it
+# across the WAN. Lab credentials, in Git on purpose: the repository never leaves the lab.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres
+stringData:
+  password: {{ ci_db_password }}
+  url: postgres://webapp:{{ ci_db_password }}@postgres:5432/webapp?sslmode=disable
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      nodeSelector:
+        topology.kubernetes.io/region: {{ ci_db_region }}
+      containers:
+        - name: postgres
+          image: {{ ci_postgres_image }}
+          # Sized for a lab: a few connections per replica
+          args: [-c, shared_buffers=16MB, -c, max_connections=20]
+          env:
+            - name: POSTGRES_USER
+              value: webapp
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, webapp]
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 192Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,0 +1,47 @@
+# Runs on the lab's runner (label `lab`, host mode: steps run on the ci node itself, which builds with buildah), so
+# no `uses:` actions: they need Node.js and a download from github.com. vars/secrets are set by ansible/roles/ci.
+# Builds the image, pushes it to the lab registry, then commits its tag to the deploy repository, which Flux applies.
+name: build
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: lab
+    env:
+      IMAGE: ${{ vars.REGISTRY }}/${{ github.repository }}
+    steps:
+      - name: Check out
+        run: |
+          rm -rf src deploy
+          git clone -q --branch "$GITHUB_REF_NAME" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" src
+          git -C src checkout -q "$GITHUB_SHA"
+
+      - name: Build
+        run: |
+          buildah build --isolation chroot --network host --build-arg VERSION="${GITHUB_SHA::12}" \
+            -t "$IMAGE:${GITHUB_SHA::12}" src
+
+      - name: Push
+        run: |
+          buildah push "$IMAGE:${GITHUB_SHA::12}"
+          # The registry keeps it; the runner keeps only the base images (and the module cache) for the next build
+          buildah rmi "$IMAGE:${GITHUB_SHA::12}"
+
+      - name: Deploy
+        env:
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          tag=${GITHUB_SHA::12}
+          auth="Authorization: Basic $(printf '%s:%s' '${{ vars.DEPLOY_USER }}' "$DEPLOY_PASSWORD" | base64 -w0)"
+          git -c http.extraHeader="$auth" clone -q "$GITHUB_SERVER_URL/${{ vars.DEPLOY_REPO }}.git" deploy
+          sed -i "s/^\( *newTag:\).*/\1 \"$tag\"/" deploy/webapp/kustomization.yaml
+          if git -C deploy diff --quiet; then
+            echo "deploy already at $tag"
+            exit 0
+          fi
+          git -C deploy -c user.name="${{ vars.DEPLOY_USER }}" -c user.email="${{ vars.DEPLOY_USER }}@noreply.lab" \
+            commit -qam "webapp: $tag" -m "Built from $GITHUB_REPOSITORY@$GITHUB_SHA"
+          git -C deploy -c http.extraHeader="$auth" push -q origin HEAD
+          echo "deploy now at $tag"

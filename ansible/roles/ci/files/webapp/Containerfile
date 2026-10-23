@@ -1,0 +1,17 @@
+# Built by the lab's runner with buildah (.gitea/workflows/build.yml); base images come through the lab's cache
+FROM docker.io/library/golang:1.27-alpine AS build
+ARG VERSION=dev
+WORKDIR /src
+COPY go.mod go.sum ./
+# Modules persist between builds on the runner, so only the first build downloads them
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY *.go ./
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /webapp .
+
+# A static binary alone: a few MB to pull across the WAN to every site
+FROM scratch
+COPY --from=build /webapp /webapp
+USER 65534:65534
+EXPOSE 8080
+ENTRYPOINT ["/webapp"]

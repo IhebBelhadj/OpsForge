@@ -23,3 +23,7 @@
     dest: /var/lib/rancher/k3s/server/manifests/opsforge-monitoring.yaml
     mode: "0600"
   when: groups['monitoring'] | default([]) | length > 0
+
+- name: Install Flux
+  ansible.builtin.include_tasks: flux.yml
+  when: groups['ci'] | default([]) | length > 0

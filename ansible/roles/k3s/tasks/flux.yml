@@ -1,0 +1,44 @@
+# Flux's install manifest is rendered once on the controller by the Flux CLI (kept in the K3s cache), then applied by
+# K3s like the other opsforge-* manifests.
+- name: Render Flux's install manifest on the controller
+  run_once: true
+  delegate_to: localhost
+  block:
+    - name: Download the Flux CLI {{ k3s_flux_version }}
+      ansible.builtin.get_url:
+        url: "https://github.com/fluxcd/flux2/releases/download/v{{ k3s_flux_version }}/{{ k3s_flux_archive }}"
+        dest: "{{ k3s_cache_dir }}/{{ k3s_flux_archive }}"
+        checksum: "sha256:{{ k3s_flux_sha256 }}"
+        mode: "0644"
+
+    - name: Create the Flux directory
+      ansible.builtin.file:
+        path: "{{ k3s_cache_dir }}/flux-{{ k3s_flux_version }}"
+        state: directory
+        mode: "0700"
+
+    - name: Unpack the Flux CLI
+      ansible.builtin.unarchive:
+        src: "{{ k3s_cache_dir }}/{{ k3s_flux_archive }}"
+        dest: "{{ k3s_cache_dir }}/flux-{{ k3s_flux_version }}"
+        creates: "{{ k3s_cache_dir }}/flux-{{ k3s_flux_version }}/flux"
+
+    - name: Render the install manifest
+      ansible.builtin.shell: >-
+        ./flux install --export --components={{ k3s_flux_components | join(',') }} --network-policy=false
+        > install-{{ k3s_flux_components | join('-') }}.yaml
+      args:
+        chdir: "{{ k3s_cache_dir }}/flux-{{ k3s_flux_version }}"
+        creates: install-{{ k3s_flux_components | join('-') }}.yaml
+
+- name: Install Flux
+  ansible.builtin.copy:
+    src: "{{ k3s_cache_dir }}/flux-{{ k3s_flux_version }}/install-{{ k3s_flux_components | join('-') }}.yaml"
+    dest: /var/lib/rancher/k3s/server/manifests/opsforge-flux.yaml
+    mode: "0600"
+
+- name: Point Flux at the deploy repository
+  ansible.builtin.template:
+    src: gitops.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/opsforge-gitops.yaml
+    mode: "0600"

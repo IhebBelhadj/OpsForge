@@ -1,0 +1,87 @@
+# One replica per region, like the demo; each site's ingress serves /app from its own region
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+spec:
+  replicas: {{ ci_regions | length }}
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/region
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app: webapp
+          # Count this revision's pods only: during a rollout the old pods would otherwise count too, and the new
+          # ones pile up where old ones are being removed (measured: two in c, none in a, after one push)
+          matchLabelKeys: [pod-template-hash]
+      containers:
+        - name: webapp
+          image: webapp
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: REGION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['topology.kubernetes.io/region']
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: url
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp
+  annotations:
+    traefik.ingress.kubernetes.io/service.nativelb: "true"
+spec:
+  selector:
+    app: webapp
+  ports:
+    - port: 80
+      targetPort: 8080
+  trafficDistribution: PreferSameZone
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webapp
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /app
+            pathType: Prefix
+            backend:
+              service:
+                name: webapp
+                port:
+                  number: 80

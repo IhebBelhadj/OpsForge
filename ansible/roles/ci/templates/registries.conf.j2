@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# buildah pulls base images through the lab's pull-through cache (opsforge-cache), like K3s does
+{% for registry in lab_registry_upstreams %}
+[[registry]]
+prefix = "{{ registry }}"
+location = "{{ registry }}"
+
+[[registry.mirror]]
+location = "{{ lab_registry_cache }}/{{ registry }}"
+insecure = true
+
+{% endfor %}

@@ -26,7 +26,7 @@ nodes:
   b-w1: { site: b, role: k3s-agent, cpu: 1, memory: 768MiB, expose: ["80", "443"] }
   c-w1: { site: c, role: k3s-agent, cpu: 1, memory: 768MiB, expose: ["80", "443"] }
   # VictoriaMetrics + Grafana, outside the cluster and away from the control plane's site
-  mon: { site: b, role: monitoring, cpu: 1, memory: 512MiB }
-
-profiles:
-  ci: false
+  mon: { site: b, role: monitoring, cpu: 1, memory: 768MiB }
+  # Optional (Phase 7): Gitea + Actions runner + registry; Flux in the cluster applies its deploy repository.
+  # Remove this line to run the lab without CI/CD (~+250 MiB idle, more while building).
+  ci: { site: a, role: ci, cpu: 2, memory: 1GiB }

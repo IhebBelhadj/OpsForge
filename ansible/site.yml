@@ -1,4 +1,4 @@
-# Provisioning (docs/PLAN.md Phases 2 and 4): ./opsforge provision, or ansible-playbook site.yml from ansible/.
+# Provisioning (docs/PLAN.md Phases 2, 4, 5 and 7): ./opsforge provision, or ansible-playbook site.yml from ansible/.
 # Every host is reached over SSH from the controller, through wan-core and its site's gateway.
 - name: Base system
   hosts: lab
@@ -20,6 +20,13 @@
   hosts: nodes
   roles:
     - pki
+
+# Phase 7: before K3s, so the first build (started by seeding the webapp repository) runs while the cluster installs.
+# Needs the node's certificate (pki) for the registry.
+- name: CI/CD
+  hosts: ci
+  roles:
+    - ci
 
 # Server first: agents join it across the VPN (docs/PLAN.md Phase 4)
 - name: K3s server

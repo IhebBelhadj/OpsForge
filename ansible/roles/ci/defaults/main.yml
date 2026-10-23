@@ -1,0 +1,51 @@
+# CI/CD node (docs/PLAN.md Phase 7): Gitea with Actions, one runner building with buildah, and a registry. Flux, in
+# the cluster, applies the deploy repository. Reach Gitea from the host with: ./opsforge forward ci:3000
+# Binaries are downloaded once to the controller (.opsforge/cache) and copied over the management path.
+ci_gitea_version: 28.2.0
+ci_gitea_sha256: 15681fc615d56611c274f52803fef4d6d5316b620f93b677dd4b831a74e50b9f
+ci_runner_version: 5.2.2
+ci_runner_sha256: 5a2639fd2a57feeba29a9b1fb0e941489f092a4fa681c7c333c0372731248b63
+# Must match opsforge CI_GITEA_PORT / CI_REGISTRY_PORT
+ci_gitea_port: 3000
+ci_registry_port: 5000
+ci_fqdn: "{{ inventory_hostname }}.{{ lab_site }}.{{ lab_domain }}"
+ci_gitea_url: "http://{{ ci_fqdn }}:{{ ci_gitea_port }}"
+# TLS with the node's lab certificate (ansible/roles/pki): every node trusts the lab CA, so no insecure registries
+ci_registry: "{{ ci_fqdn }}:{{ ci_registry_port }}"
+# Generated secrets, kept on the controller (stable across runs and `down`)
+ci_state_dir: "{{ lab_state_dir }}/ci"
+ci_password_chars: [ascii_letters, digits]
+# The developer's account (owns the repositories); its password is kept on the controller
+ci_admin_user: opsforge
+ci_admin_password: >-
+  {{ lookup('ansible.builtin.password', lab_state_dir ~ '/gitea-admin', length=24, chars=['ascii_letters', 'digits']) }}
+# The pipeline's account: may push to the deploy repository only
+ci_bot_user: ci-bot
+ci_bot_password: >-
+  {{ lookup('ansible.builtin.password', ci_state_dir ~ '/bot-password', length=32, chars=ci_password_chars) }}
+ci_app_repo: webapp
+ci_deploy_repo: deploy
+ci_app_owner_repo: "{{ ci_admin_user }}/{{ ci_app_repo }}"
+ci_deploy_owner_repo: "{{ ci_admin_user }}/{{ ci_deploy_repo }}"
+# Ansible talks to Gitea's API on the node itself
+ci_api: "http://127.0.0.1:{{ ci_gitea_port }}/api/v1"
+# Gitea's own secrets; stable across runs so app.ini does not change
+ci_gitea_secret_key: >-
+  {{ lookup('ansible.builtin.password', ci_state_dir ~ '/secret-key', length=64, chars=ci_password_chars) }}
+ci_gitea_internal_token: >-
+  {{ lookup('ansible.builtin.password', ci_state_dir ~ '/internal-token', length=64, chars=ci_password_chars) }}
+# Gitea needs it even with OAuth2 off: 32 bytes as unpadded base64url (43 characters)
+ci_gitea_jwt_secret: >-
+  {{ lookup('ansible.builtin.password', ci_state_dir ~ '/jwt-secret', length=43, chars=ci_password_chars) }}
+# Reference workload: one replica per K3s region, the database in the control plane's region
+ci_regions: >-
+  {{ (groups['k3s_server'] + groups['k3s_agent'] | default([])) | map('extract', hostvars, 'lab_site') | unique }}
+ci_db_region: "{{ hostvars[groups['k3s_server'][0]].lab_site }}"
+ci_db_password: >-
+  {{ lookup('ansible.builtin.password', ci_state_dir ~ '/db-password', length=24, chars=ci_password_chars) }}
+ci_postgres_image: docker.io/library/postgres:18-alpine
+# Actions variables of the webapp repository, read by its workflow as vars.<NAME>
+ci_variables:
+  REGISTRY: "{{ ci_registry }}"
+  DEPLOY_REPO: "{{ ci_deploy_owner_repo }}"
+  DEPLOY_USER: "{{ ci_bot_user }}"

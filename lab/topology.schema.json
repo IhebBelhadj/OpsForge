@@ -68,13 +68,6 @@
           }
         }
       }
-    },
-    "profiles": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "ci": { "type": "boolean" }
-      }
     }
   },
   "$defs": {

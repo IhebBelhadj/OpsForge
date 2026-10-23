@@ -1,0 +1,136 @@
+# CI/CD node (docs/PLAN.md Phase 7): Gitea + Actions, a runner in host mode building with buildah, and a registry.
+# Flux (ansible/roles/k3s, workloads.yml) applies the deploy repository to the cluster.
+- name: Install Git, buildah and the registry
+  ansible.builtin.apt:
+    # netavark: buildah needs it even with --network host
+    name: [git, buildah, netavark, docker-registry]
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Download Gitea and its runner to the controller
+  run_once: true
+  delegate_to: localhost
+  block:
+    - name: Create the controller's download cache
+      ansible.builtin.file:
+        path: "{{ lab_state_dir }}/cache"
+        state: directory
+        mode: "0700"
+
+    - name: Download the Gitea and runner binaries
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "{{ lab_state_dir }}/cache/{{ item.url | basename }}"
+        checksum: "sha256:{{ item.sha256 }}"
+        mode: "0755"
+      loop:
+        - url: "https://dl.gitea.com/gitea/{{ ci_gitea_version }}/gitea-{{ ci_gitea_version }}-linux-amd64"
+          sha256: "{{ ci_gitea_sha256 }}"
+        - url: >-
+            https://dl.gitea.com/gitea-runner/{{ ci_runner_version }}/gitea-runner-{{ ci_runner_version }}-linux-amd64
+          sha256: "{{ ci_runner_sha256 }}"
+
+- name: Install the Gitea binary
+  ansible.builtin.copy:
+    src: "{{ lab_state_dir }}/cache/gitea-{{ ci_gitea_version }}-linux-amd64"
+    dest: /usr/local/bin/gitea
+    mode: "0755"
+  notify: Restart Gitea
+
+- name: Create Gitea's account
+  ansible.builtin.user:
+    name: git
+    system: true
+    home: /var/lib/gitea
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create Gitea's directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: git
+    mode: "0750"
+  loop:
+    - { path: /etc/gitea, owner: root }
+    - { path: /var/lib/gitea, owner: git }
+
+- name: Configure Gitea
+  ansible.builtin.template:
+    src: app.ini.j2
+    dest: /etc/gitea/app.ini
+    owner: root
+    group: git
+    mode: "0640"
+  notify: Restart Gitea
+
+- name: Install the Gitea unit
+  ansible.builtin.template:
+    src: gitea.service.j2
+    dest: /etc/systemd/system/gitea.service
+    mode: "0644"
+  notify: Restart Gitea
+
+- name: Configure the registry
+  block:
+    - name: Create the registry's TLS directory
+      ansible.builtin.file:
+        path: /etc/docker/registry/tls
+        state: directory
+        owner: root
+        group: docker-registry
+        mode: "0750"
+
+    # The node's certificate (ansible/roles/pki) names it <host>.<site>.lab: what clients pull from
+    - name: Install the registry's certificate and key
+      ansible.builtin.copy:
+        src: "/etc/opsforge/pki/{{ item }}"
+        dest: "/etc/docker/registry/tls/{{ item }}"
+        remote_src: true
+        owner: root
+        group: docker-registry
+        mode: "0640"
+      loop: [node.crt, node.key]
+      notify: Restart the registry
+
+    - name: Configure the registry
+      ansible.builtin.template:
+        src: registry.yml.j2
+        dest: /etc/docker/registry/config.yml
+        mode: "0644"
+      notify: Restart the registry
+
+- name: Pull base images through the lab's cache
+  ansible.builtin.template:
+    src: registries.conf.j2
+    dest: /etc/containers/registries.conf.d/50-opsforge.conf
+    mode: "0644"
+
+- name: Apply configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Run Gitea and the registry at boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: [gitea, docker-registry]
+
+- name: Wait for Gitea
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ci_gitea_port }}/api/healthz"
+  register: ci_health
+  until: ci_health.status == 200
+  retries: 30
+  delay: 2
+
+- name: Set up accounts and repositories
+  ansible.builtin.include_tasks: gitea.yml
+
+- name: Set up the runner
+  ansible.builtin.include_tasks: runner.yml
+
+- name: Seed the repositories
+  ansible.builtin.include_tasks: seed.yml

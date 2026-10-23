@@ -8,15 +8,16 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 6 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
+> **Status:** Phase 7 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
 > SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, WAN-aware monitoring
-> (VictoriaMetrics + Grafana, site-pair probes) and scripted fault-injection scenarios. Optional CI/CD (Phase 7) and
-> multi-cluster (Phase 8) come next.
+> (VictoriaMetrics + Grafana, site-pair probes), scripted fault-injection scenarios and optional CI/CD (Gitea
+> Actions, a registry and Flux GitOps across the WAN). Multi-cluster (Phase 8) comes next.
 
 ## Requirements
 
 - Linux host (developed on Arch Linux; `scripts/host-setup.sh` uses pacman)
-- ~3 GB free RAM and ~35 GB free disk (the lab uses 5–20 GB depending on phase)
+- ~3 GB free RAM and ~35 GB free disk (the lab uses 5–20 GB depending on phase); the optional CI node adds ~0.6 GB
+  RAM idle (up to 1 GiB while building)
 
 ## Quick start
 
@@ -43,6 +44,9 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 ./opsforge degrade a-c --rtt 300ms   # other faults heal undoes: mtu a-b 1400 (black hole), flap a-b --period 10s
 ./opsforge scenario --list     # scripted experiments with expectations; ./opsforge scenario pmtu-blackhole-a-b
 ./opsforge forward mon:3000    # Grafana on http://127.0.0.1:3000: WAN matrix, lab hosts, K3s
+./opsforge forward ci:3000 --local 13000   # Gitea on http://127.0.0.1:13000 (user opsforge, .opsforge/gitea-admin)
+incus exec wan-core -- wget -qO- http://203.0.113.30/app   # the webapp Flux deployed, served in site c
+./opsforge scenario ci-rollout # push a commit: build, registry, Flux rollout to every site
 ./opsforge down                # delete the lab (keeps cached images and the image cache; --purge drops them)
 ./opsforge gc                  # delete images left by older opsforge builds
 ./opsforge snapshot provisioned   # snapshot every instance (btrfs CoW, <1 s); --list, --delete NAME
@@ -78,6 +82,12 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 - **`mon`** (site b, outside the cluster) scrapes every host across the VPN. Each gateway runs a blackbox exporter
   probing the other sites, so the WAN dashboard shows RTT, loss and HTTP time for every site pair as measured from
   its own end, and follows `opsforge link`/faults within one probe interval.
+- **`ci`** (optional, site a) runs Gitea with Actions, a runner that builds images with buildah, and a registry
+  (TLS with the lab CA). A push to `opsforge/webapp` builds and pushes the image, then commits its tag to
+  `opsforge/deploy`; Flux in the cluster polls that repository across the WAN and rolls the change out, each site
+  pulling the image from site a. The `webapp` replicas (one per region) share a PostgreSQL in region a, so each
+  response shows what the WAN costs: `Database: 1 ms` in a, ~75 ms in b, ~250 ms in c. Remove the `ci` line from
+  `topology.yml` to run without it.
 
 ## Measured footprint
 
@@ -89,6 +99,7 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 | 3 | Phase 2 + WireGuard mesh + BIRD (OSPF) on the gateways | 945 MiB as reported; 111 MiB anon + kernel (gateways 6 MiB each) | router image 22.6 MiB, 1.9 GiB pool |
 | 4 | Phase 3 + K3s (server + 2 agents, Traefik on each, demo pods) + zot image cache | 1182 MiB anon + kernel (a-cp1 757, agents ~172 each, cache 55) | cache image 67 MiB, 4.1 GiB pool |
 | 5–6 | Phase 4 + `mon` (VictoriaMetrics + Grafana) + node/blackbox exporters | 1635 MiB anon + kernel (mon 326, gateways 28 each) | 6.5 GiB pool (Grafana 1.4 GiB) |
+| 7 | Phase 6 + `ci` (Gitea, runner, registry) + Flux + webapp/PostgreSQL | 2217 MiB anon + kernel (ci 234, mon 406, agents ~300) | 8.95 GiB pool (ci ~1.4 GiB) |
 
 Incus reports memory including page cache, which the kernel reclaims under pressure; after provisioning most of
 it is apt and Python files read once.

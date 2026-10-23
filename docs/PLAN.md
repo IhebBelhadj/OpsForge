@@ -23,7 +23,7 @@ on one laptop, with the smallest possible RAM footprint.
 | Control-plane placement | Single site; workers stretched across sites | etcd/control planes over a lossy WAN is an anti-pattern; multi-cluster comes later. |
 | Provisioning | Ansible from the host (controller), inventory generated | Manages "remote" machines the way real ops does; idempotent. |
 | Monitoring | Prometheus (short retention) or VictoriaMetrics + Grafana, blackbox probes | WAN health must be visible. |
-| CI/CD | Optional profile: Gitea/Woodpecker + `registry:2` + Flux | Fraction of Jenkins/Sonar/Nexus RAM; GitOps pull across the WAN is realistic. |
+| CI/CD | Optional `ci` node: Gitea + Actions (runner building with buildah) + `registry:2` + Flux | Fraction of Jenkins/Sonar/Nexus RAM; GitOps pull across the WAN is realistic. |
 
 ### What containers can and cannot simulate
 - ✅ Latency, jitter, loss, reordering, bandwidth caps, MTU issues, NAT, firewalls, WireGuard/IPsec,
@@ -110,11 +110,12 @@ gateways and is the single place where link conditions are applied.
 | wan-core | Alpine, tc/nftables | 64 MiB | ~15–25 MB |
 | a-gw / b-gw / c-gw | Alpine, NAT/FW/WireGuard, dnsmasq, node + blackbox exporters | 128 MiB each (Ansible's Python modules OOM at 64) | ~10–20 MB each (measured 28 MiB) |
 | a-cp1 | K3s server + Traefik | 1.5 GiB | ~500–700 MB (measured 757 MiB) |
-| mon | VictoriaMetrics + Grafana, own node in site b (survives partitioning site a) | 512 MiB | ~200–300 MB (measured 326 MiB) |
+| mon | VictoriaMetrics + Grafana, own node in site b (survives partitioning site a) | 768 MiB (512 thrashed during a provision, Phase 7) | ~200–300 MB (measured 326 MiB; 406 with Phase 7's series) |
 | b-w1, c-w1 | K3s agent + Traefik | 768 MiB each | ~250–400 MB each (measured ~172 MiB) |
-| ci (optional) | Gitea + Woodpecker + registry | 1 GiB | ~500–800 MB |
+| ci (optional) | Gitea + Actions runner + registry; builds with buildah | 1 GiB | ~500–800 MB (measured 234 MiB idle) |
 | opsforge-cache | zot pull-through registry (outside the lab, Phase 4) | 256 MiB | ~30–60 MB (measured 55 MiB) |
 | **Total (no CI)** | | | **≈ 1.5–2.1 GB (measured 1.6 GiB, Phase 5)** |
+| **Total (with CI)** | | | **measured 2.2 GiB (Phase 7: ci 234, Flux + webapp ~50 MiB per agent)** |
 
 
 ## 4. Repository layout (target)
@@ -485,12 +486,60 @@ independently) plus ~1 s of ingestion. Fresh `down && up && provision` 7.7 min (
 
 **Done when:** each scenario runs from one command and prints pass/fail against its expectation. **Met.**
 
-### Phase 7: Lightweight CI/CD (optional profile `ci: true`)
-- [ ] Gitea (+ Actions) or Woodpecker, and `registry:2`, on a `ci` node in site a.
-- [ ] Flux on the cluster pulls manifests from Gitea (GitOps across the WAN); replaces the webhook stub.
-- [ ] A small reference workload (web app + database) deployed through the pipeline.
+### Phase 7: Lightweight CI/CD (optional `ci` node) (done 2026-10-23)
+- [x] **Opt-in by role**, like `monitoring`: a node `ci: { site: a, role: ci, cpu: 2, memory: 1GiB }` in
+      `topology.yml` (the planned `profiles.ci` flag was dropped as redundant). `topology_errors`: one ci node at
+      most; it needs a k3s-server (Flux deploys to it) and `interconnect: vpn` (every site pulls from its registry).
+- [x] **Gitea 28.2** (binary from dl.gitea.com, sha256-checked, cached in `.opsforge/cache/` and copied over the
+      management path like K3s) with **Actions**: SQLite, HTTP on 3000 (the VPN encrypts between sites), offline
+      mode, registration off. Every secret Gitea would otherwise write into `app.ini` comes from `.opsforge/ci/`
+      (**found:** with OAuth2 off it still wants `oauth2.JWT_SECRET` and crash-looped on the read-only file).
+      Ansible creates the admin `opsforge` (CLI, password in `.opsforge/gitea-admin`), the bot `ci-bot` (write on the
+      deploy repo only) and the public repos `opsforge/webapp` and `opsforge/deploy` through the API.
+      **Chose Gitea Actions over Woodpecker:** Gitea is needed either way; Actions adds one process (the runner)
+      instead of a server and an agent.
+- [x] **Runner** `gitea-runner` 5.2 (act_runner's new name), label `lab`, **host mode**: jobs run as root on the ci
+      node, no Docker. Images are built with **buildah** (Debian package), `--isolation chroot --network host`, which
+      works in the unprivileged container without nesting (spike: `netavark` must be installed even with host
+      networking). Base images come through the zot cache (`/etc/containers/registries.conf.d/50-opsforge.conf`).
+      No `uses:` actions: in host mode they need Node.js and a download from github.com; the workflow checks out
+      with `git`. Topology-dependent values (registry, deploy repo, bot) are Actions variables set by Ansible, the
+      bot's password an Actions secret, so the seeded repository is static.
+- [x] **Registry:** Debian's `docker-registry` (distribution 2.8, ~30 MiB) on :5000 with **TLS from the node's lab
+      certificate** (`ci.a.lab`), no auth (reachable from the VPCs only, never exposed). Every node already trusts the
+      lab CA, so containerd and buildah need no insecure-registry settings; sites b and c pull across the WAN.
+- [x] **Flux 2.9** (source + kustomize controllers only, ~60 MiB) rendered once by the Flux CLI on the controller
+      (`flux install --export`, cached under `.opsforge/k3s/`) and applied as a K3s manifest, with a GitRepository
+      polling `http://ci.a.lab:3000/opsforge/deploy.git` every 30 s and a Kustomization (prune). K3s' deploy
+      controller retried the GitRepository until Flux's CRDs existed: no ordering needed. **The pipeline commits the
+      new tag** (`newTag` in `webapp/kustomization.yaml`) instead of Flux's image-automation controllers: two fewer
+      controllers and no Gitea write credentials in the cluster. This replaces the planned "webhook stub".
+- [x] **Reference workload** `webapp` (`ansible/roles/ci/files/webapp`, Go + `lib/pq`, static binary FROM scratch,
+      ~7 MB to pull per site): one replica per region (served at `/app` by each site's ingress, same zone-preferring
+      Service as the demo) and one PostgreSQL 18 in the control plane's region (local-path PVC). Each response gives
+      the version (commit), node, region (the pod's `topology.kubernetes.io/region` label, copied from the node by
+      Kubernetes 1.37) and the database round trip: 1–15 ms in a, 75–90 ms in b, 250–300 ms in c.
+      The repositories are seeded on the first provision only (while empty): then Gitea is the source of truth.
+      **Found while testing:** after the first push two webapp pods ran in c and none in a: topology spread counted
+      the old revision's pods while placing the new ones. `matchLabelKeys: [pod-template-hash]` spreads each revision
+      on its own; three rollouts in a row then kept one pod per region.
+- [x] `verify` checks, once ci is provisioned: Gitea healthy, the runner online, every K3s node reaching the registry
+      with a trusted certificate, the last webapp run successful, Flux's GitRepository and Kustomization Ready, and each
+      site's `/app` served in its own region with a working database. Scenario **`ci-rollout`**: a push from the host
+      (through `forward ci:3000 --local 13000`, like a developer on the internet), then build, then each site serving
+      the pushed version from a replica in that site.
+- [x] **Found and fixed:** mon (512 MiB) thrashed at its limit during a provision (100 % memory pressure, an OOM
+      kill, even `incus exec` hung for minutes): Phase 7's series raised its idle use to ~400 MiB and Debian's
+      node-exporter collectors ran their apt timer (a Python apt-cache load every 15 min) on top. mon is now 768 MiB
+      and that timer is masked on every Debian node.
 
 **Done when:** a push to Gitea builds an image, pushes to the registry, and Flux rolls it out across sites.
+**Met 2026-10-23:** `ci-rollout` passes: build 3–9 s (warm module and build caches; the first build on a fresh ci node 26 s,
+golang:1.27-alpine coming from the zot cache, which survives `down`), every site serving the new version 53–59 s after the push (Flux's
+30 s poll, then the pull and readiness). Fresh `down && up && provision` 6.5 min, green first time (the first build
+runs while K3s installs); a no-op `provision` 71 s with `changed=0`. `verify --mem --disk`: **2068–2217 MiB** anon +
+kernel idle (ci 234, mon ~400, agents ~300 with Flux and the webapp), pool 8.8–9.0 GiB (the ci node ~1.4 GiB:
+buildah, Gitea, git, the golang base image).
 
 ### Phase 8: Multi-cluster (realistic multi-cloud)
 - [ ] Design note: reserve `cluster:` as an optional per-node field in the schema from Phase 4, defaulting to
@@ -527,4 +576,5 @@ independently) plus ~1 s of ingestion. Fresh `down && up && provision` 7.7 min (
   Linux VM, which is out of scope. (Resolved; revisit only if another developer needs it.)
 - **Default sites:** 3. Three sites give a triangle with an asymmetric link, which is the smallest topology where
   partition and routing behaviour is interesting.
-- **CI:** opt-in (`profiles.ci`), as in Phase 7.
+- **CI:** opt-in, as in Phase 7: a node with `role: ci` in `topology.yml` (the `profiles.ci` flag first planned was
+  dropped as redundant with the role, like `monitoring`).

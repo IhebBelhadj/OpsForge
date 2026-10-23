@@ -1,0 +1,52 @@
+- name: Create a work tree for {{ ci_seed_repo }}
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: "-{{ ci_seed_repo }}"
+  register: ci_seed_dir
+
+- name: Copy the webapp's source
+  ansible.builtin.copy:
+    src: webapp/
+    dest: "{{ ci_seed_dir.path }}/"
+    mode: preserve
+  when: ci_seed_repo == ci_app_repo
+
+- name: Create the deploy manifests' directory
+  ansible.builtin.file:
+    path: "{{ ci_seed_dir.path }}/webapp"
+    state: directory
+    mode: "0755"
+  when: ci_seed_repo == ci_deploy_repo
+
+- name: Render the deploy manifests
+  ansible.builtin.template:
+    src: "deploy/{{ item.src }}"
+    dest: "{{ ci_seed_dir.path }}/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: kustomization.yaml.j2, dest: kustomization.yaml }
+    - { src: webapp-kustomization.yaml.j2, dest: webapp/kustomization.yaml }
+    - { src: namespace.yaml.j2, dest: webapp/namespace.yaml }
+    - { src: postgres.yaml.j2, dest: webapp/postgres.yaml }
+    - { src: webapp.yaml.j2, dest: webapp/webapp.yaml }
+  when: ci_seed_repo == ci_deploy_repo
+
+- name: Push the initial commit of {{ ci_seed_repo }}
+  ansible.builtin.shell: |
+    set -euo pipefail
+    git init -q -b main
+    git add -A
+    git -c user.name={{ ci_admin_user }} -c user.email={{ ci_admin_user }}@noreply.{{ lab_domain }} \
+      commit -qm "Initial commit (seeded by OpsForge)"
+    git -c http.extraHeader="Authorization: Basic {{ (ci_admin_user ~ ':' ~ ci_admin_password) | b64encode }}" \
+      push -q http://127.0.0.1:{{ ci_gitea_port }}/{{ ci_admin_user }}/{{ ci_seed_repo }}.git main
+  args:
+    chdir: "{{ ci_seed_dir.path }}"
+    executable: /bin/bash
+  changed_when: true
+  no_log: true
+
+- name: Remove the work tree
+  ansible.builtin.file:
+    path: "{{ ci_seed_dir.path }}"
+    state: absent
