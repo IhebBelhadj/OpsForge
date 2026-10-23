@@ -1,5 +1,6 @@
-# One PostgreSQL in region {{ ci_db_region }} (with the control plane); replicas in the other regions query it
-# across the WAN. Lab credentials, in Git on purpose: the repository never leaves the lab.
+# One PostgreSQL, in cluster {{ ci_db_cluster }}, region {{ ci_db_region }}; replicas in the other regions query it
+# across the WAN (other clusters through Skupper). Lab credentials, in Git on purpose: the repository never leaves the
+# lab.
 apiVersion: v1
 kind: Secret
 metadata:

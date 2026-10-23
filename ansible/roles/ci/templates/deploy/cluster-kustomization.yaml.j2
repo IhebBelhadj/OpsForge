@@ -1,0 +1,21 @@
+# Seeded by ansible/roles/ci; from then on this repository is the source of truth. Flux in cluster {{ ci_cluster }}
+# applies this directory (GitRepository + Kustomization opsforge-deploy in flux-system); the webapp pipeline commits
+# image tags to webapp/kustomization.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../webapp
+{% if ci_cluster == ci_db_cluster %}
+  - ../../postgres
+{% if lab_clusters | length > 1 %}
+  # Offered to the other clusters through Skupper
+  - postgres-connector.yaml
+{% endif %}
+{% else %}
+  # The database runs in cluster {{ ci_db_cluster }}: reached through Skupper
+  - postgres-listener.yaml
+{% endif %}
+# One replica per region of this cluster
+replicas:
+  - name: webapp
+    count: {{ lab_clusters[ci_cluster].sites | length }}

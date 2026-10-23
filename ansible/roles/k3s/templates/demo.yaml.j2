@@ -4,7 +4,7 @@
 # minDomains: with a region partitioned (tainted, so not counted) it would keep the evicted pod Pending.
 # The Service prefers endpoints in the caller's zone and Traefik goes through it (nativelb) instead of picking any
 # pod, so a request entering a site is served in that site while it has a pod.
-{% set k3s_sites = (groups['k3s_server'] + groups['k3s_agent'] | default([])) | map('extract', hostvars, 'lab_site') | unique %}
+{% set k3s_sites = lab_clusters[k3s_cluster].sites %}
 apiVersion: v1
 kind: Namespace
 metadata:

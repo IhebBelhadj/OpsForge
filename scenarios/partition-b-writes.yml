@@ -1,3 +1,4 @@
+layout: stretched
 description: >
   Partition site b for 60 s while a pod in b writes 120 ConfigMaps (one per second, each retried until the API
   server in site a accepts it). No write may be lost, writes must stall during the partition, and resume once healed.

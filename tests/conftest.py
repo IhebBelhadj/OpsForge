@@ -27,3 +27,9 @@ cli = _load_cli()
 def topo():
     """A fresh copy of the repo's topology.yml that tests may mutate."""
     return copy.deepcopy(cli.load_topology())
+
+
+@pytest.fixture
+def multi():
+    """A fresh copy of the multi-cluster layout (topologies/multi-cluster.yml)."""
+    return copy.deepcopy(cli.load_topology(ROOT / "topologies" / "multi-cluster.yml"))

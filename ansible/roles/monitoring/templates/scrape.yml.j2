@@ -1,7 +1,6 @@
 # {{ ansible_managed }}
 # Prometheus-format scrape config for VictoriaMetrics on {{ inventory_hostname }}. Every target is reached across
 # the VPN at its private address; opsforge's gateway firewalls let this node in.
-{% set k3s_nodes = (groups['k3s_server'] | default([])) + (groups['k3s_agent'] | default([])) %}
 global:
   scrape_interval: {{ monitoring_scrape_interval }}
 
@@ -43,24 +42,25 @@ scrape_configs:
       - action: labeldrop
         regex: prober
 {% endfor %}
-{% if k3s_nodes %}
+{% for cluster, c in lab_clusters.items() %}
 
-  # K3s: kubelets, their cAdvisor and the API server with a read-only ServiceAccount token (ansible/roles/k3s
-  # templates/monitoring.yaml.j2), and kube-state-metrics on a NodePort. Only the series the dashboards use are kept.
+  # K3s cluster {{ cluster }}: kubelets, their cAdvisor and the API server with a read-only ServiceAccount token
+  # (ansible/roles/k3s templates/monitoring.yaml.j2), and kube-state-metrics on a NodePort of the server. Only the
+  # series the dashboards use are kept. Job names carry the cluster; the job label does not (dashboards use it).
 {% for job, path, keep in [
   ('kubelet', '/metrics', 'kubelet_running_pods|kubelet_running_containers|kubelet_node_name'),
   ('cadvisor', '/metrics/cadvisor', 'container_cpu_usage_seconds_total|container_memory_working_set_bytes'),
 ] %}
-  - job_name: {{ job }}
+  - job_name: {{ job }}-{{ cluster }}
     scheme: https
     metrics_path: {{ path }}
-    bearer_token_file: {{ monitoring_k3s_token_file }}
+    bearer_token_file: {{ monitoring_k3s_token_dir }}/k3s-token-{{ cluster }}
     tls_config:
       insecure_skip_verify: true
     static_configs:
-{% for host in k3s_nodes %}
+{% for host in c.nodes %}
       - targets: ["{{ hostvars[host].lab_address }}:10250"]
-        labels: { node: {{ host }}, site: {{ hostvars[host].lab_site }} }
+        labels: { job: {{ job }}, cluster: {{ cluster }}, node: {{ host }}, site: {{ hostvars[host].lab_site }} }
 {% endfor %}
     metric_relabel_configs:
       - source_labels: [__name__]
@@ -68,23 +68,25 @@ scrape_configs:
         action: keep
 {% endfor %}
 
-  - job_name: apiserver
+  - job_name: apiserver-{{ cluster }}
     scheme: https
-    bearer_token_file: {{ monitoring_k3s_token_file }}
+    bearer_token_file: {{ monitoring_k3s_token_dir }}/k3s-token-{{ cluster }}
     tls_config:
       insecure_skip_verify: true
     static_configs:
-      - targets: ["{{ hostvars[groups['k3s_server'][0]].lab_address }}:6443"]
+      - targets: ["{{ hostvars[c.server].lab_address }}:6443"]
+        labels: { job: apiserver, cluster: {{ cluster }} }
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: "apiserver_request_total|apiserver_current_inflight_requests"
         action: keep
 
-  - job_name: kube-state-metrics
+  - job_name: kube-state-metrics-{{ cluster }}
     static_configs:
-      - targets: ["{{ hostvars[groups['k3s_server'][0]].lab_address }}:{{ monitoring_ksm_node_port }}"]
+      - targets: ["{{ hostvars[c.server].lab_address }}:{{ monitoring_ksm_node_port }}"]
+        labels: { job: kube-state-metrics, cluster: {{ cluster }} }
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: "kube_node_status_condition|kube_node_spec_unschedulable|kube_pod_info|kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas.*|kube_daemonset_status_number_ready|kube_daemonset_status_desired_number_scheduled"
         action: keep
-{% endif %}
+{% endfor %}

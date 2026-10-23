@@ -37,10 +37,11 @@ ci_gitea_internal_token: >-
 # Gitea needs it even with OAuth2 off: 32 bytes as unpadded base64url (43 characters)
 ci_gitea_jwt_secret: >-
   {{ lookup('ansible.builtin.password', ci_state_dir ~ '/jwt-secret', length=43, chars=ci_password_chars) }}
-# Reference workload: one replica per K3s region, the database in the control plane's region
-ci_regions: >-
-  {{ (groups['k3s_server'] + groups['k3s_agent'] | default([])) | map('extract', hostvars, 'lab_site') | unique }}
-ci_db_region: "{{ hostvars[groups['k3s_server'][0]].lab_site }}"
+# Reference workload: one replica per K3s region, the database in the first cluster, in its server's region. With
+# several clusters, the others reach it through Skupper (namespace ci_skupper_namespace = k3s_skupper_namespace).
+ci_db_cluster: "{{ lab_clusters | first }}"
+ci_db_region: "{{ hostvars[lab_clusters[ci_db_cluster].server].lab_site }}"
+ci_skupper_namespace: mesh
 ci_db_password: >-
   {{ lookup('ansible.builtin.password', ci_state_dir ~ '/db-password', length=24, chars=ci_password_chars) }}
 ci_postgres_image: docker.io/library/postgres:18-alpine
@@ -49,3 +50,9 @@ ci_variables:
   REGISTRY: "{{ ci_registry }}"
   DEPLOY_REPO: "{{ ci_deploy_owner_repo }}"
   DEPLOY_USER: "{{ ci_bot_user }}"
+# Files of each cluster's directory in the deploy repository; `when`: only in (true) / outside (false) the database's
+# cluster. The connector is only rendered into kustomization.yaml's resources with several clusters.
+ci_cluster_files:
+  - { src: cluster-kustomization.yaml.j2, dest: kustomization.yaml }
+  - { src: cluster-postgres-connector.yaml.j2, dest: postgres-connector.yaml, when: true }
+  - { src: cluster-postgres-listener.yaml.j2, dest: postgres-listener.yaml, when: false }

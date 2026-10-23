@@ -1,5 +1,5 @@
 # {{ ansible_managed }}
-# {{ inventory_hostname }}: K3s {{ 'server' if lab_role == 'k3s-server' else 'agent' }} in region {{ lab_site }}
+# {{ inventory_hostname }}: K3s {{ 'server' if lab_role == 'k3s-server' else 'agent' }} of cluster {{ k3s_cluster }}, region {{ lab_site }}
 token: {{ k3s_token }}
 {% if lab_role == 'k3s-agent' %}
 # The server's private address, reached across the site-to-site VPN

@@ -1,0 +1,65 @@
+layout: multi-cluster
+description: >
+  Phase 8's acceptance: a service survives the total loss of the cluster it is primarily served from. A backend runs
+  in the clusters of sites a and b; site c's cluster only has a Skupper Listener for it. Skupper serves c from b (link
+  cost 90, the b-c RTT, against 120 to a). Site b is then partitioned (its cluster is gone for c): requests must keep
+  succeeding, now served from a, and return to b after heal.
+setup:
+  - run:
+      cmd: >-
+        for c in ${cluster:a} ${cluster:b}; do
+        ./opsforge kubectl --cluster $c delete namespace scenario --ignore-not-found --wait=true &&
+        ./opsforge kubectl --cluster $c apply -f scenarios/manifests/backend.yaml &&
+        ./opsforge kubectl --cluster $c -n scenario wait --for=condition=available deploy/backend --timeout=120s ||
+        exit 1; done &&
+        ./opsforge kubectl --cluster ${cluster:c} apply -f scenarios/manifests/backend-client.yaml
+    name: deploy
+  # Five in a row: until Traefik loads the new Ingress, /backend falls through to the demo's / route (served in c)
+  - wait_until:
+      host: "${node:c}"
+      cmd: >-
+        for i in 1 2 3 4 5; do curl -sf -m 5 http://${ip:${node:c}}/backend | grep -qx "Name: ${node:b}" || exit 1;
+        done
+      timeout: 180s
+    name: primary
+  - http: { from: "${node:c}", url: "http://${ip:${node:c}}/backend", count: 20 }
+    name: base
+fault:
+  - partition: b
+measure:
+  # New connections every 0.5 s straight to the Listener's Service (not through Traefik, whose pooled keep-alive
+  # connections stay on the cluster they were opened to): how many fail before Skupper routes around the lost cluster
+  - run:
+      host: "${node:c}"
+      cmd: >-
+        ip=$(k3s kubectl -n mesh get svc backend -o jsonpath={.spec.clusterIP}); ok=0; fail=0; first=;
+        for i in $(seq 60); do
+        if curl -sf -m 2 http://$ip/ | grep -qx "Name: ${node:a}"; then ok=$((ok+1)); [ -n "$first" ] || first=$i;
+        else fail=$((fail+1)); fi; sleep 0.5; done;
+        echo "$ok ok, $fail failed, served from a from request $first"; echo "$fail"
+      timeout: 300s
+    name: failover
+  - http: { from: "${node:c}", url: "http://${ip:${node:c}}/backend", count: 20 }
+    name: during
+teardown:
+  # After heal, new connections go back to b (the cheaper link); Traefik's pooled ones stay on a while in use
+  - wait_until:
+      host: "${node:c}"
+      cmd: >-
+        curl -sf -m 5 http://$(k3s kubectl -n mesh get svc backend -o jsonpath={.spec.clusterIP})/ |
+        grep -qx "Name: ${node:b}"
+      timeout: 180s
+    name: back
+  - run:
+      cmd: >-
+        ./opsforge kubectl --cluster ${cluster:c} delete -f scenarios/manifests/backend-client.yaml --wait=false;
+        for c in ${cluster:a} ${cluster:b}; do
+        ./opsforge kubectl --cluster $c delete -f scenarios/manifests/backend.yaml --wait=false; done
+expect:
+  deploy.exit: "== 0"
+  primary.ok: "== 1"
+  base.success_pct: "== 100"
+  during.success_pct: "== 100"
+  # each failed request costs 0.5-2.5 s: under 4 failures is a few seconds without service
+  failover.value: "< 4"
+  back.ok: "== 1"

@@ -58,6 +58,10 @@
         "properties": {
           "site": { "type": "string" },
           "role": { "enum": ["k3s-server", "k3s-agent", "monitoring", "ci", "plain"] },
+          "cluster": {
+            "$comment": "K3s nodes only: the cluster they join (default lab, one cluster stretched over its sites)",
+            "type": "string", "pattern": "^[a-z][a-z0-9-]{0,14}$"
+          },
           "cpu": { "type": "integer", "minimum": 1, "maximum": 16 },
           "memory": { "type": "string", "pattern": "^\\d+(MiB|GiB)$" },
           "expose": {

@@ -9,7 +9,7 @@
   delay: 3
   changed_when: false
   vars:
-    k3s_nodes: "{{ (groups['k3s_server'] + groups['k3s_agent'] | default([])) }}"
+    k3s_nodes: "{{ k3s_cluster_nodes }}"
 
 - name: Install the sample workload manifest
   ansible.builtin.template:
@@ -27,3 +27,7 @@
 - name: Install Flux
   ansible.builtin.include_tasks: flux.yml
   when: groups['ci'] | default([]) | length > 0
+
+- name: Link the clusters with Skupper
+  ansible.builtin.include_tasks: skupper.yml
+  when: lab_clusters | length > 1

@@ -270,3 +270,29 @@ def test_mtu_black_hole_drops_big_packets_both_ways(topo):
     assert "ip saddr 203.0.113.10 ip daddr 203.0.113.20 ip length gt 1400 drop" in script
     assert "ip saddr 203.0.113.20 ip daddr 203.0.113.10 ip length gt 1400 drop" in script
     assert "mtu" not in render.netem_args(state["links"]["a-b"])
+
+
+def test_stretched_layout_is_one_default_cluster(topo):
+    clusters = render.k3s_clusters(topo)
+    assert list(clusters) == [render.DEFAULT_CLUSTER]
+    assert clusters["lab"] == {"server": "a-cp1", "nodes": ["a-cp1", "b-w1", "c-w1"], "sites": ["a", "b", "c"],
+                             "api_port": render.K3S_API_PORT}
+    assert render.cluster_links(topo) == []
+
+
+def test_multi_cluster_ports_and_links_cost_the_rtt(multi):
+    clusters = render.k3s_clusters(multi)
+    assert {name: (c["server"], c["api_port"]) for name, c in clusters.items()} == {
+        "a": ("a-cp1", 6443), "b": ("b-cp1", 6444), "c": ("c-cp1", 6445),
+    }
+    # each cluster dials the earlier ones, at the smallest RTT between their sites
+    assert render.cluster_links(multi) == [("b", "a", 40), ("c", "a", 120), ("c", "b", 90)]
+
+
+def test_inventory_tags_k3s_nodes_with_their_cluster(multi, tmp_path):
+    inv = render.render_inventory(multi, tmp_path / "c", tmp_path)["all"]["children"]["lab"]
+    nodes = inv["children"]["nodes"]["hosts"]
+    assert nodes["b-cp1"]["lab_cluster"] == "b"
+    assert "lab_cluster" not in nodes["mon"]
+    assert inv["vars"]["lab_clusters"]["c"]["links"] == {"a": 120, "b": 90}
+    assert next(i for i in render.plan(multi, "10.99.0.1")[1] if i.name == "c-cp1").cluster == "c"

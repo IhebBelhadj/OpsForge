@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Cluster {{ k3s_cluster }}'s place in the application network: other clusters link to its router through a NodePort
+# of {{ inventory_hostname }} ({{ lab_address }}, across the VPN). Listeners appear as Services in this namespace
+# (<name>.{{ k3s_skupper_namespace }}); Connectors reach Services anywhere in the cluster with `host:`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ k3s_skupper_namespace }}
+---
+apiVersion: skupper.io/v2alpha1
+kind: Site
+metadata:
+  name: {{ k3s_cluster }}
+  namespace: {{ k3s_skupper_namespace }}
+spec:
+  linkAccess: nodeport

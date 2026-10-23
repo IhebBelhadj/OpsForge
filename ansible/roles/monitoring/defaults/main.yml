@@ -10,7 +10,8 @@ monitoring_grafana_port: 3000
 monitoring_ksm_node_port: 30808
 monitoring_node_exporter_port: 9100
 monitoring_blackbox_port: 9115
-monitoring_k3s_token_file: /etc/victoria-metrics/k3s-token
+# One read-only ServiceAccount token per K3s cluster: k3s-token-<cluster>
+monitoring_k3s_token_dir: /etc/victoria-metrics
 # Kept on the controller; Grafana also lets anyone in as a read-only viewer
 monitoring_grafana_password: >-
   {{ lookup('ansible.builtin.password', lab_state_dir ~ '/grafana-admin', length=24,

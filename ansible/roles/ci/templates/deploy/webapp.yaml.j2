@@ -1,10 +1,11 @@
-# One replica per region, like the demo; each site's ingress serves /app from its own region
+# One replica per region (clusters/<name> sets the count), like the demo; each site's ingress serves /app from its
+# own region
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: webapp
 spec:
-  replicas: {{ ci_regions | length }}
+  replicas: 1
   selector:
     matchLabels:
       app: webapp

@@ -2,12 +2,17 @@ k3s_version: v1.37.1+k3s1
 k3s_sha256: 92b94582eb7b34a8cf532e6006842b9ed215a6783cf56a3dd6271fd35243b2c0
 # On the controller; survives opsforge down, so the binary is downloaded once and the join token stays stable
 k3s_cache_dir: "{{ lab_state_dir }}/k3s"
+# One cluster per `cluster:` in topology.yml (Phase 8); the default (stretched) cluster keeps its Phase 4 token file
+k3s_cluster: "{{ lab_cluster }}"
 k3s_token: >-
-  {{ lookup('ansible.builtin.password', k3s_cache_dir ~ '/token', length=48, chars=['ascii_letters', 'digits']) }}
-k3s_server_host: "{{ groups['k3s_server'][0] }}"
+  {{ lookup('ansible.builtin.password', k3s_cache_dir ~ '/token' ~ ('' if k3s_cluster == 'lab' else '-' ~ k3s_cluster),
+     length=48, chars=['ascii_letters', 'digits']) }}
+k3s_server_host: "{{ lab_clusters[k3s_cluster].server }}"
+k3s_cluster_nodes: "{{ lab_clusters[k3s_cluster].nodes }}"
 k3s_api_port: 6443
-# Where the host reaches the API: `opsforge kubectl` forwards this local port to the server (opsforge KUBECONFIG)
-k3s_kubeconfig: "{{ lab_state_dir }}/kubeconfig"
+# Where the host reaches the API: `opsforge kubectl --cluster <name>` forwards this local port to the server
+k3s_host_api_port: "{{ lab_clusters[k3s_cluster].api_port }}"
+k3s_kubeconfig: "{{ lab_state_dir }}/kubeconfig-{{ k3s_cluster }}"
 # Flannel VXLAN rides inside the WireGuard tunnels: its underlay MTU is the tunnels' (1420), not eth0's (1500).
 # Flannel subtracts the 50 bytes of VXLAN overhead itself: pods get 1370.
 k3s_flannel_mtu: "{{ lab_path_mtu }}"
@@ -34,4 +39,12 @@ k3s_flux_sha256: b4d22673e9246cbd628881f1a9ef3b090085dced291e42d804555cee8e8d42c
 k3s_flux_components: [source-controller, kustomize-controller]
 k3s_gitops_url: >-
   http://{{ groups['ci'][0] }}.{{ hostvars[groups['ci'][0]].lab_site }}.{{ lab_domain }}:3000/opsforge/deploy.git
+# Each cluster applies its own directory of the deploy repository
+k3s_gitops_path: ./clusters/{{ k3s_cluster }}
 k3s_gitops_interval: 30s
+# Phase 8, with several clusters: Skupper (application-level links between clusters) in each, one site per cluster in
+# namespace k3s_skupper_namespace. Links go to the other cluster's server (private IP + NodePort) across the VPN.
+k3s_skupper_version: 2.2.3
+k3s_skupper_manifest_sha256: b4e371e7bd532d6a342fdb671b8a9e9876c7892027165fbb85c42798f8c56bdb
+k3s_skupper_cli_sha256: 9eb77dab5f2659becaca53364a38df38746b1850788d2652ef2084fcc3b325ab
+k3s_skupper_namespace: mesh

@@ -1,0 +1,29 @@
+# One link from this cluster to k3s_skupper_peer.key, costing its RTT in ms (k3s_skupper_peer.value): Skupper routes
+# to the cheapest reachable cluster that serves a routing key. Links carry traffic both ways.
+- name: Check the link to cluster {{ k3s_skupper_peer.key }}
+  ansible.builtin.command: k3s kubectl -n {{ k3s_skupper_namespace }} get links -o name
+  register: k3s_skupper_links
+  check_mode: false  # read-only
+  changed_when: false
+
+- name: Create the link to cluster {{ k3s_skupper_peer.key }}
+  when: >-
+    k3s_skupper_links.stdout_lines | select('match', '^link.skupper.io/link-' ~ k3s_skupper_peer.key ~ '-') | list
+    | length == 0
+  block:
+    # A Link and its client certificate (Secret), issued by the peer's site CA
+    - name: Generate the link on cluster {{ k3s_skupper_peer.key }}
+      ansible.builtin.command: >-
+        skupper link generate --kubeconfig /etc/rancher/k3s/k3s.yaml -n {{ k3s_skupper_namespace }}
+        --cost {{ k3s_skupper_peer.value }} --timeout 120s
+      delegate_to: "{{ lab_clusters[k3s_skupper_peer.key].server }}"
+      register: k3s_skupper_link
+      changed_when: false
+      no_log: true
+
+    - name: Apply the link
+      ansible.builtin.command:
+        cmd: k3s kubectl -n {{ k3s_skupper_namespace }} apply -f -
+        stdin: "{{ k3s_skupper_link.stdout }}"
+      changed_when: true
+      no_log: true

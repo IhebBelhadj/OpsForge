@@ -20,7 +20,8 @@ on one laptop, with the smallest possible RAM footprint.
 | Fallback substrate | KVM via libvirt (free page reporting + KSM) | For non-Linux-container needs: clock-skew scenarios, different kernels. Only Phase 1 differs. |
 | Node OS | Debian 13 minimal (Alpine for router/gateways) | Small, systemd available for K3s; no snapd/cloud-init/multipathd. |
 | Kubernetes | **K3s**, embedded SQLite, bundled extras disabled | Lightest conformant distro; SQLite avoids etcd's latency sensitivity. |
-| Control-plane placement | Single site; workers stretched across sites | etcd/control planes over a lossy WAN is an anti-pattern; multi-cluster comes later. |
+| Control-plane placement | Single site; workers stretched across sites (`topology.yml`); or one cluster per site (`topologies/multi-cluster.yml`, Phase 8) | etcd/control planes over a lossy WAN is an anti-pattern. |
+| Multi-cluster interconnect | Skupper 2 (application-level links, cost = RTT), over the VPN | No CNI change or CIDR planning; cost-based failover between clusters. Submariner/Cilium Cluster Mesh heavier. |
 | Provisioning | Ansible from the host (controller), inventory generated | Manages "remote" machines the way real ops does; idempotent. |
 | Monitoring | Prometheus (short retention) or VictoriaMetrics + Grafana, blackbox probes | WAN health must be visible. |
 | CI/CD | Optional `ci` node: Gitea + Actions (runner building with buildah) + `registry:2` + Flux | Fraction of Jenkins/Sonar/Nexus RAM; GitOps pull across the WAN is realistic. |
@@ -116,6 +117,7 @@ gateways and is the single place where link conditions are applied.
 | opsforge-cache | zot pull-through registry (outside the lab, Phase 4) | 256 MiB | ~30–60 MB (measured 55 MiB) |
 | **Total (no CI)** | | | **≈ 1.5–2.1 GB (measured 1.6 GiB, Phase 5)** |
 | **Total (with CI)** | | | **measured 2.2 GiB (Phase 7: ci 234, Flux + webapp ~50 MiB per agent)** |
+| **Total, multi-cluster** (`topologies/multi-cluster.yml`: 3 servers at 2 GiB, Skupper, CI) | | | **measured 4.3 GiB (Phase 8: servers ~1.2 GiB each)** |
 
 
 ## 4. Repository layout (target)
@@ -541,14 +543,75 @@ runs while K3s installs); a no-op `provision` 71 s with `changed=0`. `verify --m
 kernel idle (ci 234, mon ~400, agents ~300 with Flux and the webapp), pool 8.8–9.0 GiB (the ci node ~1.4 GiB:
 buildah, Gitea, git, the golang base image).
 
-### Phase 8: Multi-cluster (realistic multi-cloud)
-- [ ] Design note: reserve `cluster:` as an optional per-node field in the schema from Phase 4, defaulting to
-      one cluster, so Phases 4-5 (labels, scrape configs, kubeconfig paths) are keyed by cluster, not global.
-- [ ] `clusters:` section in `topology.yml`; one K3s cluster per site (or per "cloud").
-- [ ] Interconnect with Submariner or Skupper (lighter) or Cilium Cluster Mesh (heavier: replaces flannel).
-- [ ] Scenarios: cross-cluster service failover, geo-aware DNS, loss of an entire "cloud".
+### Phase 8: Multi-cluster (realistic multi-cloud) (done 2026-10-23)
+- [x] **`cluster:` per node** (schema; K3s nodes only, default `lab`): nodes sharing a cluster form one K3s cluster,
+      so the Phase 4 stretched cluster is simply every node in `lab`. `render.k3s_clusters()` gives each cluster its
+      server, nodes, sites and the host's API port (6443 + its index); the inventory carries it as `lab_clusters` and
+      each K3s node's `lab_cluster`. Everything that assumed one cluster is keyed by it: the K3s token (the default
+      cluster keeps `.opsforge/k3s/token`, others `token-<cluster>`), `.opsforge/kubeconfig-<cluster>` (contexts named
+      after the cluster), `opsforge kubectl --cluster <name>` (default: the first; its own forward port), the demo
+      (one replica per region of each cluster), `verify` (nodes, demo, Flux per cluster), mon's scrape config (one job
+      per cluster and kind with that cluster's token; `job` label unchanged, `cluster` label added) and Flux (each
+      cluster applies `clusters/<name>` of the deploy repository). `topology_errors`: exactly one server per cluster;
+      several clusters need `interconnect: vpn`.
+- [x] **Second layout** `topologies/multi-cluster.yml`: same sites and WAN, one cluster per site (`a-cp1`, `b-cp1`,
+      `c-cp1`, all servers), chosen with `OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml` (inherited by nested
+      `./opsforge` calls, so scenarios follow it). `topology.yml` stays the stretched layout. `up` recreates a node whose
+      K3s role or cluster changes (instance tag `user.opsforge.cluster`): K3s cannot turn an agent into a server, or
+      move a node to another cluster, in place. Switching layouts: `down` then `up` (Gitea's repositories are only
+      seeded while empty, and the deploy layout differs).
+- [x] **Skupper 2.2.3** between clusters (one site per cluster in namespace `mesh`), application-level: no CNI change,
+      the clusters keep the same pod/service CIDRs. The release's cluster-scope manifest is applied as a K3s manifest
+      with three env additions: access types `local,nodeport`, default `nodeport`, and `SKUPPER_CLUSTER_HOST` = the
+      server's private IP (servicelb is off, so no LoadBalancer; the CLI only offers route/loadbalancer, the controller
+      has `nodeport`). Links therefore ride the VPN like all inter-site traffic (shaped). Each cluster links to every
+      cluster listed before it (`render.cluster_links`), generated with `skupper link generate` on the peer's server and
+      applied on its own; **link cost = the smallest RTT in ms between their sites** (b→a 40, c→a 120, c→b 90), so a
+      routing key is served from the nearest cluster that has it. Images `IfNotPresent` (the release says `Always`).
+      **Found:** Ansible passes `'\n'` in a Jinja string through literally, so `replace()` never matched the manifest's
+      `env:` block (the site then reported "Unsupported value for LinkAccess: nodeport"); `regex_replace` reads it.
+- [x] **CI across clusters:** the deploy repository is `webapp/` (base, still holding the image tag the pipeline
+      edits), `postgres/` and `clusters/<name>/` (what each cluster's Flux applies: the base, a replica per region, and
+      either the database or a Skupper Listener for it). PostgreSQL stays in the first cluster with a Connector; the
+      other clusters' webapps use `postgres.mesh` through Skupper, transparently (only `DATABASE_URL` differs).
+      Measured: database round trip from b 97 ms, from c 305 ms. ci-rollout: every site serves a pushed commit 46 s
+      after the push (three Flux instances polling independently).
+- [x] **Scenarios run on either layout:** `${node:<site>}` (the site's first K3s node), `${server:<site>}` (its
+      cluster's server) and `${cluster:<site>}` placeholders; `layout: stretched | multi-cluster` marks the ones that only
+      make sense on one (skipped, with a message, on the other: `partition-b-writes` needs one stretched cluster).
+- [x] Scenario **`cluster-failover`** (multi-cluster): a backend in the clusters of a and b, only a Skupper Listener
+      (and an ingress path) in c. c is served from b (cost 90 < 120); `partition b`: new connections fail for **2
+      requests (~2–4 s)**, then are served from a; 100 % success through c's ingress during the partition; new
+      connections back on b 34–39 s after heal. Traefik's pooled keep-alive connections stay on the cluster they were
+      opened to (per-connection routing), so the scenario measures failover with new connections to the Listener.
+      **Found:** the first runs failed every request for ~5 minutes (8.5 s each with a 10 s timeout). The Connector's
+      `host` (`backend.scenario.svc.cluster.local`, 4 dots, under ndots 5) was looked up through every search domain
+      first, the nodes' `a.lab b.lab c.lab` included, and the partitioned site's zone timed out at its gateway across
+      the WAN: a partitioned site's DNS slows every other site's new connections. A trailing dot (FQDN) fixed it: the
+      first request after the partition was already served from a. The webapp's PostgreSQL Connector has it too.
+      Also: the scenario's setup waits for both backends to be available (a race made a run fail fast).
+- [x] `verify`: per cluster as above, plus each Skupper site Ready and every expected link Ready (with its cost).
+- [x] **Sizing found while testing:** a server per cluster carries the control plane plus Traefik, Flux, Skupper's
+      controller and router, kube-state-metrics and the apps: **~1.2 GiB anon each**. At 1280 and then 1536 MiB the
+      servers thrashed (memory pressure 46–70 %, a TLS handshake timeout on the API, a Skupper site stuck Pending,
+      a link generation failing); at 2 GiB pressure is ~0. `verify --mem/--disk` ceilings are now per layout
+      (stretched 2500 MiB / 10 GiB, multi-cluster 4800 MiB / 14 GiB).
+- [ ] Geo-aware DNS: not built. Skupper's cost-based routing already serves each client from the nearest live
+      cluster; a health-checked GeoDNS (each site resolving a global name to the nearest healthy ingress) would be a
+      separate component.
+- [ ] Flannel `wireguard-native` with public node IPs (deferred here from Phase 4): not done; Skupper made it
+      unnecessary for linking clusters.
+- Not explained: through Skupper, curl's per-request timer reports about half the RTT for connections Skupper
+  already holds (47 ms on the 90 ms b-c link; 200 ms at 400 ms), while the wall clock over 11 keep-alive requests
+  matches one RTT each (957 ms, like 1091 ms over plain TCP with one more handshake). Treat `http` step latencies
+  through Skupper as relative.
 
 **Done when:** a service survives the total loss of the cluster it was primarily served from.
+**Met 2026-10-23:** `cluster-failover` passes repeatedly (2 failed requests, then 100 % from a). Multi-cluster lab
+from scratch (`down`, then `up` and `provision` with `OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml`): every check of
+`verify` green (3 clusters, 3 sites and 3 links Ready, 3 Flux, webapp in every region through Skupper, monitoring of
+all three); every scenario passes, `partition-b-writes` skipped; a no-op `provision` 89 s with `changed=0`.
+`verify --mem --disk`: **4450 MiB** anon + kernel (servers 1176–1245, mon 467, ci 188), pool 11.98 GiB.
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets

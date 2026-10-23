@@ -2,17 +2,17 @@ description: >
   Path-MTU black hole on a-b: packets over 1400 bytes vanish without an ICMP "fragmentation needed". The classic
   bug: small requests work, large responses hang. MSS clamping cannot help, since the hole is below the tunnel MTU.
 setup:
-  - transfer: { from: b-w1, url: "http://${ip:a-cp1}/data?size=2000000", timeout: 30s }
+  - transfer: { from: "${node:b}", url: "http://${ip:${node:a}}/data?size=2000000", timeout: 30s }
     name: base
 fault:
   - mtu: { link: a-b, bytes: 1400 }
 measure:
-  - http: { from: b-w1, url: "http://${ip:a-cp1}/", count: 10, timeout: 5s }
+  - http: { from: "${node:b}", url: "http://${ip:${node:a}}/", count: 10, timeout: 5s }
     name: small
-  - transfer: { from: b-w1, url: "http://${ip:a-cp1}/data?size=2000000", timeout: 15s }
+  - transfer: { from: "${node:b}", url: "http://${ip:${node:a}}/data?size=2000000", timeout: 15s }
     name: large
 teardown:
-  - transfer: { from: b-w1, url: "http://${ip:a-cp1}/data?size=2000000", timeout: 30s }
+  - transfer: { from: "${node:b}", url: "http://${ip:${node:a}}/data?size=2000000", timeout: 30s }
     name: after
 expect:
   base.ok: "== 1"

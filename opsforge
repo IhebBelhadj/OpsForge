@@ -4,6 +4,7 @@
 import argparse
 import base64
 import grp
+import itertools
 import ipaddress
 import json
 import os
@@ -24,7 +25,8 @@ sys.path.insert(0, str(ROOT / "lab"))
 import render  # noqa: E402
 import scenario  # noqa: E402
 
-TOPOLOGY = ROOT / "topology.yml"
+# Another layout (e.g. topologies/multi-cluster.yml) with OPSFORGE_TOPOLOGY=<path>, inherited by nested ./opsforge calls
+TOPOLOGY = Path(os.environ.get("OPSFORGE_TOPOLOGY") or ROOT / "topology.yml").resolve()
 SCHEMA = ROOT / "lab" / "topology.schema.json"
 ANSIBLE_DIR = ROOT / "ansible"
 INVENTORY = ANSIBLE_DIR / "inventory" / "hosts.yml"
@@ -41,10 +43,9 @@ WG_KEYS = STATE / "wg"
 FORWARDS = STATE / "forwards"
 # `opsforge capture`: pcaps, named <instance>-<timestamp>.pcap
 CAPTURES = STATE / "captures"
-# Fetched from the K3s server by `provision` (ansible/roles/k3s); points at 127.0.0.1:K3S_API_PORT, which
-# `opsforge kubectl` forwards to the server
-KUBECONFIG = STATE / "kubeconfig"
-K3S_API_PORT = 6443
+# Fetched from each K3s cluster's server by `provision` (ansible/roles/k3s) as kubeconfig-<cluster>; points at
+# 127.0.0.1:<the cluster's api_port> (render.k3s_clusters), which `opsforge kubectl` forwards to that server
+KUBECONFIGS = STATE
 # Sample workload deployed by ansible/roles/k3s (templates/demo.yaml.j2); verify checks it
 DEMO_NAMESPACE = "demo"
 DEMO_APP = "whoami"
@@ -60,6 +61,8 @@ CI_ADMIN_PASSWORD = STATE / "gitea-admin"
 CI_APP_REPO = "webapp"
 WEBAPP_NAMESPACE = "webapp"
 WEBAPP_PATH = "/app"
+# Phase 8: namespace of each cluster's Skupper site (ansible/roles/k3s k3s_skupper_namespace)
+SKUPPER_NAMESPACE = "mesh"
 # `opsforge scenario`: definitions in the repo, results (JSON per run) in the controller state
 SCENARIOS = ROOT / "scenarios"
 RESULTS = STATE / "results"
@@ -88,11 +91,13 @@ SPEC_KEY = "user.opsforge.spec"
 VPN_HANDSHAKE_MAX = 180
 # verify --mem: default ceiling for the whole lab's non-reclaimable memory (anon + kernel, image cache included), per
 # phase. Phase 5 measured 2026-10-23: 1635 MiB idle (a-cp1 746, agents 190-223, mon 326, cache 64, gateways 28 each).
-# Phase 7, with the optional ci node: 2227 MiB (ci 234, Flux + webapp ~50 per agent, mon 406)
-MEM_CEILING_MIB = 2500
+# Phase 7, with the optional ci node: 2227 MiB (ci 234, Flux + webapp ~50 per agent, mon 406). Phase 8, multi-cluster
+# (one server per site, Skupper, CI): 4450 MiB (servers 1176-1245 each at 2 GiB limits, mon 467, ci 188). Keyed by
+# scenario.layout().
+MEM_CEILING_MIB = {"stretched": 2500, "multi-cluster": 4800}
 # verify --disk: default ceiling for the storage pool's used space (images + instances), per phase (Phase 5: 6.47,
-# Grafana alone 1.4 GiB; Phase 7: 8.88, the ci node ~1.4 GiB of it)
-DISK_CEILING_GIB = 10
+# Grafana alone 1.4 GiB; Phase 7: 8.88, the ci node ~1.4 GiB of it; Phase 8 multi-cluster: 11.98)
+DISK_CEILING_GIB = {"stretched": 10, "multi-cluster": 14}
 # preflight warns when the pool (capped in lab/host/incus-preseed.yaml) is fuller than this
 POOL_WARN_FRACTION = 0.8
 SMOKE_IMAGE = "images:debian/13"
@@ -197,8 +202,17 @@ def topology_errors(topo):
             if addr.ip not in vpc or addr.ip == vpc.broadcast_address:
                 errors.append(f"nodes/{name}: site {site} VPC {vpc} has no address left for it")
     servers = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"]
-    if len(servers) > 1:
-        errors.append(f"nodes: only one k3s-server is supported per cluster, found {servers}")
+    for name, node in topo["nodes"].items():
+        if "cluster" in node and node["role"] not in render.K3S_ROLES:
+            errors.append(f"nodes/{name}: cluster is for K3s nodes only (role {node['role']})")
+    for cluster, c in render.k3s_clusters(topo).items():
+        cluster_servers = [n for n in c["nodes"] if topo["nodes"][n]["role"] == "k3s-server"]
+        if len(cluster_servers) > 1:
+            errors.append(f"cluster {cluster}: only one k3s-server is supported per cluster, found {cluster_servers}")
+        elif not cluster_servers:
+            errors.append(f"cluster {cluster}: k3s-agent nodes {c['nodes']} have no k3s-server to join")
+    if len(render.k3s_clusters(topo)) > 1 and topo.get("interconnect", "none") != "vpn":
+        errors.append("nodes: several K3s clusters are linked (Skupper) across the VPN: needs interconnect: vpn")
     monitors = [n for n, node in topo["nodes"].items() if node["role"] == "monitoring"]
     if len(monitors) > 1:
         errors.append(f"nodes: only one monitoring node is supported, found {monitors}")
@@ -211,9 +225,6 @@ def topology_errors(topo):
         errors.append(f"nodes/{cis[0]}: ci deploys to the K3s cluster with Flux: needs a k3s-server")
     if cis and topo.get("interconnect", "none") != "vpn":
         errors.append(f"nodes/{cis[0]}: every site pulls images from ci's registry across the VPN: needs interconnect: vpn")
-    agents = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-agent"]
-    if agents and not servers:
-        errors.append(f"nodes: k3s-agent nodes {agents} have no k3s-server to join")
     return errors
 
 
@@ -494,7 +505,19 @@ def ssh_ok(host):
 def desired_config(inst):
     """Instance config as `up` sets it: limits, the role/site tags and the fingerprint of its wiring and files."""
     tags = {"user.opsforge.role": inst.role} | ({"user.opsforge.site": inst.site} if inst.site else {})
+    tags |= {"user.opsforge.cluster": inst.cluster} if inst.cluster else {}
     return inst.config | tags | {SPEC_KEY: render.fingerprint(inst)}
+
+
+def k3s_identity_changed(current, desired):
+    """A K3s node changing role or cluster: K3s keeps node identity and cluster state on disk, so an agent cannot
+    become a server (or join another cluster) in place. Nodes from before Phase 8 have no cluster tag: the default."""
+    roles = (current.get("user.opsforge.role"), desired.get("user.opsforge.role"))
+    if not any(r in render.K3S_ROLES for r in roles):
+        return False
+    clusters = (current.get("user.opsforge.cluster", render.DEFAULT_CLUSTER if roles[0] in render.K3S_ROLES else None),
+                desired.get("user.opsforge.cluster"))
+    return roles[0] != roles[1] or clusters[0] != clusters[1]
 
 
 def config_changes(current, desired):
@@ -659,6 +682,10 @@ def cmd_up(args):
         cur = live.get(inst.name)
         if cur and cur["config"].get("volatile.base_image") != image_fingerprint(inst.image):
             print(f"  {inst.name}: image is now {inst.image}, recreating")
+            incus("delete", "--force", inst.name)
+            cur = None
+        elif cur and k3s_identity_changed(cur["config"], config):
+            print(f"  {inst.name}: K3s role or cluster changed ({inst.role}, cluster {inst.cluster}), recreating")
             incus("delete", "--force", inst.name)
             cur = None
         if cur is None:
@@ -1133,8 +1160,19 @@ def check_disk(r, ceiling):
     (r.ok if used <= ceiling * GIB else r.fail)(f"pool {describe_pool(used, total)} (ceiling {ceiling:g} GiB)")
 
 
-def k3s_server(topo):
-    return next((n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"), None)
+def k3s_cluster(topo, name=None):
+    """(name, cluster) from render.k3s_clusters: the named one, or the first in topology.yml."""
+    clusters = render.k3s_clusters(topo)
+    if not clusters:
+        raise LabError(f"{TOPOLOGY.name} has no K3s nodes")
+    name = name or next(iter(clusters))
+    if name not in clusters:
+        raise LabError(f"no K3s cluster {name}; clusters: {', '.join(clusters)}")
+    return name, clusters[name]
+
+
+def kubeconfig(cluster):
+    return KUBECONFIGS / f"kubeconfig-{cluster}"
 
 
 def kubectl_json(server, *args):
@@ -1143,40 +1181,70 @@ def kubectl_json(server, *args):
 
 
 def check_k3s(r, topo):
-    """Every K3s node Ready with its region label, demo pods in every region, and each site's public IP (port 80, from
-    the internet: wan-core) served by a pod in that site."""
+    """Per cluster: every K3s node Ready with its region label and demo pods in every region; then each site's public
+    IP (port 80, from the internet: wan-core) served by a pod in that site."""
     print("K3s (nodes Ready in their region, demo pods spread over regions, ingress served in the site it entered)")
-    server = k3s_server(topo)
-    nodes = kubectl_json(server, "get", "nodes")
-    if nodes is None:
-        r.fail(f"{server}: k3s kubectl get nodes failed")
-        return
-    live = {n["metadata"]["name"]: n for n in nodes}
-    for name, node in topo["nodes"].items():
-        if node["role"] not in render.K3S_ROLES:
-            continue
-        if name not in live:
-            r.fail(f"{name}: not a cluster node")
-            continue
-        ready = any(c["type"] == "Ready" and c["status"] == "True" for c in live[name]["status"]["conditions"])
-        region = live[name]["metadata"]["labels"].get("topology.kubernetes.io/region")
-        (r.ok if ready and region == node["site"] else r.fail)(
-            f"{name}: {'Ready' if ready else 'NOT Ready'}, region {region} (site {node['site']})"
-        )
-    k3s_sites = sorted({node["site"] for node in topo["nodes"].values() if node["role"] in render.K3S_ROLES})
-    pods = kubectl_json(server, "-n", DEMO_NAMESPACE, "get", "pods", "-l", f"app={DEMO_APP}") or []
-    running = {topo["nodes"].get(p["spec"].get("nodeName"), {}).get("site") for p in pods
-               if p["status"].get("phase") == "Running"}
-    for site in k3s_sites:
-        (r.ok if site in running else r.fail)(f"{DEMO_NAMESPACE}/{DEMO_APP}: {'a' if site in running else 'no'} "
-                                              f"running pod in region {site}")
-    for site in k3s_sites:
+    for cluster, c in render.k3s_clusters(topo).items():
+        check_k3s_cluster(r, topo, cluster, c)
+    for site in sorted({s for c in render.k3s_clusters(topo).values() for s in c["sites"]}):
         ip = topo["sites"][site]["public_ip"]
         out = run_in(render.WAN_CORE, "wget", "-qO-", "-T", "10", f"http://{ip}/").stdout
         m = re.search(r"^Name: (\S+)", out, re.M)
         served = topo["nodes"].get(m[1], {}).get("site") if m else None
         msg = f"http://{ip}/ (site {site}) " + (f"served by a pod on {m[1]} (site {served})" if m else "no answer")
         (r.ok if served == site else r.fail)(msg)
+
+
+def check_k3s_cluster(r, topo, cluster, c):
+    server = c["server"]
+    nodes = kubectl_json(server, "get", "nodes")
+    if nodes is None:
+        r.fail(f"cluster {cluster}: {server}: k3s kubectl get nodes failed")
+        return
+    live = {n["metadata"]["name"]: n for n in nodes}
+    extra = sorted(live.keys() - set(c["nodes"]))
+    if extra:
+        r.fail(f"cluster {cluster}: nodes not in {TOPOLOGY.name}: {', '.join(extra)}")
+    for name in c["nodes"]:
+        node = topo["nodes"][name]
+        if name not in live:
+            r.fail(f"{name}: not a node of cluster {cluster}")
+            continue
+        ready = any(c["type"] == "Ready" and c["status"] == "True" for c in live[name]["status"]["conditions"])
+        region = live[name]["metadata"]["labels"].get("topology.kubernetes.io/region")
+        (r.ok if ready and region == node["site"] else r.fail)(
+            f"{name}: {'Ready' if ready else 'NOT Ready'} in cluster {cluster}, region {region} (site {node['site']})"
+        )
+    pods = kubectl_json(server, "-n", DEMO_NAMESPACE, "get", "pods", "-l", f"app={DEMO_APP}") or []
+    running = {topo["nodes"].get(p["spec"].get("nodeName"), {}).get("site") for p in pods
+               if p["status"].get("phase") == "Running"}
+    for site in c["sites"]:
+        (r.ok if site in running else r.fail)(f"cluster {cluster}: {DEMO_NAMESPACE}/{DEMO_APP}: "
+                                              f"{'a' if site in running else 'no'} running pod in region {site}")
+
+
+def check_skupper(r, topo):
+    """Several clusters (Phase 8): each one's Skupper site Ready and its links to the clusters before it Ready."""
+    print(f"Skupper (a site per cluster in namespace {SKUPPER_NAMESPACE}, linked to every earlier cluster)")
+    clusters = render.k3s_clusters(topo)
+    links = render.cluster_links(topo)
+    for cluster, c in clusters.items():
+        sites = kubectl_json(c["server"], "-n", SKUPPER_NAMESPACE, "get", "sites") or []
+        site = next((x for x in sites if x["metadata"]["name"] == cluster), None)
+        status = (site or {}).get("status", {})
+        (r.ok if status.get("status") == "Ready" else r.fail)(
+            f"cluster {cluster}: site " + (f"{status.get('status')}, {status.get('sitesInNetwork', '?')} sites in "
+                                           f"the network" if site else "missing")
+        )
+        live = kubectl_json(c["server"], "-n", SKUPPER_NAMESPACE, "get", "links") or []
+        for src, peer, cost in links:
+            if src != cluster:
+                continue
+            link = next((x for x in live if x["metadata"]["name"].startswith(f"link-{peer}-")), None)
+            state = (link or {}).get("status", {}).get("status")
+            (r.ok if state == "Ready" else r.fail)(
+                f"cluster {cluster}: link to {peer} (cost {cost}) " + (state or "missing")
+            )
 
 
 def vm_query(mon, path, **params):
@@ -1255,18 +1323,18 @@ def check_ci(r, topo):
         )
     else:
         r.fail(f"no {CI_APP_REPO} pipeline run yet")
-    server = k3s_server(topo)
-    for label, kind in (("GitRepository", "gitrepositories.source.toolkit.fluxcd.io"),
-                        ("Kustomization", "kustomizations.kustomize.toolkit.fluxcd.io")):
-        items = kubectl_json(server, "-n", "flux-system", "get", kind)
+    for (cluster, c), (label, kind) in itertools.product(render.k3s_clusters(topo).items(), (
+            ("GitRepository", "gitrepositories.source.toolkit.fluxcd.io"),
+            ("Kustomization", "kustomizations.kustomize.toolkit.fluxcd.io"))):
+        items = kubectl_json(c["server"], "-n", "flux-system", "get", kind)
         if not items:
-            r.fail(f"flux-system: no {label}")
+            r.fail(f"cluster {cluster}: flux-system has no {label}")
         for item in items or []:
             status = item.get("status", {})
             ready = next((c for c in status.get("conditions", []) if c["type"] == "Ready"), {})
             revision = status.get("lastAppliedRevision") or status.get("artifact", {}).get("revision", "?")
             (r.ok if ready.get("status") == "True" else r.fail)(
-                f"Flux {label} {item['metadata']['name']}: "
+                f"cluster {cluster}: Flux {label} {item['metadata']['name']}: "
                 + (f"Ready at {revision}" if ready.get("status") == "True"
                    else f"not Ready ({ready.get('message', 'no status')[:120]})")
             )
@@ -1286,7 +1354,7 @@ def check_ci(r, topo):
 def cmd_verify(args):
     """Acceptance checks: latency, isolation, internet and bandwidth match topology + live link state (Phase 1);
     SSH access, DNS and PKI once provisioned (Phase 2); with interconnect: vpn, the tunnels (Phase 3); the K3s
-    cluster, its spread and per-site ingress once installed (Phase 4); monitoring targets and probes (Phase 5); the
+    cluster(s), their spread and per-site ingress once installed (Phase 4), Skupper between clusters (Phase 8); monitoring targets and probes (Phase 5); the
     CI/CD node, Flux and the webapp it deploys (Phase 7)."""
     topo = load_valid_topology()
     links = read_link_state()["links"]
@@ -1307,8 +1375,11 @@ def cmd_verify(args):
     if provisioned(topo):
         check_dns(r, topo)
         check_pki(r, topo)
-        if (server := k3s_server(topo)) and run_in(server, "test", "-x", "/usr/local/bin/k3s").returncode == 0:
+        servers = [c["server"] for c in render.k3s_clusters(topo).values()]
+        if servers and run_in(servers[0], "test", "-x", "/usr/local/bin/k3s").returncode == 0:
             check_k3s(r, topo)
+            if len(render.k3s_clusters(topo)) > 1:
+                check_skupper(r, topo)
         if (mon := render.monitoring_node(topo)) and run_in(mon, "test", "-x", "/usr/bin/victoria-metrics").returncode == 0:
             check_monitoring(r, topo)
         if (ci := ci_node(topo)) and run_in(ci, "test", "-x", "/usr/local/bin/gitea").returncode == 0:
@@ -1317,9 +1388,9 @@ def cmd_verify(args):
         print("Provisioning")
         r.warn("gateways run no dnsmasq: lab not provisioned, DNS and PKI checks skipped (./opsforge provision)")
     if args.mem is not None:
-        check_memory(r, args.mem)
+        check_memory(r, args.mem or MEM_CEILING_MIB[scenario.layout(topo)])
     if args.disk is not None:
-        check_disk(r, args.disk)
+        check_disk(r, args.disk or DISK_CEILING_GIB[scenario.layout(topo)])
     print("\nVerify " + ("\033[31mFAILED\033[0m" if r.failed else "\033[32mpassed\033[0m"))
     return 1 if r.failed else 0
 
@@ -1485,17 +1556,17 @@ def cmd_capture(args):
 
 
 def cmd_kubectl(args):
-    """kubectl from the host: the server's kubeconfig (fetched by provision) through an `opsforge forward` tunnel."""
-    server = k3s_server(load_valid_topology())
-    if server is None:
-        raise LabError("topology.yml has no k3s-server node")
-    if not KUBECONFIG.exists():
-        raise LabError(f"no {KUBECONFIG.relative_to(ROOT)} yet: run ./opsforge provision")
+    """kubectl from the host: a cluster's kubeconfig (fetched by provision) through an `opsforge forward` tunnel to
+    its server, on the cluster's own local port."""
+    cluster, c = k3s_cluster(load_valid_topology(), args.cluster)
+    config = kubeconfig(cluster)
+    if not config.exists():
+        raise LabError(f"no {config.relative_to(ROOT)} yet: run ./opsforge provision")
     if not shutil.which("kubectl"):
-        raise LabError(f"kubectl is not installed on the host (or: ./opsforge ssh {server} kubectl ...)")
-    if not any(f["local"] == K3S_API_PORT for f in active_forwards()):
-        start_forward(server, K3S_API_PORT, K3S_API_PORT, "127.0.0.1")
-    os.execvp("kubectl", ["kubectl", "--kubeconfig", str(KUBECONFIG), *args.kubectl_args])
+        raise LabError(f"kubectl is not installed on the host (or: ./opsforge ssh {c['server']} kubectl ...)")
+    if not any(f["local"] == c["api_port"] for f in active_forwards()):
+        start_forward(c["server"], render.K3S_API_PORT, c["api_port"], "127.0.0.1")
+    os.execvp("kubectl", ["kubectl", "--kubeconfig", str(config), *args.kubectl_args])
 
 
 def read_pre_fault():
@@ -1628,14 +1699,16 @@ class ScenarioRun:
 
     def target(self, name):
         """A lab host's name -> its private address (a gateway's VPC address); anything else unchanged."""
+        name = scenario.substitute(str(name), self.topo)
         if name in render.node_addresses(self.topo) or name.endswith("-gw"):
             return scenario.substitute(f"${{ip:{name}}}", self.topo)
-        return scenario.substitute(str(name), self.topo)
+        return name
 
     def shell(self, on, cmd, timeout):
         """(exit code, stdout) of a shell command on the host (from the repo root, so ./opsforge works) or in an
         instance."""
         cmd = scenario.substitute(cmd, self.topo)
+        on = scenario.substitute(on, self.topo)
         if on == "host":
             try:
                 res = subprocess.run(["bash", "-c", cmd], cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True,
@@ -1686,17 +1759,17 @@ class ScenarioRun:
                 got["value"] = float(last)
         elif kind == "ping":
             count, interval = int(arg.get("count", 20)), arg.get("interval", 0.2)
-            out = run_in(arg["from"], "ping", "-q", "-c", str(count), "-i", str(interval), self.target(arg["to"])).stdout
+            out = run_in(scenario.substitute(arg["from"], self.topo), "ping", "-q", "-c", str(count), "-i", str(interval), self.target(arg["to"])).stdout
             got = scenario.parse_ping(out)
         elif kind == "http":
             count, timeout = int(arg.get("count", 10)), scenario.seconds(arg.get("timeout", 10))
             url = scenario.substitute(arg["url"], self.topo)
             loop = (f"for i in $(seq {count}); do curl -s -o /dev/null -m {timeout:g} "
                     f"-w '%{{http_code}} %{{time_total}}\\n' '{url}'; done")
-            got = scenario.parse_http(run_in(arg["from"], "sh", "-c", loop).stdout)
+            got = scenario.parse_http(run_in(scenario.substitute(arg["from"], self.topo), "sh", "-c", loop).stdout)
         elif kind == "transfer":
             timeout = scenario.seconds(arg.get("timeout", 30))
-            res = run_in(arg["from"], "curl", "-s", "-o", "/dev/null", "-m", f"{timeout:g}", "-w",
+            res = run_in(scenario.substitute(arg["from"], self.topo), "curl", "-s", "-o", "/dev/null", "-m", f"{timeout:g}", "-w",
                          "%{http_code} %{size_download} %{time_total}", scenario.substitute(arg["url"], self.topo))
             got = scenario.parse_transfer(res.stdout, res.returncode)
         elif kind == "wait_until":
@@ -1733,7 +1806,8 @@ def cmd_scenario(args):
     if args.list or not args.name:
         for name, path in files.items():
             doc = yaml.safe_load(path.read_text())
-            print(f"{name:<24} {' '.join(str(doc.get('description', '')).split())}")
+            only = f"[{doc['layout']}] " if "layout" in doc else ""
+            print(f"{name:<24} {only}{' '.join(str(doc.get('description', '')).split())}")
         return 0
     if args.name not in files:
         raise LabError(f"no scenario {args.name}; scenarios: {', '.join(files)}")
@@ -1741,6 +1815,10 @@ def cmd_scenario(args):
     if errs := scenario.errors(doc):
         raise LabError(f"{files[args.name].relative_to(ROOT)}: " + "; ".join(errs))
     topo = load_valid_topology()
+    if doc.get("layout", scenario.layout(topo)) != scenario.layout(topo):
+        print(f"Scenario {args.name} skipped: needs the {doc['layout']} layout, {TOPOLOGY.name} is "
+              f"{scenario.layout(topo)}")
+        return 0
     if read_pre_fault() is not None:
         raise LabError("a fault is in place (./opsforge heal first): the scenario would heal it")
     print(f"Scenario {args.name}: {' '.join(str(doc['description']).split())}")
@@ -1836,12 +1914,14 @@ def main():
     p = sub.add_parser("verify", help="check the WAN, VPN, provisioning and K3s against topology and live links")
     p.add_argument("--quick", action="store_true", help="skip the bandwidth test")
     p.add_argument(
-        "--mem", nargs="?", type=int, const=MEM_CEILING_MIB, metavar="MIB",
-        help=f"also fail if the lab's non-reclaimable memory exceeds MIB (default {MEM_CEILING_MIB})",
+        "--mem", nargs="?", type=int, const=0, metavar="MIB",
+        help="also fail if the lab's non-reclaimable memory exceeds MIB (default per layout: "
+        + ", ".join(f"{k} {v}" for k, v in MEM_CEILING_MIB.items()) + ")",
     )
     p.add_argument(
-        "--disk", nargs="?", type=float, const=DISK_CEILING_GIB, metavar="GIB",
-        help=f"also fail if the storage pool's used space exceeds GIB (default {DISK_CEILING_GIB})",
+        "--disk", nargs="?", type=float, const=0, metavar="GIB",
+        help="also fail if the storage pool's used space exceeds GIB (default per layout: "
+        + ", ".join(f"{k} {v}" for k, v in DISK_CEILING_GIB.items()) + ")",
     )
     p.set_defaults(func=cmd_verify)
     sub.add_parser("render", help="print the generated networks, instances and config files").set_defaults(
@@ -1873,7 +1953,8 @@ def main():
     p.add_argument("--show", nargs="?", const="brief", choices=("brief", "full"),
                    help="also print the packets (decoded by the instance's tcpdump)")
     p.set_defaults(func=cmd_capture)
-    p = sub.add_parser("kubectl", help="kubectl against the lab cluster from the host, e.g. kubectl get nodes")
+    p = sub.add_parser("kubectl", help="kubectl against a lab cluster from the host, e.g. kubectl get nodes")
+    p.add_argument("--cluster", help="K3s cluster (default: the first in the topology); before kubectl's arguments")
     p.add_argument("kubectl_args", nargs=argparse.REMAINDER, help="passed to kubectl")
     p.set_defaults(func=cmd_kubectl)
     p = sub.add_parser("partition", help="cut a site off the other sites (100 %% loss on its links)")

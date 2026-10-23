@@ -8,16 +8,16 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 7 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
-> SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, WAN-aware monitoring
-> (VictoriaMetrics + Grafana, site-pair probes), scripted fault-injection scenarios and optional CI/CD (Gitea
-> Actions, a registry and Flux GitOps across the WAN). Multi-cluster (Phase 8) comes next.
+> **Status:** Phase 8 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
+> SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, or one cluster per site linked by
+> Skupper (`topologies/multi-cluster.yml`), WAN-aware monitoring (VictoriaMetrics + Grafana, site-pair probes),
+> scripted fault-injection scenarios and optional CI/CD (Gitea Actions, a registry and Flux GitOps across the WAN).
 
 ## Requirements
 
 - Linux host (developed on Arch Linux; `scripts/host-setup.sh` uses pacman)
 - ~3 GB free RAM and ~35 GB free disk (the lab uses 5–20 GB depending on phase); the optional CI node adds ~0.6 GB
-  RAM idle (up to 1 GiB while building)
+  RAM idle (up to 1 GiB while building); the multi-cluster layout needs ~5 GB free RAM
 
 ## Quick start
 
@@ -47,6 +47,9 @@ incus exec b-w1 -- ping 10.10.0.11     # ~40 ms: a-cp1's private address, throug
 ./opsforge forward ci:3000 --local 13000   # Gitea on http://127.0.0.1:13000 (user opsforge, .opsforge/gitea-admin)
 incus exec wan-core -- wget -qO- http://203.0.113.30/app   # the webapp Flux deployed, served in site c
 ./opsforge scenario ci-rollout # push a commit: build, registry, Flux rollout to every site
+export OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml   # another layout: one K3s cluster per site (down first)
+./opsforge kubectl --cluster c get pods -A   # each cluster has its own API on the host (6443, 6444, 6445)
+./opsforge scenario cluster-failover   # lose the cluster serving a service: Skupper serves it from the next one
 ./opsforge down                # delete the lab (keeps cached images and the image cache; --purge drops them)
 ./opsforge gc                  # delete images left by older opsforge builds
 ./opsforge snapshot provisioned   # snapshot every instance (btrfs CoW, <1 s); --list, --delete NAME
@@ -88,6 +91,10 @@ incus exec wan-core -- wget -qO- http://203.0.113.30/app   # the webapp Flux dep
   pulling the image from site a. The `webapp` replicas (one per region) share a PostgreSQL in region a, so each
   response shows what the WAN costs: `Database: 1 ms` in a, ~75 ms in b, ~250 ms in c. Remove the `ci` line from
   `topology.yml` to run without it.
+- **Multi-cluster** (`OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml`): the same sites, but each runs its own K3s
+  cluster, like regions of different clouds. Skupper links them over the VPN; each link costs its WAN RTT, so a
+  service offered by several clusters is served from the nearest one that is up. The webapp's replicas in b and c
+  reach PostgreSQL in a through Skupper. Scenarios use `${node:<site>}` and friends, so they run on either layout.
 
 ## Measured footprint
 
@@ -100,6 +107,7 @@ incus exec wan-core -- wget -qO- http://203.0.113.30/app   # the webapp Flux dep
 | 4 | Phase 3 + K3s (server + 2 agents, Traefik on each, demo pods) + zot image cache | 1182 MiB anon + kernel (a-cp1 757, agents ~172 each, cache 55) | cache image 67 MiB, 4.1 GiB pool |
 | 5–6 | Phase 4 + `mon` (VictoriaMetrics + Grafana) + node/blackbox exporters | 1635 MiB anon + kernel (mon 326, gateways 28 each) | 6.5 GiB pool (Grafana 1.4 GiB) |
 | 7 | Phase 6 + `ci` (Gitea, runner, registry) + Flux + webapp/PostgreSQL | 2217 MiB anon + kernel (ci 234, mon 406, agents ~300) | 8.95 GiB pool (ci ~1.4 GiB) |
+| 8 | Multi-cluster layout: 3 K3s servers (2 GiB limit each) + Skupper, with mon and ci | 4450 MiB anon + kernel (servers ~1.2 GiB each, mon 467, ci 188) | 12 GiB pool |
 
 Incus reports memory including page cache, which the kernel reclaims under pressure; after provisioning most of
 it is apt and Python files read once.

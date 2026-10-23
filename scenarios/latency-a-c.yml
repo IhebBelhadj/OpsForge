@@ -2,15 +2,15 @@ description: >
   Raise the a-c link's RTT from 120 ms to 300 ms and measure what a cross-site HTTP call from site c to site a's
   ingress pays for it: a new connection costs about two round trips (TCP handshake, then the request).
 setup:
-  - http: { from: c-w1, url: "http://${public:a}/", count: 20 }
+  - http: { from: "${node:c}", url: "http://${public:a}/", count: 20 }
     name: base
 fault:
   - degrade: { link: a-c, rtt: 300ms }
 measure:
-  - http: { from: c-w1, url: "http://${public:a}/", count: 20 }
+  - http: { from: "${node:c}", url: "http://${public:a}/", count: 20 }
     name: slow
 teardown:
-  - http: { from: c-w1, url: "http://${public:a}/", count: 10 }
+  - http: { from: "${node:c}", url: "http://${public:a}/", count: 10 }
     name: after
 expect:
   base.success_pct: "== 100"

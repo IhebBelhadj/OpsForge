@@ -81,3 +81,15 @@ def test_parse_transfer():
 
 def test_compare_reports_moved_metrics_only():
     assert scenario.compare({"a.x": 1.0, "a.y": 2.0}, {"a.x": 1.0, "a.y": 3.5, "a.z": 9}) == ["a.y: 2 -> 3.5 (+1.5)"]
+
+
+def test_node_server_and_cluster_placeholders_follow_the_layout(topo, multi):
+    text = "${node:b} ${server:b} ${cluster:b} ${ip:${node:c}}"
+    assert scenario.substitute(text, topo) == "b-w1 a-cp1 lab 10.30.0.11"
+    assert scenario.substitute(text, multi) == "b-cp1 b-cp1 b 10.30.0.11"
+    assert (scenario.layout(topo), scenario.layout(multi)) == ("stretched", "multi-cluster")
+
+
+def test_layout_must_be_known():
+    doc = {"description": "x", "layout": "galaxy"}
+    assert any("layout must be one of" in e for e in scenario.errors(doc))

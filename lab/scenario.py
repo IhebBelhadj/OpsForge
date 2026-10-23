@@ -3,6 +3,9 @@ expectations. Pure functions; `opsforge scenario` runs the steps against the lab
 
 A scenario has phases `setup`, `fault`, `measure` and `teardown`, each a list of steps run in order, and `expect`,
 a map of metric -> condition (or a list of them) checked at the end. Teardown always runs, after `heal`, even when a step failed.
+`layout: stretched | multi-cluster` (optional) marks a scenario that needs one K3s cluster over several sites, or
+several clusters; on the other layout it is skipped. `${node:<site>}` names the site's first K3s node, so a scenario
+runs on either layout (b-w1 in one, b-cp1 in the other); `${server:<site>}` is the K3s server of that node's cluster, `${cluster:<site>}` the cluster's name.
 A step with `name` records metrics as <name>.<metric>, e.g. base.avg_ms; conditions compare a metric with a number
 or an expression of other metrics: "< 150", ">= slow.p50_ms * 2", "== 1".
 """
@@ -33,6 +36,8 @@ STEPS = {
 # Steps whose value is the argument itself rather than a mapping: `sleep: 30s`, `partition: c`, `heal: true`
 SCALAR_STEPS = ("sleep", "partition", "heal", "stop_flap")
 _PLACEHOLDER = re.compile(r"\$\{(ip|public):([a-z0-9-]+)\}")
+_NODE = re.compile(r"\$\{(node|server|cluster):([a-z0-9-]+)\}")
+LAYOUTS = ("stretched", "multi-cluster")
 _METRIC = re.compile(r"\b[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\b")
 _OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge, "==": operator.eq, "!=": operator.ne}
 _ARITH = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv}
@@ -46,7 +51,9 @@ def errors(doc):
     """Problems with a parsed scenario file, as messages; empty if it can run."""
     if not isinstance(doc, dict):
         return ["a scenario is a mapping with setup/fault/measure/teardown/expect"]
-    errs = [f"unknown key {k!r}" for k in doc if k not in (*PHASES, "description", "expect")]
+    errs = [f"unknown key {k!r}" for k in doc if k not in (*PHASES, "description", "expect", "layout")]
+    if "layout" in doc and doc["layout"] not in LAYOUTS:
+        errs.append(f"layout must be one of {', '.join(LAYOUTS)}")
     if not doc.get("description"):
         errs.append("missing description")
     names = set()
@@ -99,9 +106,24 @@ def seconds(value):
     return float(value) if isinstance(value, (int, float)) else render.time_us(str(value)) / 1e6
 
 
+def layout(topo):
+    """'multi-cluster' with several K3s clusters, else 'stretched' (one cluster, or none)."""
+    return "multi-cluster" if len(render.k3s_clusters(topo)) > 1 else "stretched"
+
+
 def substitute(text, topo):
-    """${ip:<host>} -> a lab host's private address (gateway: its VPC address); ${public:<site>} -> a public IP."""
+    """${node:<site>} -> the site's first K3s node, ${server:<site>} -> the server of its cluster (both resolved first,
+    so ${ip:${node:a}} works); ${ip:<host>} -> a lab host's private address (gateway: its VPC address);
+    ${public:<site>} -> a public IP."""
     nodes = render.node_addresses(topo)
+
+    def node(m):
+        kind, site = m.groups()
+        found = [n for n, nd in topo["nodes"].items() if nd["site"] == site and nd["role"] in render.K3S_ROLES]
+        if not found:
+            raise ValueError(f"no K3s node in site {site!r} for {m.group(0)}")
+        cluster = topo["nodes"][found[0]].get("cluster", render.DEFAULT_CLUSTER)
+        return {"node": found[0], "server": render.k3s_clusters(topo)[cluster]["server"], "cluster": cluster}[kind]
 
     def resolve(m):
         kind, name = m.groups()
@@ -113,7 +135,7 @@ def substitute(text, topo):
             return str(render.gateway_address(topo["sites"][name[:-3]]).ip)
         raise ValueError(f"unknown {kind} {name!r} in {m.group(0)}")
 
-    return _PLACEHOLDER.sub(resolve, text)
+    return _PLACEHOLDER.sub(resolve, _NODE.sub(node, text))
 
 
 def parse_condition(condition):

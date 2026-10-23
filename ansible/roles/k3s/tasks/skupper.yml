@@ -1,0 +1,88 @@
+# Several K3s clusters (Phase 8): Skupper's controller (cluster-scope release manifest) and one site per cluster,
+# applied by K3s like the other opsforge-* manifests; then each cluster links to the clusters listed before it.
+- name: Download Skupper to the controller
+  run_once: true
+  delegate_to: localhost
+  block:
+    - name: Download the Skupper manifest and CLI
+      ansible.builtin.get_url:
+        url: "https://github.com/skupperproject/skupper/releases/download/{{ k3s_skupper_version }}/{{ item.file }}"
+        dest: "{{ k3s_cache_dir }}/{{ item.dest }}"
+        checksum: "sha256:{{ item.sha256 }}"
+        mode: "0644"
+      loop:
+        - file: skupper-cluster-scope.yaml
+          dest: skupper-{{ k3s_skupper_version }}-cluster-scope.yaml
+          sha256: "{{ k3s_skupper_manifest_sha256 }}"
+        - file: skupper-cli-{{ k3s_skupper_version }}-linux-amd64.tgz
+          dest: skupper-cli-{{ k3s_skupper_version }}-linux-amd64.tgz
+          sha256: "{{ k3s_skupper_cli_sha256 }}"
+      loop_control:
+        label: "{{ item.dest }}"
+
+    - name: Create the Skupper CLI directory
+      ansible.builtin.file:
+        path: "{{ k3s_cache_dir }}/skupper-{{ k3s_skupper_version }}"
+        state: directory
+        mode: "0700"
+
+    - name: Unpack the Skupper CLI
+      ansible.builtin.unarchive:
+        src: "{{ k3s_cache_dir }}/skupper-cli-{{ k3s_skupper_version }}-linux-amd64.tgz"
+        dest: "{{ k3s_cache_dir }}/skupper-{{ k3s_skupper_version }}"
+        creates: "{{ k3s_cache_dir }}/skupper-{{ k3s_skupper_version }}/skupper"
+
+# Generates the links (`skupper link generate`) on the cluster being linked to
+- name: Install the Skupper CLI
+  ansible.builtin.copy:
+    src: "{{ k3s_cache_dir }}/skupper-{{ k3s_skupper_version }}/skupper"
+    dest: /usr/local/bin/skupper
+    mode: "0755"
+
+# The release manifest, with link access through a NodePort of this server (no LoadBalancer here: servicelb is off)
+# and images pulled only when missing, so a partitioned cluster can restart its router from its own image store.
+# regex_replace, not replace: Ansible passes '\n' through literally, and only the regex engine reads it as a newline.
+- name: Install the Skupper controller
+  vars:
+    k3s_skupper_env: |
+      - name: SKUPPER_ENABLED_ACCESS_TYPES
+        value: local,nodeport
+      - name: SKUPPER_DEFAULT_ACCESS_TYPE
+        value: nodeport
+      - name: SKUPPER_CLUSTER_HOST
+        value: "{{ lab_address }}"
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('ansible.builtin.file', k3s_cache_dir ~ '/skupper-' ~ k3s_skupper_version ~ '-cluster-scope.yaml')
+      | regex_replace('\n        env:\n', '\n        env:\n' ~ (k3s_skupper_env | indent(8, first=true)), count=1)
+      | replace(': Always', ': IfNotPresent') }}
+    dest: /var/lib/rancher/k3s/server/manifests/opsforge-skupper.yaml
+    mode: "0600"
+
+- name: Create this cluster's Skupper site
+  ansible.builtin.template:
+    src: skupper-site.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/opsforge-skupper-site.yaml
+    mode: "0600"
+
+- name: Wait for the Skupper site
+  ansible.builtin.command: >-
+    k3s kubectl -n {{ k3s_skupper_namespace }} get site {{ k3s_cluster }} -o jsonpath={.status.status}
+  register: k3s_skupper_site
+  check_mode: false  # read-only
+  until: k3s_skupper_site.stdout == 'Ready'
+  retries: 60
+  delay: 5
+  changed_when: false
+  failed_when: false
+
+- name: Fail when the Skupper site is not Ready
+  ansible.builtin.fail:
+    msg: "Skupper site {{ k3s_cluster }} is {{ k3s_skupper_site.stdout or 'missing' }} after 5 minutes"
+  when: k3s_skupper_site.stdout != 'Ready'
+
+- name: Link to the clusters listed before this one
+  ansible.builtin.include_tasks: skupper-link.yml
+  loop: "{{ lab_clusters[k3s_cluster].links | dict2items }}"
+  loop_control:
+    loop_var: k3s_skupper_peer

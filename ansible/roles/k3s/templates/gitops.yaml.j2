@@ -22,7 +22,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: opsforge-deploy
-  path: ./
+  path: {{ k3s_gitops_path }}
   prune: true
   interval: 10m
   retryInterval: 30s

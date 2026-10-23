@@ -1,0 +1,33 @@
+# OpsForge multi-cluster layout (docs/PLAN.md Phase 8): the same sites and WAN as topology.yml, one K3s cluster per site
+# ("cloud region"), linked by Skupper. Use it with: export OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml
+# Switching layouts on a running lab: ./opsforge up recreates the K3s nodes (an agent cannot become a server in place).
+
+# Simulated "internet" between site gateways (TEST-NET-3, never routed on the real internet)
+transit: 203.0.113.0/24
+
+# How VPCs reach each other: vpn = WireGuard full mesh between the site gateways; none = isolated
+interconnect: vpn
+# vpn routing: ospf = reroute around a dead link through another site (cost = link rtt); static = no rerouting
+routing: ospf
+
+sites:
+  a: { vpc: 10.10.0.0/24, public_ip: 203.0.113.10 }
+  b: { vpc: 10.20.0.0/24, public_ip: 203.0.113.20 }
+  c: { vpc: 10.30.0.0/24, public_ip: 203.0.113.30 }
+
+# rtt is round-trip (applied as rtt/2 each way); loss and rate apply per direction
+links:
+  a-b: { rtt: 40ms, jitter: 5ms, loss: 0.1%, rate: 100mbit }
+  a-c: { rtt: 120ms, jitter: 15ms, loss: 1%, rate: 20mbit }
+  b-c: { rtt: 90ms, jitter: 10ms, loss: 0.5%, rate: 50mbit }
+
+# expose: port forwards on the site gateway's public IP; 80/443 reach the node's ingress (Traefik hostPorts)
+# cluster: the K3s cluster a node belongs to; each has its own server, API (opsforge kubectl --cluster) and Skupper site
+nodes:
+  a-cp1: { site: a, role: k3s-server, cluster: a, cpu: 2, memory: 2GiB, expose: ["80", "443"] }
+  b-cp1: { site: b, role: k3s-server, cluster: b, cpu: 2, memory: 2GiB, expose: ["80", "443"] }
+  c-cp1: { site: c, role: k3s-server, cluster: c, cpu: 2, memory: 2GiB, expose: ["80", "443"] }
+  # VictoriaMetrics + Grafana, outside the clusters; scrapes all three
+  mon: { site: b, role: monitoring, cpu: 1, memory: 768MiB }
+  # Optional (Phase 7): Gitea + runner + registry; Flux in every cluster applies its directory of the deploy repo
+  ci: { site: a, role: ci, cpu: 2, memory: 1GiB }

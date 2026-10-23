@@ -87,6 +87,10 @@ K3S_PROFILE_CONFIG = {
 }
 K3S_PROFILE_DEVICES = {"kmsg": {"type": "unix-char", "source": "/dev/kmsg", "path": "/dev/kmsg"}}
 K3S_ROLES = ("k3s-server", "k3s-agent")
+# Phase 8: K3s nodes without `cluster:` form this one cluster, stretched over their sites. Each cluster's API is
+# forwarded to the host on K3S_API_PORT + its index in topology order (`opsforge kubectl --cluster`).
+DEFAULT_CLUSTER = "lab"
+K3S_API_PORT = 6443
 CACHE = "opsforge-cache"
 CACHE_PORT = 5000
 CACHE_LIMITS = {"limits.cpu": "1", "limits.memory": "256MiB", "limits.memory.swap": "false"}
@@ -205,6 +209,7 @@ class Instance:
     files: dict = field(default_factory=dict)  # path -> (content, mode)
     managed: bool = False  # reachable over SSH and in the Ansible inventory
     profiles: list = field(default_factory=lambda: [PROFILE])
+    cluster: str | None = None  # K3s nodes: the cluster they belong to
 
 
 def fingerprint(inst):
@@ -437,6 +442,36 @@ def monitoring_node(topo):
     return next((n for n, node in topo["nodes"].items() if node["role"] == "monitoring"), None)
 
 
+def k3s_clusters(topo):
+    """K3s cluster name -> {"server", "nodes", "sites", "api_port"} in topology.yml order. Nodes without `cluster:`
+    share DEFAULT_CLUSTER: one cluster stretched over their sites (Phase 4); one per site is multi-cluster (Phase 8)."""
+    clusters = {}
+    for name, node in topo["nodes"].items():
+        if node["role"] not in K3S_ROLES:
+            continue
+        c = clusters.setdefault(node.get("cluster", DEFAULT_CLUSTER), {"server": None, "nodes": [], "sites": []})
+        c["nodes"].append(name)
+        if node["site"] not in c["sites"]:
+            c["sites"].append(node["site"])
+        if node["role"] == "k3s-server":
+            c["server"] = name
+    for i, c in enumerate(clusters.values()):
+        c["api_port"] = K3S_API_PORT + i
+    return clusters
+
+
+def cluster_links(topo):
+    """[(cluster, peer, cost)]: with several clusters, each one links to every cluster listed before it (Skupper links
+    carry traffic both ways; one side must dial). Cost = the smallest RTT in ms between their sites from
+    topology.yml, like the gateways' OSPF costs, so a service is served from the nearest cluster that has it."""
+    clusters = k3s_clusters(topo)
+    names = list(clusters)
+    return [
+        (c, peer, min(ospf_cost(topo, a, b) for a in clusters[c]["sites"] for b in clusters[peer]["sites"]))
+        for i, c in enumerate(names) for peer in names[:i]
+    ]
+
+
 def render_gateway(topo, name, addrs, wg_keys):
     site = topo["sites"][name]
     core = core_address(topo)
@@ -571,10 +606,11 @@ DNS={core_address(topo)}
 """
     config = {"limits.cpu": str(node["cpu"]), "limits.memory": node["memory"], "limits.memory.swap": "false"}
     files = {"/etc/systemd/network/10-opsforge.network": (network, "0644")}
-    profiles = [PROFILE, K3S_PROFILE] if node["role"] in K3S_ROLES else [PROFILE]
+    k3s = node["role"] in K3S_ROLES
+    profiles = [PROFILE, K3S_PROFILE] if k3s else [PROFILE]
     return Instance(
         name, node["role"], node["site"], NODE_IMAGE, config, {"eth0": vpc_net(node["site"])}, str(addr.ip), files, True,
-        profiles,
+        profiles, node.get("cluster", DEFAULT_CLUSTER) if k3s else None,
     )
 
 
@@ -665,7 +701,13 @@ def render_inventory(topo, ssh_config, state_dir):
     }
     nodes = {
         name: {"lab_site": node["site"], "lab_address": str(addrs[name].ip), "lab_role": node["role"]}
+        | ({"lab_cluster": node.get("cluster", DEFAULT_CLUSTER)} if node["role"] in K3S_ROLES else {})
         for name, node in topo["nodes"].items()
+    }
+    links = cluster_links(topo)
+    clusters = {
+        name: c | {"links": {peer: cost for src, peer, cost in links if src == name}}
+        for name, c in k3s_clusters(topo).items()
     }
     groups = {
         "lab": {
@@ -680,6 +722,8 @@ def render_inventory(topo, ssh_config, state_dir):
                 "lab_path_mtu": WG_MTU if topo.get("interconnect") == "vpn" else 1500,
                 "lab_registry_cache": f"{cache_public_address(topo)}:{CACHE_PORT}",
                 "lab_registry_upstreams": list(CACHE_UPSTREAMS),
+                # K3s clusters (Phase 8): server, nodes, sites, the host's API port, Skupper links to earlier clusters
+                "lab_clusters": clusters,
                 "lab_sites": {
                     name: {
                         "vpc": site["vpc"],

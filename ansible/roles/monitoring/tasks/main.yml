@@ -13,13 +13,16 @@
     state: directory
     mode: "0755"
 
-- name: Copy the K3s monitoring token
-  when: groups['k3s_server'] | default([]) | length > 0
+- name: Copy the K3s monitoring tokens
+  when: lab_clusters | length > 0
   block:
-    - name: Read the K3s monitoring token
+    - name: Read each cluster's monitoring token
       ansible.builtin.command: >-
         k3s kubectl -n kube-system get secret opsforge-monitoring -o jsonpath={.data.token}
-      delegate_to: "{{ groups['k3s_server'][0] }}"
+      delegate_to: "{{ item.value.server }}"
+      loop: "{{ lab_clusters | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
       register: monitoring_k3s_token
       check_mode: false  # read-only: --check needs the token too
       until: monitoring_k3s_token.stdout | length > 0
@@ -27,13 +30,16 @@
       delay: 2
       changed_when: false
 
-    - name: Install the K3s monitoring token
+    - name: Install the K3s monitoring tokens
       ansible.builtin.copy:
-        content: "{{ monitoring_k3s_token.stdout | b64decode }}"
-        dest: "{{ monitoring_k3s_token_file }}"
+        content: "{{ item.stdout | b64decode }}"
+        dest: "{{ monitoring_k3s_token_dir }}/k3s-token-{{ item.item.key }}"
         owner: root
         group: _victoria-metrics
         mode: "0640"
+      loop: "{{ monitoring_k3s_token.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
       no_log: true
       notify: Restart VictoriaMetrics
 

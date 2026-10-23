@@ -130,3 +130,30 @@ def test_save_link_rewrites_only_that_line(tmp_path):
     topo = cli.load_topology(path)
     assert topo["links"]["a-c"]["rtt"] == "300ms"
     assert errors(topo) == []
+
+
+def test_layouts_in_topologies_are_valid(multi):
+    assert errors(multi) == []
+
+
+def test_each_cluster_needs_one_server(multi):
+    multi["nodes"]["c-cp1"]["role"] = "k3s-agent"
+    assert any("cluster c: k3s-agent nodes ['c-cp1'] have no k3s-server" in e for e in errors(multi))
+    multi["nodes"]["c-cp2"] = {"site": "c", "role": "k3s-server", "cluster": "b"}
+    assert any("cluster b: only one k3s-server" in e for e in errors(multi))
+
+
+def test_cluster_is_for_k3s_nodes_and_needs_the_vpn(multi):
+    multi["nodes"]["mon"]["cluster"] = "b"
+    assert any("cluster is for K3s nodes only" in e for e in errors(multi))
+    multi["interconnect"] = "none"
+    assert any("several K3s clusters" in e for e in errors(multi))
+
+
+def test_k3s_role_or_cluster_change_recreates():
+    changed = cli.k3s_identity_changed
+    agent = {"user.opsforge.role": "k3s-agent"}  # from before Phase 8: no cluster tag
+    assert not changed(agent, {"user.opsforge.role": "k3s-agent", "user.opsforge.cluster": "lab"})
+    assert changed(agent, {"user.opsforge.role": "k3s-server", "user.opsforge.cluster": "b"})
+    assert changed({**agent, "user.opsforge.cluster": "lab"}, {"user.opsforge.role": "k3s-agent", "user.opsforge.cluster": "b"})
+    assert not changed({"user.opsforge.role": "plain"}, {"user.opsforge.role": "monitoring"})

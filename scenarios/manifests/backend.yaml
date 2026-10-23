@@ -1,0 +1,61 @@
+# Scenario cluster-failover: a backend in one cluster, offered to the others through Skupper (routing key "backend").
+# Applied to several clusters: each one's pods answer with their node's name.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: scenario
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.11.0
+          env:
+            - name: WHOAMI_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: scenario
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 80
+---
+apiVersion: skupper.io/v2alpha1
+kind: Connector
+metadata:
+  name: backend
+  namespace: mesh
+spec:
+  routingKey: backend
+  # Fully qualified (trailing dot): with ndots 5 a shorter lookup first tries every search domain, the nodes' *.lab
+  # ones included, and the partitioned site's zone times out across the WAN (measured: 8.5 s per new connection)
+  host: backend.scenario.svc.cluster.local.
+  port: 80

@@ -1,0 +1,13 @@
+# PostgreSQL (cluster {{ ci_db_cluster }}) offered on the application network as routing key "postgres": every other
+# cluster has a Listener for it
+apiVersion: skupper.io/v2alpha1
+kind: Connector
+metadata:
+  name: postgres
+  namespace: {{ ci_skupper_namespace }}
+spec:
+  routingKey: postgres
+  # Fully qualified (trailing dot): otherwise the router's lookup tries every search domain first, the nodes' *.lab
+  # ones included, and a partitioned site's zone stalls each new connection by seconds
+  host: postgres.webapp.svc.cluster.local.
+  port: 5432

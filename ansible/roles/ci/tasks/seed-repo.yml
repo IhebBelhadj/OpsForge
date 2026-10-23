@@ -11,11 +11,12 @@
     mode: preserve
   when: ci_seed_repo == ci_app_repo
 
-- name: Create the deploy manifests' directory
+- name: Create the deploy manifests' directories
   ansible.builtin.file:
-    path: "{{ ci_seed_dir.path }}/webapp"
+    path: "{{ ci_seed_dir.path }}/{{ item }}"
     state: directory
     mode: "0755"
+  loop: "{{ ['webapp', 'postgres'] + lab_clusters | map('regex_replace', '^', 'clusters/') | list }}"
   when: ci_seed_repo == ci_deploy_repo
 
 - name: Render the deploy manifests
@@ -24,12 +25,25 @@
     dest: "{{ ci_seed_dir.path }}/{{ item.dest }}"
     mode: "0644"
   loop:
-    - { src: kustomization.yaml.j2, dest: kustomization.yaml }
     - { src: webapp-kustomization.yaml.j2, dest: webapp/kustomization.yaml }
     - { src: namespace.yaml.j2, dest: webapp/namespace.yaml }
-    - { src: postgres.yaml.j2, dest: webapp/postgres.yaml }
     - { src: webapp.yaml.j2, dest: webapp/webapp.yaml }
+    - { src: postgres-kustomization.yaml.j2, dest: postgres/kustomization.yaml }
+    - { src: postgres.yaml.j2, dest: postgres/postgres.yaml }
   when: ci_seed_repo == ci_deploy_repo
+
+# One directory per K3s cluster, applied by that cluster's Flux
+- name: Render each cluster's deploy directory
+  ansible.builtin.template:
+    src: "deploy/{{ item.1.src }}"
+    dest: "{{ ci_seed_dir.path }}/clusters/{{ item.0 }}/{{ item.1.dest }}"
+    mode: "0644"
+  vars:
+    ci_cluster: "{{ item.0 }}"
+  loop: "{{ lab_clusters | list | product(ci_cluster_files) | list }}"
+  loop_control:
+    label: "clusters/{{ item.0 }}/{{ item.1.dest }}"
+  when: ci_seed_repo == ci_deploy_repo and (item.1.when is not defined or item.1.when == (item.0 == ci_db_cluster))
 
 - name: Push the initial commit of {{ ci_seed_repo }}
   ansible.builtin.shell: |
