@@ -327,7 +327,7 @@ def server(tmp_path, topo):
     labsdb.import_pack(conn, mini_pack(), "mini")
     conn.close()
     driver = FakeDriver(topo)
-    srv = labserver.Server(("127.0.0.1", 0), driver, db_path, ROOT, ROOT / "web")
+    srv = labserver.Server(("127.0.0.1", 0), driver, db_path, ROOT, ROOT / "lab" / "web")
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
     yield srv

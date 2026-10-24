@@ -1,0 +1,9 @@
+# oapi-codegen (make gen): the strict server interface on net/http's routing, and the models
+package: httpapi
+output: internal/httpapi/api.gen.go
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+output-options:
+  skip-prune: true  # Problem is written by hand-made handlers (not-found, errors), not by an operation

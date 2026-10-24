@@ -174,6 +174,8 @@ def errors(doc, catalog=None):
         ids = [s["id"] for s in lab["steps"]]
         errs += [f"{where}: duplicate step id {s!r}" for s in sorted(set(ids)) if ids.count(s) > 1]
         for step in lab["steps"]:
+            if "open" in step and step["open"] not in lab.get("files", []):
+                errs.append(f"{where}/{step['id']}: opens {step['open']}, which is not in files")
             kind = check_type(step["check"])
             if kind not in CHECKS:
                 errs.append(f"{where}/{step['id']}: unknown check {kind!r} (one of {', '.join(CHECKS)})")

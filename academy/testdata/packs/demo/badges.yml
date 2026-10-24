@@ -1,0 +1,5 @@
+- id: intro-done
+  title: Introduced
+  description: Completed the introduction course.
+  icon: lamp
+  rule: { type: labs_passed, min: 1 }

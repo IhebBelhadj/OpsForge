@@ -703,6 +703,28 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
 [docs/courses/](courses/README.md): architecture, frontend, design, content model, syllabus, testing, milestones
 (M0 foundations → M8 hardening). Phase 10's stdlib server is replaced at M2.
 
+- [x] **M0 foundations (done 2026-10-24).** `academy/` Go module: typed config (flags over `ACADEMY_*`, loopback
+  only), slog JSON with request ids, `/healthz` and `/readyz` (database + toolchain contract), graceful shutdown with a
+  WAL checkpoint, Wire graph, goose (embedded) + sqlc on `modernc.org/sqlite`, golangci-lint v2 whose depguard rules
+  enforce the layering (proved by planting violations). `academy/api/openapi.yaml` (3.1) → oapi-codegen strict server
+  and openapi-typescript client; contract tests validate every response against the spec and fail when a documented
+  response is produced by no test. `opsforge academy compile|state|version --json` with `lab/academy.py`,
+  `lab/course.schema.json` and `academy/api/bundle.schema.json`; the golden bundle and state documents in
+  `academy/testdata/` are written by pytest and read by the Go adapter's tests. `web/` is the Vite + React 19 app
+  (TanStack Router/Query, Tailwind v4, shadcn with the Phase 10 tokens, self-hosted fonts, Vitest + MSW, Playwright);
+  Phase 10's static UI moved to `lab/web/` until M2. CI: `python`, `go`, `web`, `generated`, `e2e` jobs.
+  **Measured:** `academy` binary 14 MB; 26 MiB RSS (16 MiB anon) serving with the real toolchain; initial JS 121 KB
+  gzip (budget 250), CSS 14 KB gzip; `make check` green; e2e 8/8 on Chromium desktop and 390 px. Disk on the host:
+  `web/node_modules` 411 MB, Playwright browsers 681 MB (`~/.cache/ms-playwright`), Go module cache 2.8 GB.
+  Found on the way:
+  - TypeScript 7 (the native compiler) has no JS API, which typescript-eslint needs: pinned `typescript ~6.0`.
+    `eslint-plugin-jsx-a11y` supports ESLint ≤ 9: pinned `eslint ^9`.
+  - openapi-fetch captures `fetch` when the client is created, before MSW patches it: the client looks it up per
+    call. MSW 3 renamed `onUnhandledRequest` to `onUnhandledFrame`.
+  - The shadcn CLI wrote `import { cn } from "cn"`: fixed by hand (check each `shadcn add`).
+  - A `-race` test binary re-executed as the fake toolchain sleeps 1 s on exit: `GORACE=atexit_sleep_ms=0`.
+  - Wire needs `github.com/google/wire` in the service's own go.mod (tidy drops it before `wire.go` exists).
+
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets
   the same WAN conditions. Prefer **Windows Server Core** (no GUI, ~1.5–2 GB RAM, ~10–15 GB disk); Windows 11

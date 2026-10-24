@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opsforge.lab/course.schema.json",
+  "title": "OpsForge Academy course",
+  "description": "One course folder of a pack, loaded (docs/courses/content-model.md): course.yml, lectures (front matter + Markdown), quizzes and challenges. Cross-references, files and scenario steps are checked by lab/academy.py.",
+  "type": "object",
+  "required": ["course", "lectures", "quizzes", "challenges"],
+  "additionalProperties": false,
+  "properties": {
+    "course": { "$ref": "#/$defs/course" },
+    "lectures": { "type": "object", "propertyNames": { "$ref": "#/$defs/id" }, "additionalProperties": { "$ref": "#/$defs/lecture" } },
+    "quizzes": { "type": "object", "propertyNames": { "$ref": "#/$defs/id" }, "additionalProperties": { "$ref": "#/$defs/quiz" } },
+    "challenges": { "type": "object", "propertyNames": { "$ref": "#/$defs/id" }, "additionalProperties": { "$ref": "#/$defs/challenge" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,47}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "texts": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+    "minutes": { "type": "integer", "minimum": 1 },
+    "duration": { "type": "string", "pattern": "^[1-9][0-9]*(s|m|h)$" },
+    "layout": { "enum": ["stretched", "multi-cluster"] },
+    "needs": { "type": "array", "uniqueItems": true, "items": { "enum": ["vpn", "k3s", "monitoring", "ci"] } },
+    "path": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$", "not": { "pattern": "(^|/)\\.\\.?(/|$)" } },
+    "steps": { "type": "array", "items": { "type": "object", "minProperties": 1 } },
+    "item": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "lecture": { "$ref": "#/$defs/id" },
+        "quiz": { "$ref": "#/$defs/id" },
+        "lab": { "$ref": "#/$defs/id" },
+        "challenge": { "$ref": "#/$defs/id" }
+      }
+    },
+    "course": {
+      "type": "object",
+      "required": ["title", "level", "sections"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "subtitle": { "type": "string" },
+        "level": { "enum": ["beginner", "intermediate", "advanced"] },
+        "position": { "type": "integer" },
+        "requires": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "layout": { "$ref": "#/$defs/layout" },
+        "needs": { "$ref": "#/$defs/needs" },
+        "outcomes": { "$ref": "#/$defs/texts" },
+        "requirements": { "$ref": "#/$defs/texts" },
+        "description": { "type": "string" },
+        "badge": { "$ref": "#/$defs/id" },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["title", "items"],
+            "additionalProperties": false,
+            "properties": {
+              "title": { "$ref": "#/$defs/text" },
+              "layout": { "$ref": "#/$defs/layout" },
+              "needs": { "$ref": "#/$defs/needs" },
+              "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/item" } }
+            }
+          }
+        }
+      }
+    },
+    "lecture": {
+      "type": "object",
+      "required": ["title", "minutes", "markdown"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "minutes": { "$ref": "#/$defs/minutes" },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "url"],
+            "additionalProperties": false,
+            "properties": { "title": { "$ref": "#/$defs/text" }, "url": { "type": "string", "pattern": "^https?://" } }
+          }
+        },
+        "markdown": { "$ref": "#/$defs/text" }
+      }
+    },
+    "quiz": {
+      "type": "object",
+      "required": ["title", "minutes", "questions"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "minutes": { "$ref": "#/$defs/minutes" },
+        "pass": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "xp": { "type": "integer", "minimum": 0 },
+        "shuffle": { "type": "boolean" },
+        "time_limit": { "$ref": "#/$defs/duration" },
+        "draw": { "type": "integer", "minimum": 1 },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "prompt", "choices", "answer", "explain"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "type": { "enum": ["single", "multiple"] },
+              "prompt": { "$ref": "#/$defs/text" },
+              "choices": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/text" } },
+              "answer": {
+                "oneOf": [
+                  { "type": "integer", "minimum": 0 },
+                  { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0 } }
+                ]
+              },
+              "explain": { "$ref": "#/$defs/text" },
+              "see": { "$ref": "#/$defs/id" }
+            }
+          }
+        }
+      }
+    },
+    "challenge": {
+      "type": "object",
+      "required": ["title", "difficulty", "minutes", "statement", "files", "tests", "starter", "solution"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "difficulty": { "enum": ["easy", "medium", "hard"] },
+        "minutes": { "$ref": "#/$defs/minutes" },
+        "xp": { "type": "integer", "minimum": 0 },
+        "needs": { "$ref": "#/$defs/needs" },
+        "statement": { "$ref": "#/$defs/text" },
+        "files": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/path" } },
+        "time_limit": { "$ref": "#/$defs/duration" },
+        "tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "probe"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "$ref": "#/$defs/text" },
+              "action": { "$ref": "#/$defs/steps" },
+              "probe": { "type": "object" }
+            }
+          }
+        },
+        "hints": { "$ref": "#/$defs/texts" },
+        "starter": { "type": "object", "additionalProperties": { "type": "string" } },
+        "solution": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } }
+      }
+    }
+  }
+}

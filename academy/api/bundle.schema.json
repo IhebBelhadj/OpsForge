@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opsforge.lab/academy/bundle.schema.json",
+  "title": "OpsForge Academy content bundle (contract 1)",
+  "description": "Output of `opsforge academy compile`, input of `academy import` (docs/courses/content-model.md). Texts keep their placeholders raw. A bundle with errors is never imported.",
+  "type": "object",
+  "required": ["contract", "compiled_at", "packs", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": { "const": 1 },
+    "compiled_at": { "type": "string", "format": "date-time" },
+    "packs": { "type": "array", "items": { "$ref": "#/$defs/pack" } },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pack", "message"],
+        "additionalProperties": false,
+        "properties": { "pack": { "type": "string" }, "message": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,47}$" },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "strings": { "type": "array", "items": { "type": "string" } },
+    "needs": { "type": "array", "items": { "enum": ["vpn", "k3s", "monitoring", "ci"] } },
+    "layout": { "enum": ["stretched", "multi-cluster", null] },
+    "files": { "type": "object", "additionalProperties": { "type": "string" } },
+    "seconds": { "type": ["integer", "null"], "minimum": 1 },
+    "pack": {
+      "type": "object",
+      "required": ["id", "title", "version", "author", "description", "hint_penalty", "path", "content_hash",
+        "courses", "lectures", "quizzes", "challenges", "labs", "curricula", "badges", "assets"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "version": { "type": "string" },
+        "author": { "type": "string" },
+        "description": { "type": "string" },
+        "hint_penalty": { "type": "number", "minimum": 0, "maximum": 0.5 },
+        "path": { "type": "string", "description": "The pack folder, relative to the repository root (assets are served from it)" },
+        "content_hash": { "$ref": "#/$defs/hash" },
+        "courses": { "type": "array", "items": { "$ref": "#/$defs/course" } },
+        "lectures": { "type": "array", "items": { "$ref": "#/$defs/lecture" } },
+        "quizzes": { "type": "array", "items": { "$ref": "#/$defs/quiz" } },
+        "challenges": { "type": "array", "items": { "$ref": "#/$defs/challenge" } },
+        "labs": { "type": "array", "items": { "$ref": "#/$defs/lab" } },
+        "curricula": { "type": "array", "description": "Phase 10 curricula, until they become courses (M2)", "items": { "$ref": "#/$defs/curriculum" } },
+        "badges": { "type": "array", "items": { "$ref": "#/$defs/badge" } },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256", "bytes"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "description": "Relative to the pack's assets/ folder" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "bytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "course": {
+      "type": "object",
+      "required": ["id", "title", "subtitle", "level", "position", "requires", "layout", "needs", "outcomes",
+        "requirements", "description", "badge", "minutes", "content_hash", "sections"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "level": { "enum": ["beginner", "intermediate", "advanced"] },
+        "position": { "type": "integer" },
+        "requires": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "layout": { "$ref": "#/$defs/layout" },
+        "needs": { "$ref": "#/$defs/needs" },
+        "outcomes": { "$ref": "#/$defs/strings" },
+        "requirements": { "$ref": "#/$defs/strings" },
+        "description": { "type": "string" },
+        "badge": { "type": ["string", "null"] },
+        "minutes": { "type": "integer", "minimum": 0 },
+        "content_hash": { "$ref": "#/$defs/hash" },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "layout", "needs", "minutes", "items"],
+            "additionalProperties": false,
+            "properties": {
+              "title": { "type": "string" },
+              "layout": { "$ref": "#/$defs/layout" },
+              "needs": { "$ref": "#/$defs/needs" },
+              "minutes": { "type": "integer", "minimum": 0 },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "type", "ref", "title", "minutes", "content_hash"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": { "$ref": "#/$defs/id" },
+                    "type": { "enum": ["lecture", "quiz", "lab", "challenge"] },
+                    "ref": { "$ref": "#/$defs/id" },
+                    "title": { "type": "string" },
+                    "minutes": { "type": "integer", "minimum": 0 },
+                    "content_hash": { "$ref": "#/$defs/hash" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lecture": {
+      "type": "object",
+      "required": ["course", "id", "title", "minutes", "markdown", "resources", "content_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "course": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "minutes": { "type": "integer" },
+        "markdown": { "type": "string" },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "url"],
+            "additionalProperties": false,
+            "properties": { "title": { "type": "string" }, "url": { "type": "string" } }
+          }
+        },
+        "content_hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "quiz": {
+      "type": "object",
+      "required": ["course", "id", "title", "minutes", "pass", "xp", "shuffle", "time_limit_s", "draw", "questions",
+        "content_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "course": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "minutes": { "type": "integer" },
+        "pass": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "xp": { "type": "integer", "minimum": 0 },
+        "shuffle": { "type": "boolean" },
+        "time_limit_s": { "$ref": "#/$defs/seconds" },
+        "draw": { "type": ["integer", "null"], "minimum": 1 },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "prompt", "choices", "answer", "explain", "see"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "type": { "enum": ["single", "multiple"] },
+              "prompt": { "type": "string" },
+              "choices": { "$ref": "#/$defs/strings" },
+              "answer": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 }, "description": "Indexes of the correct choices (one for single)" },
+              "explain": { "type": "string" },
+              "see": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "content_hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "challenge": {
+      "type": "object",
+      "required": ["course", "id", "title", "difficulty", "minutes", "xp", "needs", "statement", "files", "starter",
+        "solution", "time_limit_s", "tests", "hints", "content_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "course": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "difficulty": { "enum": ["easy", "medium", "hard"] },
+        "minutes": { "type": "integer" },
+        "xp": { "type": "integer", "minimum": 0 },
+        "needs": { "$ref": "#/$defs/needs" },
+        "statement": { "type": "string" },
+        "files": { "$ref": "#/$defs/strings" },
+        "starter": { "$ref": "#/$defs/files" },
+        "solution": { "$ref": "#/$defs/files" },
+        "time_limit_s": { "type": "integer", "minimum": 1 },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "action", "probe"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "action": { "type": "array", "items": { "type": "object" } },
+              "probe": {
+                "type": "object",
+                "required": ["steps", "expect"],
+                "properties": { "steps": { "type": "array" }, "expect": { "type": "object" } }
+              }
+            }
+          }
+        },
+        "hints": { "$ref": "#/$defs/strings" },
+        "content_hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "lab": {
+      "type": "object",
+      "required": ["id", "title", "summary", "minutes", "xp", "layout", "needs", "requires", "body", "files",
+        "content_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "minutes": { "type": "integer", "minimum": 0 },
+        "xp": { "type": "integer", "minimum": 0 },
+        "layout": { "$ref": "#/$defs/layout" },
+        "needs": { "$ref": "#/$defs/needs" },
+        "requires": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "body": { "type": "object", "required": ["title", "summary", "briefing", "steps"], "description": "The lab file as written (lab/labpack.schema.json)" },
+        "files": { "$ref": "#/$defs/files" },
+        "content_hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "curriculum": {
+      "type": "object",
+      "required": ["id", "title", "summary", "position", "levels"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "position": { "type": "integer" },
+        "levels": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "badge": {
+      "type": "object",
+      "required": ["id", "title", "description", "icon", "position", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": ["string", "null"] },
+        "position": { "type": "integer" },
+        "rule": { "type": "object", "required": ["type"] }
+      }
+    }
+  }
+}

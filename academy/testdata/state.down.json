@@ -1,0 +1,119 @@
+{
+  "contract": 1,
+  "error": null,
+  "fault": false,
+  "layout": "stretched",
+  "links": {
+    "a-b": {
+      "condition": "ok",
+      "desired": {
+        "jitter": "5ms",
+        "loss": "0.1%",
+        "rate": "100mbit",
+        "rtt": "40ms"
+      },
+      "live": {
+        "jitter": "5ms",
+        "loss": "0.1%",
+        "rate": "100mbit",
+        "rtt": "40ms"
+      }
+    },
+    "a-c": {
+      "condition": "ok",
+      "desired": {
+        "jitter": "15ms",
+        "loss": "1%",
+        "rate": "20mbit",
+        "rtt": "120ms"
+      },
+      "live": {
+        "jitter": "15ms",
+        "loss": "1%",
+        "rate": "20mbit",
+        "rtt": "120ms"
+      }
+    },
+    "b-c": {
+      "condition": "ok",
+      "desired": {
+        "jitter": "10ms",
+        "loss": "0.5%",
+        "rate": "50mbit",
+        "rtt": "90ms"
+      },
+      "live": {
+        "jitter": "10ms",
+        "loss": "0.5%",
+        "rate": "50mbit",
+        "rtt": "90ms"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "name": "a-cp1",
+      "role": "k3s-server",
+      "site": "a",
+      "status": "Missing"
+    },
+    {
+      "name": "b-w1",
+      "role": "k3s-agent",
+      "site": "b",
+      "status": "Missing"
+    },
+    {
+      "name": "c-w1",
+      "role": "k3s-agent",
+      "site": "c",
+      "status": "Missing"
+    },
+    {
+      "name": "mon",
+      "role": "monitoring",
+      "site": "b",
+      "status": "Missing"
+    },
+    {
+      "name": "ci",
+      "role": "ci",
+      "site": "a",
+      "status": "Missing"
+    },
+    {
+      "name": "a-gw",
+      "role": "gateway",
+      "site": "a",
+      "status": "Missing"
+    },
+    {
+      "name": "b-gw",
+      "role": "gateway",
+      "site": "b",
+      "status": "Missing"
+    },
+    {
+      "name": "c-gw",
+      "role": "gateway",
+      "site": "c",
+      "status": "Missing"
+    }
+  ],
+  "sites": {
+    "a": {
+      "public_ip": "203.0.113.10",
+      "vpc": "10.10.0.0/24"
+    },
+    "b": {
+      "public_ip": "203.0.113.20",
+      "vpc": "10.20.0.0/24"
+    },
+    "c": {
+      "public_ip": "203.0.113.30",
+      "vpc": "10.30.0.0/24"
+    }
+  },
+  "topology": "topology.yml",
+  "up": false
+}

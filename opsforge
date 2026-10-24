@@ -22,6 +22,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "lab"))
+import academy  # noqa: E402
 import labs  # noqa: E402
 import labsdb  # noqa: E402
 import render  # noqa: E402
@@ -71,7 +72,7 @@ RESULTS = STATE / "results"
 # Teaching labs (Phase 10): packs in the repo, learner progress in the controller state, the web interface's files
 LABS = ROOT / "labs"
 LABS_DB = STATE / "labs.db"
-WEB = ROOT / "web"
+WEB = ROOT / "lab" / "web"  # Phase 10 static UI, removed with lab/labserver.py in Phase 11 M2
 LABS_PORT = 8090
 # wan-core: live link state saved by `partition`, put back by `heal`
 PRE_FAULT = "/etc/opsforge/pre-fault.json"
@@ -1940,6 +1941,111 @@ def cmd_labs(args):
     return 0
 
 
+def lab_state():
+    """What the lab looks like now, for a mimic panel: instances, live links against topology.yml, faults.
+    Never raises: problems go in `error` (and the lab counts as down when Incus cannot be asked)."""
+    try:
+        topo = load_valid_topology()
+    except (LabError, OSError):
+        topo = None
+    state = {"up": False, "error": None, "topology": TOPOLOGY.name, "layout": None, "sites": {},
+             "links": {}, "nodes": [], "fault": False}
+    if topo is None:
+        state["error"] = f"{TOPOLOGY.name} is invalid: run ./opsforge validate"
+        return state
+    state["layout"] = scenario.layout(topo)
+    state["sites"] = {name: {"public_ip": s["public_ip"], "vpc": s["vpc"]} for name, s in topo["sites"].items()}
+    try:
+        insts = {i["name"]: i for i in lab_instances()}
+    except (OSError, subprocess.SubprocessError) as e:
+        state["error"] = f"cannot list Incus instances: {e}"
+        insts = {}
+    for name, node in topo["nodes"].items():
+        inst = insts.get(name)
+        state["nodes"].append({"name": name, "site": node["site"], "role": node["role"],
+                               "status": inst["status"] if inst else "Missing"})
+    for site in topo["sites"]:
+        inst = insts.get(f"{site}-gw")
+        state["nodes"].append({"name": f"{site}-gw", "site": site, "role": "gateway",
+                               "status": inst["status"] if inst else "Missing"})
+    core = insts.get("wan-core")
+    state["up"] = bool(core) and core["status"] == "Running"
+    live = {}
+    if state["up"]:
+        try:
+            live = read_link_state()["links"]
+            state["fault"] = read_pre_fault() is not None
+        except LabError as e:
+            state["error"] = str(e)
+    for name, desired in topo["links"].items():
+        link = live.get(name, desired)
+        condition = "cut" if str(link.get("loss")) == "100%" else "changed" if link != desired else "ok"
+        state["links"][name] = {"live": link, "desired": desired, "condition": condition}
+    return state
+
+
+class Problem(Exception):
+    """A failed `opsforge academy` command: printed as a problem document (RFC 9457 fields) on stderr."""
+
+    def __init__(self, slug, title, detail):
+        super().__init__(detail)
+        self.doc = {"contract": academy.CONTRACT, "type": f"/problems/{slug}", "title": title, "detail": detail}
+
+
+def academy_state():
+    """`opsforge academy state`: lab_state() as a contract document."""
+    return {"contract": academy.CONTRACT, **lab_state()}
+
+
+def academy_compile(paths):
+    for path in paths:
+        if not (path / "pack.yml").is_file():
+            raise Problem("not-a-pack", "Not a pack", f"{path}: no pack.yml (a pack is a folder like labs/core)")
+    # SOURCE_DATE_EPOCH (reproducible builds) pins the timestamp, so the same packs compile to the same bytes
+    epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    stamp = time.gmtime(int(epoch)) if epoch else time.gmtime()
+    return academy.compile_bundle(paths, ROOT, time.strftime("%Y-%m-%dT%H:%M:%SZ", stamp))
+
+
+def cmd_academy(args):
+    """The JSON contract the Academy platform (academy/, Go) calls: one document on stdout, exit 0; a problem
+    document on stderr and exit 1 otherwise (docs/courses/architecture.md, "The lab toolchain contract")."""
+    try:
+        if args.action == "compile":
+            doc = academy_compile([p.resolve() for p in args.packs] or labs.find_packs(LABS))
+        elif args.action == "state":
+            doc = academy_state()
+        else:
+            doc = {"contract": academy.CONTRACT}
+    except Problem as e:
+        problem = e.doc
+    except LabError as e:
+        problem = Problem("lab-error", "Lab error", str(e)).doc
+    else:
+        problem = None
+    if problem:
+        print(json.dumps(problem) if args.json else f"opsforge academy {args.action}: {problem['detail']}",
+              file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(doc, sort_keys=True))
+        return 0
+    if args.action == "compile":
+        packs = doc["packs"]
+        count = {k: sum(len(p[k]) for p in packs) for k in ("courses", "labs")}
+        print(f"{len(packs)} pack(s), {count['courses']} course(s), {count['labs']} lab(s): "
+              + ("no errors" if not doc["errors"] else f"{len(doc['errors'])} error(s)"))
+        for e in doc["errors"]:
+            print(f"  {e['pack']}: {e['message']}")
+        return 1 if doc["errors"] else 0
+    if args.action == "state":
+        print(f"{doc['topology']} ({doc['layout']}): lab {'up' if doc['up'] else 'down'}"
+              + (", fault active" if doc["fault"] else "") + (f" ({doc['error']})" if doc["error"] else ""))
+        return 0
+    print(f"contract {doc['contract']}")
+    return 0
+
+
 def cmd_serve(args):
     """The teaching-lab web interface on 127.0.0.1 (lab/labserver.py); imports the packs first."""
     import labserver
@@ -2066,6 +2172,11 @@ def main():
     p = sub.add_parser("serve", help="the teaching-lab web interface on 127.0.0.1 (browser terminal included)")
     p.add_argument("--port", type=int, default=LABS_PORT, help=f"port (default {LABS_PORT})")
     p.set_defaults(func=cmd_serve)
+    p = sub.add_parser("academy", help="the Academy platform's lab toolchain: compile course packs, lab state (JSON)")
+    p.add_argument("action", choices=("compile", "state", "version"))
+    p.add_argument("packs", nargs="*", type=Path, help="compile: pack folders (default: every pack in labs/)")
+    p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
+    p.set_defaults(func=cmd_academy)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take
     # the unknown ones
     args, extra = parser.parse_known_args()

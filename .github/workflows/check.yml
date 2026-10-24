@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  check:
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,5 +16,81 @@ jobs:
         run: pip install pyyaml jsonschema pytest yamllint ansible-core ansible-lint
       - name: Lint (needs no Incus)
         run: make lint-shell lint-yaml lint-python lint-ansible
-      - name: Validate topology and run unit tests
+      - name: Validate topology, packs and the academy bundle; run unit tests
         run: make validate test
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: academy/go.mod
+          cache-dependency-path: academy/**/go.sum
+      - name: Lint (vet, golangci-lint with the layering rules)
+        run: make academy-lint
+      - name: Test
+        run: make academy-test
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Typecheck, lint, format, unit tests
+        run: make web-check
+      - name: Build
+        run: make web-build
+
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: academy/go.mod
+          cache-dependency-path: academy/**/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Generated code is up to date (sqlc, oapi-codegen, wire, openapi-typescript, routes)
+        run: make gen-check
+
+  e2e:
+    needs: [go, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: academy/go.mod
+          cache-dependency-path: academy/**/go.sum
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install dependencies and browsers
+        run: make web-deps && cd web && pnpm exec playwright install --with-deps chromium firefox
+      - name: Build academy and run Playwright (fake lab toolchain)
+        run: make e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report/

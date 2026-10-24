@@ -1,0 +1,73 @@
+openapi: 3.1.0
+info:
+  title: OpsForge Academy
+  version: 0.1.0
+  description: >-
+    The platform's HTTP API (docs/courses/architecture.md, "HTTP API"). Written before the handlers: oapi-codegen
+    generates the Go server interface (internal/httpapi), openapi-typescript the web client (web/src/api).
+    Errors are RFC 9457 problem documents.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-OpsForge
+servers:
+  - url: http://127.0.0.1:8090
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: The process is up
+      tags: [operations]
+      responses:
+        "200":
+          description: Always, while the process serves requests.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: The database and the lab toolchain answer
+      tags: [operations]
+      responses:
+        "200":
+          description: Every check passed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readiness" }
+        "503":
+          description: At least one check failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readiness" }
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [ok] }
+        version: { type: string, description: Build version of the academy binary }
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ready, unavailable] }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/Check" }
+    Check:
+      type: object
+      required: [name, ok]
+      properties:
+        name: { type: string, description: "database or toolchain" }
+        ok: { type: boolean }
+        detail: { type: string, description: Why the check failed }
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status]
+      properties:
+        type: { type: string, description: "Stable URI reference, e.g. /problems/not-found" }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }

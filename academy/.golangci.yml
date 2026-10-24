@@ -1,0 +1,73 @@
+# golangci-lint v2 (make academy-lint). depguard enforces the layering of docs/courses/architecture.md:
+# transport at the edge, pure domain, services talk to ports, the platform kernel is a leaf.
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+    depguard:
+      rules:
+        transport-at-the-edge:
+          files: ["**/internal/**", "!**/internal/httpapi/**", "!$test"]
+          deny:
+            - pkg: net/http
+              desc: HTTP belongs to internal/httpapi
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/httpapi
+              desc: nothing imports the transport
+        pure-domain:
+          files: ["**/internal/*/domain.go"]
+          deny:
+            - pkg: database/sql
+              desc: the domain knows no storage
+            - pkg: os/exec
+              desc: the domain knows no toolchain
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite
+              desc: the domain knows no adapter
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli
+              desc: the domain knows no adapter
+        services-use-ports:
+          files: ["**/internal/*/service.go"]
+          deny:
+            - pkg: database/sql
+              desc: services use their repository port
+            - pkg: os/exec
+              desc: services use the LabController port
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite
+              desc: adapters are injected, not imported
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli
+              desc: adapters are injected, not imported
+        platform-is-a-leaf:
+          files: ["**/internal/platform/**"]
+          list-mode: lax
+          allow:
+            - github.com/IhebBelhadj/opsforge/academy/internal/platform
+            - github.com/IhebBelhadj/opsforge/academy/migrations
+          deny:
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal
+              desc: the shared kernel imports no module
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters: [gosec, noctx, unparam]
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: [github.com/IhebBelhadj/opsforge/academy]

@@ -1,0 +1,167 @@
+/* OpsForge Academy. The Phase 10 signal-box identity (lab/web/app.css): enamel panel, ink track, and lamps as the
+   only colour (white as topology.yml, amber changed live, red cut, green passed). shadcn's variables are set from
+   these tokens, so borrowed components wear them too (docs/courses/frontend.md "Theming"). */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource/overpass/400.css";
+@import "@fontsource/overpass/600.css";
+@import "@fontsource/overpass/800.css";
+@import "@fontsource/source-serif-4/400.css";
+@import "@fontsource/source-serif-4/600.css";
+@import "@fontsource/source-serif-4/400-italic.css";
+@import "@fontsource/jetbrains-mono/400.css";
+
+/* dark: utilities follow the same rule as the tokens: pinned dark, or the system's dark unless pinned light */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
+:root {
+  --paper: #eef0e8;
+  --enamel: #c9cfc0;
+  --enamel-deep: #b7bead;
+  --ink: #20302b;
+  --ink-soft: #4a5953;
+  --rule: #a6ae9f;
+  --lamp: #f6f3d8;
+  --lamp-off: #8e978a;
+  --amber: #e0a126;
+  --red: #c8322b;
+  --green: #3e8e5a;
+  --term-bg: #1e2925;
+  --term-fg: #e4e7d9;
+  --focus: #1f5fbf;
+  color-scheme: light;
+
+  /* shadcn/ui */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--enamel);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: var(--enamel);
+  --secondary-foreground: var(--ink);
+  --muted: var(--enamel-deep);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--enamel-deep);
+  --accent-foreground: var(--ink);
+  --destructive: var(--red);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--focus);
+  --chart-1: var(--green);
+  --chart-2: var(--amber);
+  --chart-3: var(--red);
+  --chart-4: var(--lamp-off);
+  --chart-5: var(--ink-soft);
+  --radius: 0.25rem;
+}
+
+/* "Night shift": the system's dark mode unless the page is pinned light; data-theme="dark" pins it dark */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #141b18;
+    --enamel: #24302b;
+    --enamel-deep: #1c2622;
+    --ink: #dce3d6;
+    --ink-soft: #9faaa2;
+    --rule: #3b4842;
+    --lamp: #fff6c8;
+    --lamp-off: #46524c;
+    --amber: #f0b23a;
+    --red: #e5483f;
+    --green: #56ae73;
+    --term-bg: #0f1513;
+    --focus: #7fb0ff;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #141b18;
+  --enamel: #24302b;
+  --enamel-deep: #1c2622;
+  --ink: #dce3d6;
+  --ink-soft: #9faaa2;
+  --rule: #3b4842;
+  --lamp: #fff6c8;
+  --lamp-off: #46524c;
+  --amber: #f0b23a;
+  --red: #e5483f;
+  --green: #56ae73;
+  --term-bg: #0f1513;
+  --focus: #7fb0ff;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Overpass", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-paper: var(--paper);
+  --color-enamel: var(--enamel);
+  --color-enamel-deep: var(--enamel-deep);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-rule: var(--rule);
+  --color-lamp: var(--lamp);
+  --color-lamp-off: var(--lamp-off);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --color-green: var(--green);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+@layer base {
+  html {
+    font-size: 17px;
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+}

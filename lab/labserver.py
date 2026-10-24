@@ -1,6 +1,6 @@
 """`opsforge serve` (docs/PLAN.md Phase 10): the teaching-lab web interface on 127.0.0.1. A stdlib HTTP server
 with a JSON API over lab/labsdb.py, checks run on the lab with the CLI's ScenarioRun, and a browser terminal (a pty
-running bash in the repo, over a stdlib WebSocket). Static files come from web/.
+running bash in the repo, over a stdlib WebSocket). Static files come from lab/web/.
 
 Only requests whose Host is 127.0.0.1/localhost on our port are served, and changes (POST, the terminal) also need
 a matching Origin: any web page can open a WebSocket to localhost, and the terminal is a shell.
@@ -62,41 +62,7 @@ class LabDriver:
             self._state = (0.0, None)
 
     def _read_state(self):
-        topo = self.topology()
-        state = {"up": False, "error": None, "topology": self.cli.TOPOLOGY.name, "layout": None, "sites": {},
-                 "links": {}, "nodes": [], "fault": False}
-        if topo is None:
-            state["error"] = f"{self.cli.TOPOLOGY.name} is invalid: run ./opsforge validate"
-            return state
-        state["layout"] = scenario.layout(topo)
-        state["sites"] = {name: {"public_ip": s["public_ip"], "vpc": s["vpc"]} for name, s in topo["sites"].items()}
-        try:
-            insts = {i["name"]: i for i in self.cli.lab_instances()}
-        except (OSError, subprocess.SubprocessError) as e:
-            state["error"] = f"cannot list Incus instances: {e}"
-            insts = {}
-        for name, node in topo["nodes"].items():
-            inst = insts.get(name)
-            state["nodes"].append({"name": name, "site": node["site"], "role": node["role"],
-                                   "status": inst["status"] if inst else "Missing"})
-        for site in topo["sites"]:
-            inst = insts.get(f"{site}-gw")
-            state["nodes"].append({"name": f"{site}-gw", "site": site, "role": "gateway",
-                                   "status": inst["status"] if inst else "Missing"})
-        core = insts.get("wan-core")
-        state["up"] = bool(core) and core["status"] == "Running"
-        live = {}
-        if state["up"]:
-            try:
-                live = self.cli.read_link_state()["links"]
-                state["fault"] = self.cli.read_pre_fault() is not None
-            except self.cli.LabError as e:
-                state["error"] = str(e)
-        for name, desired in topo["links"].items():
-            link = live.get(name, desired)
-            condition = "cut" if str(link.get("loss")) == "100%" else "changed" if link != desired else "ok"
-            state["links"][name] = {"live": link, "desired": desired, "condition": condition}
-        return state
+        return self.cli.lab_state()
 
     def run(self, steps, phase, stop=None):
         """Runs scenario steps; returns (metrics, log lines, error message or None). `stop(step, metrics)`, called

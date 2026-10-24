@@ -4,6 +4,8 @@ ignore: |
   .git/
   .opsforge/
   ansible/inventory/
+  web/node_modules/
+  web/pnpm-lock.yaml
 
 rules:
   line-length:
