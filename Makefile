@@ -84,8 +84,15 @@ gen: web-deps
 	cd academy && $(GO_TOOL) wire gen ./cmd/academy >/dev/null
 	cd web && pnpm gen >/dev/null
 
-gen-check: gen
-	@git diff --exit-code -- academy web/src || { echo "generated code is stale: run make gen and commit"; exit 1; }
+GENERATED_HASHES = find academy web/src -type f -not -path '*/node_modules/*' | sort | xargs sha256sum
+
+gen-check:
+	@$(GENERATED_HASHES) > .gen-before
+	@$(MAKE) --no-print-directory gen >/dev/null 2>&1
+	@$(GENERATED_HASHES) > .gen-after
+	@diff .gen-before .gen-after >/dev/null && rm -f .gen-before .gen-after || { \
+		diff .gen-before .gen-after; rm -f .gen-before .gen-after; \
+		echo "generated code was stale: make gen rewrote the files above (review and commit them)"; exit 1; }
 
 # End to end: the built binary with a fake lab toolchain, driven by Playwright (web/e2e/)
 e2e: academy

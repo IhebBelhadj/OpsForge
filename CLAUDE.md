@@ -7,7 +7,7 @@ structural changes; it has the phases, acceptance criteria and design decisions.
 **Now: Phase 11, OpsForge Academy** (plan in `docs/courses/`, read its README and `implementation.md` first: Go
 platform `academy/`, React + Vite `web/`, Python CLI as lab toolchain; tests first). **M0 foundations done**
 (2026-10-24): binary serving the empty shell + health endpoints, toolchain contract (`opsforge academy`), CI jobs.
-**Next: M1 platform core** (spike S6, the Go pty terminal, first).
+**Spike S6 done** (Go pty terminal, parity with Phase 10). **Next: rest of M1 platform core**.
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML in `labs/` (curricula → levels →
 labs with probe/quiz/confirm checks, badges), progress in SQLite `.opsforge/labs.db`, `opsforge serve` = signal-box
 web UI on 127.0.0.1:8090 with a browser terminal. All 6 core labs pass on the live stretched lab and leave `verify`
@@ -48,7 +48,7 @@ reboot-survival check).
 | `lab/labs.py`, `lab/labpack.schema.json` | Pure pack logic: loading, schema + cross-reference validation, content hashes, check types (`CHECKS`), badge rules (`RULES`), XP, `unmet_needs` (layout/needs vs topology). |
 | `lab/labsdb.py`, `lab/migrations/` | SQLite: numbered migrations (`PRAGMA user_version`), idempotent pack import, catalog with unlocks, attempts, hints, events, badge awards. |
 | `lab/labserver.py`, `lab/web/` | `opsforge serve`: stdlib HTTP + JSON API, checks via `ScenarioRun`, WebSocket terminal on a pty; static UI (no build step). Deleted in Phase 11 M2. |
-| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, oapi-codegen config), `internal/{config,httpapi,opsforgecli,platform}` (+ modules from M1), `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
+| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, oapi-codegen config), `internal/{config,httpapi,opsforgecli,platform,terminal}` (+ modules from M1), `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
 | `web/` | Phase 11 React 19 + Vite + TS app (pnpm): `src/{app,routes,features,components/ui,api,lib,test,styles}`, `e2e/` (Playwright against the built binary + `e2e/fake-opsforge.sh`). `src/api/schema.d.ts` and `src/routeTree.gen.ts` are generated and committed. |
 | `lab/academy.py`, `lab/course.schema.json` | Pure course-pack compiler: `courses/<id>/` (course.yml, lectures/*.md with front matter, quizzes, challenges) + Phase 10 labs/badges → the bundle (`compile_bundle`). |
 | `scenarios/` | `<name>.yml` experiments run by `opsforge scenario <name>`; `manifests/` holds what they apply to the cluster. Results: `.opsforge/results/`. |
@@ -179,6 +179,12 @@ reboot-survival check).
   when stale. httpapi's TestMain fails when a documented response has no contract test. Module layering is enforced by
   depguard in `academy/.golangci.yml` (transport only in `httpapi`; `domain.go`/`service.go` never import adapters,
   `database/sql` or `os/exec`; `internal/platform` imports no module).
+- Academy terminals (`internal/terminal`): sessions outlive their socket for `Linger` (60 s) and replay the last 64 KiB;
+  the newest socket takes a session over. Wire format = Phase 10's (binary out; `{t:"i",d}` / `{t:"r",cols,rows}` in);
+  close codes 1000 exited, 4000 replaced, 4001 slow, 1001 shutdown (`httpapi.StatusReplaced/StatusSlow`). Every
+  request passes `hostGuard` (loopback names only, 421 otherwise) and the WebSocket upgrade checks Origin. Shells are
+  hung up through `RegisterOnShutdown` (hijacked sockets are not waited for by `Shutdown`). When checking for leftover
+  shells with `pgrep -f academy-bashrc`, mind that the pattern matches the checking shell itself.
 - Academy web pins: `typescript ~6.0` (TS 7 has no JS API for typescript-eslint), `eslint ^9` (jsx-a11y). The shadcn
   CLI may write a wrong `cn` import: check every `shadcn add`. MSW 3: `onUnhandledFrame`. The API client looks up
   `fetch` per call (MSW). Theme = `data-theme` on `<html>` (none = system); `dark:` utilities follow the same rule.

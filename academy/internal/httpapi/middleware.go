@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -19,6 +22,30 @@ func (s *statusRecorder) WriteHeader(code int) {
 }
 
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+// Hijack hands the connection to a WebSocket upgrade.
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	s.status = http.StatusSwitchingProtocols
+	return http.NewResponseController(s.ResponseWriter).Hijack()
+}
+
+// hostGuard answers only requests addressed to this machine by a loopback name. A browser tricked by DNS rebinding
+// (an attacker's name resolving to 127.0.0.1) sends that name as Host, and a shell is one request away.
+func hostGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		host = strings.Trim(host, "[]")
+		if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			writeProblem(w, http.StatusMisdirectedRequest, "/problems/wrong-host", "Wrong host",
+				"the platform answers only 127.0.0.1 and localhost")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // requestLog gives every request an id (X-Request-Id) and logs it with its status and duration; health probes
 // are logged at debug so they don't drown the log.

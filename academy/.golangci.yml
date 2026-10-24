@@ -63,7 +63,7 @@ linters:
     generated: lax
     rules:
       - path: _test\.go
-        linters: [gosec, noctx, unparam]
+        linters: [gosec, noctx, unparam, bodyclose]
 formatters:
   enable:
     - gofmt

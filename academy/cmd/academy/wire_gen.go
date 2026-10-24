@@ -24,9 +24,17 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 	}
 	runner := provideToolchain(cfg)
 	v := provideReadiness(store, runner)
-	handler := provideHandler(build, v, logger)
-	app := newApp(cfg, logger, handler)
+	service, cleanup2 := provideTerminals()
+	shells, err := provideShells(cfg, service)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	handler := provideHandler(build, v, shells, logger)
+	app := newApp(cfg, logger, handler, service)
 	return app, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

@@ -33,6 +33,7 @@ type Deps struct {
 	Readiness []ReadinessCheck
 	Web       fs.FS
 	Log       *slog.Logger
+	Terminals Terminals
 }
 
 type server struct {
@@ -50,11 +51,12 @@ func NewHandler(deps Deps) http.Handler {
 			writeProblem(w, http.StatusBadRequest, "/problems/bad-request", "Bad request", err.Error())
 		},
 	})
+	mux.HandleFunc("GET /ws/terminal/{session}", (&server{deps: deps}).terminalSocket)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "/problems/not-found", "Not found", r.URL.Path+" is not an API resource")
 	})
 	mux.Handle("/", webApp(deps.Web))
-	return requestLog(deps.Log, mux)
+	return requestLog(deps.Log, hostGuard(mux))
 }
 
 func (s *server) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {

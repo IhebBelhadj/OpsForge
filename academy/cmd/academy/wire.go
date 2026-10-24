@@ -20,6 +20,8 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		provideStore,
 		provideToolchain,
 		provideReadiness,
+		provideTerminals,
+		provideShells,
 		provideHandler,
 		newApp,
 	)

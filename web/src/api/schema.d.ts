@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/terminals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a shell for a browser terminal
+         * @description Starts an interactive shell on a pty and returns its session id; the client then connects a WebSocket to /ws/terminal/{session} (binary frames out, JSON frames in, see internal/httpapi/terminal.go). A session survives 60 s without a client and replays its last 64 KiB of output on reconnect.
+         */
+        post: operations["openTerminal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -59,6 +79,16 @@ export interface components {
             ok: boolean;
             /** @description Why the check failed */
             detail?: string;
+        };
+        TerminalSize: {
+            /** @default 80 */
+            cols: number;
+            /** @default 24 */
+            rows: number;
+        };
+        TerminalSession: {
+            /** @description Opaque session id for /ws/terminal/{session} */
+            session: string;
         };
         /** @description RFC 9457 problem details. */
         Problem: {
@@ -122,6 +152,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Readiness"];
+                };
+            };
+        };
+    };
+    openTerminal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TerminalSize"];
+            };
+        };
+        responses: {
+            /** @description The shell is running. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TerminalSession"];
+                };
+            };
+            /** @description The size is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many terminals are open. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

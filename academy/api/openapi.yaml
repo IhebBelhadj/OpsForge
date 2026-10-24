@@ -39,6 +39,36 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Readiness" }
+  /api/v1/terminals:
+    post:
+      operationId: openTerminal
+      summary: Start a shell for a browser terminal
+      description: >-
+        Starts an interactive shell on a pty and returns its session id; the client then connects a WebSocket to
+        /ws/terminal/{session} (binary frames out, JSON frames in, see internal/httpapi/terminal.go). A session
+        survives 60 s without a client and replays its last 64 KiB of output on reconnect.
+      tags: [terminals]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TerminalSize" }
+      responses:
+        "201":
+          description: The shell is running.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalSession" }
+        "400":
+          description: The size is out of range.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Too many terminals are open.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 components:
   schemas:
     Health:
@@ -62,6 +92,16 @@ components:
         name: { type: string, description: "database or toolchain" }
         ok: { type: boolean }
         detail: { type: string, description: Why the check failed }
+    TerminalSize:
+      type: object
+      properties:
+        cols: { type: integer, minimum: 2, maximum: 1000, default: 80 }
+        rows: { type: integer, minimum: 2, maximum: 1000, default: 24 }
+    TerminalSession:
+      type: object
+      required: [session]
+      properties:
+        session: { type: string, description: "Opaque session id for /ws/terminal/{session}" }
     Problem:
       type: object
       description: RFC 9457 problem details.

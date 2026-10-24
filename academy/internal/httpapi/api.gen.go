@@ -9,8 +9,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for HealthStatus.
@@ -86,8 +90,26 @@ type Readiness struct {
 // ReadinessStatus defines model for Readiness.Status.
 type ReadinessStatus string
 
+// TerminalSession defines model for TerminalSession.
+type TerminalSession struct {
+	// Session Opaque session id for /ws/terminal/{session}
+	Session string `json:"session"`
+}
+
+// TerminalSize defines model for TerminalSize.
+type TerminalSize struct {
+	Cols *int `json:"cols,omitempty"`
+	Rows *int `json:"rows,omitempty"`
+}
+
+// OpenTerminalJSONRequestBody defines body for OpenTerminal for application/json ContentType.
+type OpenTerminalJSONRequestBody = TerminalSize
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// OpenTerminal Start a shell for a browser terminal
+	// (POST /api/v1/terminals)
+	OpenTerminal(w http.ResponseWriter, r *http.Request)
 	// GetHealthz The process is up
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -104,6 +126,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// OpenTerminal operation middleware
+func (siw *ServerInterfaceWrapper) OpenTerminal(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenTerminal(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealthz operation middleware
 func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
@@ -255,8 +291,59 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealthz)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/readyz", wrapper.GetReadyz)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/terminals", wrapper.OpenTerminal)
 
 	return m
+}
+
+type OpenTerminalRequestObject struct {
+	Body *OpenTerminalJSONRequestBody
+}
+
+type OpenTerminalResponseObject interface {
+	VisitOpenTerminalResponse(w http.ResponseWriter) error
+}
+
+type OpenTerminal201JSONResponse TerminalSession
+
+func (response OpenTerminal201JSONResponse) VisitOpenTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenTerminal400ApplicationProblemPlusJSONResponse Problem
+
+func (response OpenTerminal400ApplicationProblemPlusJSONResponse) VisitOpenTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenTerminal429ApplicationProblemPlusJSONResponse Problem
+
+func (response OpenTerminal429ApplicationProblemPlusJSONResponse) VisitOpenTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthzRequestObject struct {
@@ -317,6 +404,9 @@ func (response GetReadyz503JSONResponse) VisitGetReadyzResponse(w http.ResponseW
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// OpenTerminal Start a shell for a browser terminal
+	// (POST /api/v1/terminals)
+	OpenTerminal(ctx context.Context, request OpenTerminalRequestObject) (OpenTerminalResponseObject, error)
 	// GetHealthz The process is up
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -362,6 +452,40 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// OpenTerminal operation middleware
+func (sh *strictHandler) OpenTerminal(w http.ResponseWriter, r *http.Request) {
+	var request OpenTerminalRequestObject
+
+	var body OpenTerminalJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenTerminal(ctx, request.(OpenTerminalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenTerminal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenTerminalResponseObject); ok {
+		if err := validResponse.VisitOpenTerminalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetHealthz operation middleware

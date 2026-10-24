@@ -110,6 +110,8 @@ func uncovered() []string {
 
 func do(h http.Handler, method, target string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(method, target, nil))
+	req := httptest.NewRequest(method, target, nil)
+	req.Host = "127.0.0.1:8090" // httptest's default, example.com, is refused by the Host guard
+	h.ServeHTTP(rec, req)
 	return rec
 }

@@ -724,6 +724,18 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
   - The shadcn CLI wrote `import { cn } from "cn"`: fixed by hand (check each `shadcn add`).
   - A `-race` test binary re-executed as the fake toolchain sleeps 1 s on exit: `GORACE=atexit_sleep_ms=0`.
   - Wire needs `github.com/google/wire` in the service's own go.mod (tidy drops it before `wire.go` exists).
+- [x] **Spike S6, Go terminal (done 2026-10-24): holds.** `internal/terminal` (sessions, 64 KiB replay ring, 60 s
+  linger after the socket drops, newest tab takes the session over, a client that falls 256 chunks behind is
+  detached and reconnects to the replay, 8 sessions at most) + `terminal/ptyshell` (creack/pty, SIGHUP to the
+  process group on close, Phase 10's rcfile with shell-quoted paths) + `POST /api/v1/terminals` and
+  `/ws/terminal/{session}` (coder/websocket; Phase 10's frames: binary output, `{t:i,d}` input, `{t:r,cols,rows}`
+  resize; close codes 1000 exited, 4000 replaced, 4001 slow, 1001 shutdown). Parity proved by a test on real bash:
+  typed input, bracketed paste (`ESC[200~…ESC[201~`), resize seen by `stty size`, the `opsforge` function,
+  reconnect replay, exit. Linger, takeover and slow-client rules are `testing/synctest` tests (a mutation that
+  dropped the linger reset was caught only after adding the reconnect-then-disconnect case). The Host guard (421
+  for non-loopback names: DNS rebinding) and the WebSocket Origin check came with it. Live on the built binary:
+  `opsforge academy state` typed in a browser terminal answers in 0.6 s; 17.8 MiB RSS with 4 shells; SIGTERM hangs up
+  every shell.
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets
