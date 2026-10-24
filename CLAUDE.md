@@ -48,7 +48,7 @@ reboot-survival check).
 | `lab/labs.py`, `lab/labpack.schema.json` | Pure pack logic: loading, schema + cross-reference validation, content hashes, check types (`CHECKS`), badge rules (`RULES`), XP, `unmet_needs` (layout/needs vs topology). |
 | `lab/labsdb.py`, `lab/migrations/` | SQLite: numbered migrations (`PRAGMA user_version`), idempotent pack import, catalog with unlocks, attempts, hints, events, badge awards. |
 | `lab/labserver.py`, `lab/web/` | `opsforge serve`: stdlib HTTP + JSON API, checks via `ScenarioRun`, WebSocket terminal on a pty; static UI (no build step). Deleted in Phase 11 M2. |
-| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, `toolchain.schema.json`, oapi-codegen config), `internal/{config,httpapi,identity,lab,opsforgecli,platform,terminal}` (+ modules from M1), `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
+| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, `toolchain.schema.json`, oapi-codegen config), `internal/{catalog,config,contentimport,httpapi,identity,lab,opsforgecli,platform,terminal}` (+ modules from M1), `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
 | `web/` | Phase 11 React 19 + Vite + TS app (pnpm): `src/{app,routes,features,components/ui,api,lib,test,styles}`, `e2e/` (Playwright against the built binary + `e2e/fake-opsforge.sh`). `src/api/schema.d.ts` and `src/routeTree.gen.ts` are generated and committed. |
 | `lab/academy.py`, `lab/course.schema.json` | Pure course-pack compiler: `courses/<id>/` (course.yml, lectures/*.md with front matter, quizzes, challenges) + Phase 10 labs/badges → the bundle (`compile_bundle`). |
 | `scenarios/` | `<name>.yml` experiments run by `opsforge scenario <name>`; `manifests/` holds what they apply to the cluster. Results: `.opsforge/results/`. |
@@ -193,6 +193,11 @@ reboot-survival check).
   Tests sign in with `signIn(t, srv)` and send as the page (`browser.send`). Timestamps are stored with
   `sqlite.FormatTime` (fixed-width UTC: text order = time order). A module's queries get their own sqlc entry
   (`sqlc.yaml`, `<<: *go` + `out`).
+- Academy content (`internal/catalog`, `internal/contentimport`): one `content` table, PK (kind, key), the entry's
+  bundle document in `doc`. `contentimport.Entries` flattens a bundle, `Diff` compares (`Entry.Same`: document,
+  position, parents), only changes are written (same packs = no write at all, timestamps kept); missing entries are
+  retired, never deleted. Imported at start (a failure is logged, the last catalogue served) and by `POST
+  /api/v1/admin/import` (422 `/problems/invalid-packs` with `errors`, 503 `/problems/toolchain` for `ErrCompile`).
 - Academy terminals (`internal/terminal`): sessions outlive their socket for `Linger` (60 s) and replay the last 64 KiB;
   the newest socket takes a session over. Wire format = Phase 10's (binary out; `{t:"i",d}` / `{t:"r",cols,rows}` in);
   close codes 1000 exited, 4000 replaced, 4001 slow, 1001 shutdown (`httpapi.StatusReplaced/StatusSlow`). Every

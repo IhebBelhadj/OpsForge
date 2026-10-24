@@ -32,8 +32,9 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		return nil, nil, err
 	}
 	identityService := provideIdentity(store, systemClock)
-	handler := provideHandler(build, v, shells, identityService, logger)
-	app := newApp(cfg, logger, handler, service)
+	contentimportService := provideImporter(runner, store, systemClock)
+	handler := provideHandler(build, v, shells, identityService, contentimportService, logger)
+	app := newApp(cfg, logger, handler, service, contentimportService)
 	return app, func() {
 		cleanup2()
 		cleanup()

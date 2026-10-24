@@ -78,6 +78,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-import the packs
+         * @description Compiles the repository's packs (`opsforge academy compile`) and brings the catalogue to them; also done at start. Importing unchanged packs changes nothing (changed is false). Removed content is retired, never deleted. A bundle with errors is not imported (422, the errors listed).
+         */
+        post: operations["importContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/terminals": {
         parameters: {
             query?: never;
@@ -140,6 +160,18 @@ export interface components {
             /** @description Opaque session id for /ws/terminal/{session} */
             session: string;
         };
+        /** @description Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out. */
+        EntryCounts: {
+            [key: string]: number;
+        };
+        ImportReport: {
+            /** @description false: the catalogue already matched the packs */
+            changed: boolean;
+            added: components["schemas"]["EntryCounts"];
+            updated: components["schemas"]["EntryCounts"];
+            retired: components["schemas"]["EntryCounts"];
+            unchanged: components["schemas"]["EntryCounts"];
+        };
         /** @description RFC 9457 problem details. */
         Problem: {
             /** @description Stable URI reference, e.g. /problems/not-found */
@@ -147,6 +179,13 @@ export interface components {
             title: string;
             status: number;
             detail?: string;
+            /** @description Validation errors (/problems/invalid-packs), one per problem found in a pack. */
+            errors?: components["schemas"]["PackError"][];
+        };
+        PackError: {
+            pack: string;
+            /** @description <path in the pack>: what is wrong */
+            message: string;
         };
     };
     responses: {
@@ -267,6 +306,46 @@ export interface operations {
                 };
             };
             401: components["responses"]["NoSession"];
+        };
+    };
+    importContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Imported; counts per kind of entry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description The packs have validation errors; nothing was imported. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The toolchain failed (not installed, crashed, or speaks another contract). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     openTerminal: {

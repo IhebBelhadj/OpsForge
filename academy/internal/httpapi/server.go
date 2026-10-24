@@ -35,6 +35,7 @@ type Deps struct {
 	Log       *slog.Logger
 	Terminals Terminals
 	Identity  Identity
+	Importer  Importer
 }
 
 type server struct {

@@ -22,7 +22,7 @@ import (
 )
 
 // labServer is the transport over real shells (bash on ptys, as in production), on a loopback listener.
-func labServer(t *testing.T) (*httptest.Server, *terminal.Service) {
+func labServer(t *testing.T, opts ...func(*httpapi.Deps)) (*httptest.Server, *terminal.Service) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "opsforge"), []byte("#!/bin/sh\necho \"opsforge $*\"\n"), 0o755); err != nil {
@@ -33,13 +33,17 @@ func labServer(t *testing.T) (*httptest.Server, *terminal.Service) {
 		t.Fatal(err)
 	}
 	svc := terminal.NewService(ptyshell.Spawner{})
-	srv := httptest.NewServer(httpapi.NewHandler(httpapi.Deps{
+	deps := httpapi.Deps{
 		Build:     platform.Build{Version: "test"},
 		Web:       built,
 		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Terminals: terminal.NewShells(svc, spec),
 		Identity:  identities(t),
-	}))
+	}
+	for _, opt := range opts {
+		opt(&deps)
+	}
+	srv := httptest.NewServer(httpapi.NewHandler(deps))
 	t.Cleanup(func() {
 		svc.Shutdown()
 		srv.Close()

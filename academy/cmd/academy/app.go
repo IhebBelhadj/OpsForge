@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
+	catalogsqlite "github.com/IhebBelhadj/opsforge/academy/internal/catalog/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
+	"github.com/IhebBelhadj/opsforge/academy/internal/contentimport"
 	"github.com/IhebBelhadj/opsforge/academy/internal/httpapi"
 	"github.com/IhebBelhadj/opsforge/academy/internal/identity"
 	identitysqlite "github.com/IhebBelhadj/opsforge/academy/internal/identity/sqlite"
@@ -29,11 +31,19 @@ type App struct {
 	log       *slog.Logger
 	handler   http.Handler
 	terminals *terminal.Service
+	importer  *contentimport.Service
 	ready     chan string // receives the listen address once serving (tests use port 0)
 }
 
-// Run serves until ctx ends, then stops accepting and gives running requests cfg.ShutdownTimeout.
+// Run imports the packs, then serves until ctx ends, then stops accepting and gives running requests
+// cfg.ShutdownTimeout. A failed import is logged, not fatal: the catalogue keeps the last good import.
 func (a *App) Run(ctx context.Context) error {
+	if report, err := a.importer.Import(ctx); err != nil {
+		a.log.Warn("content import failed; serving the last imported catalogue", slog.Any("error", err))
+	} else {
+		a.log.Info("content imported", slog.Bool("changed", report.Changed), slog.Any("added", report.Added),
+			slog.Any("updated", report.Updated), slog.Any("retired", report.Retired))
+	}
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.cfg.Addr)
 	if err != nil {
 		return err
@@ -109,13 +119,19 @@ func provideIdentity(store *sqlite.Store, clock platform.Clock) *identity.Servic
 	return identity.NewService(identitysqlite.NewRepo(store.DB), clock)
 }
 
+func provideImporter(toolchain *opsforgecli.Runner, store *sqlite.Store, clock platform.Clock) *contentimport.Service {
+	return contentimport.NewService(toolchain, catalogsqlite.NewRepo(store.DB), clock)
+}
+
 func provideHandler(build platform.Build, checks []httpapi.ReadinessCheck, shells terminal.Shells,
-	ids *identity.Service, log *slog.Logger) http.Handler {
+	ids *identity.Service, importer *contentimport.Service, log *slog.Logger) http.Handler {
 	return httpapi.NewHandler(httpapi.Deps{
 		Build: build, Readiness: checks, Web: web.FS(), Log: log, Terminals: shells, Identity: ids,
+		Importer: importer,
 	})
 }
 
-func newApp(cfg config.Config, log *slog.Logger, handler http.Handler, terminals *terminal.Service) *App {
-	return &App{cfg: cfg, log: log, handler: handler, terminals: terminals}
+func newApp(cfg config.Config, log *slog.Logger, handler http.Handler, terminals *terminal.Service,
+	importer *contentimport.Service) *App {
+	return &App{cfg: cfg, log: log, handler: handler, terminals: terminals, importer: importer}
 }

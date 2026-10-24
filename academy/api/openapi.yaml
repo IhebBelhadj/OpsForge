@@ -75,6 +75,33 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Me" }
         "401": { $ref: "#/components/responses/NoSession" }
+  /api/v1/admin/import:
+    post:
+      operationId: importContent
+      summary: Re-import the packs
+      description: >-
+        Compiles the repository's packs (`opsforge academy compile`) and brings the catalogue to them; also done at
+        start. Importing unchanged packs changes nothing (changed is false). Removed content is retired, never
+        deleted. A bundle with errors is not imported (422, the errors listed).
+      tags: [content]
+      responses:
+        "200":
+          description: Imported; counts per kind of entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportReport" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: The packs have validation errors; nothing was imported.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503":
+          description: The toolchain failed (not installed, crashed, or speaks another contract).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /api/v1/terminals:
     post:
       operationId: openTerminal
@@ -173,6 +200,20 @@ components:
       required: [session]
       properties:
         session: { type: string, description: "Opaque session id for /ws/terminal/{session}" }
+    EntryCounts:
+      type: object
+      description: >-
+        Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
+      additionalProperties: { type: integer, minimum: 1 }
+    ImportReport:
+      type: object
+      required: [changed, added, updated, retired, unchanged]
+      properties:
+        changed: { type: boolean, description: "false: the catalogue already matched the packs" }
+        added: { $ref: "#/components/schemas/EntryCounts" }
+        updated: { $ref: "#/components/schemas/EntryCounts" }
+        retired: { $ref: "#/components/schemas/EntryCounts" }
+        unchanged: { $ref: "#/components/schemas/EntryCounts" }
     Problem:
       type: object
       description: RFC 9457 problem details.
@@ -182,3 +223,13 @@ components:
         title: { type: string }
         status: { type: integer }
         detail: { type: string }
+        errors:
+          type: array
+          description: Validation errors (/problems/invalid-packs), one per problem found in a pack.
+          items: { $ref: "#/components/schemas/PackError" }
+    PackError:
+      type: object
+      required: [pack, message]
+      properties:
+        pack: { type: string }
+        message: { type: string, description: "<path in the pack>: what is wrong" }

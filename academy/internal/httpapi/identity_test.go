@@ -77,9 +77,9 @@ func record(resp *http.Response) *httptest.ResponseRecorder {
 	return rec
 }
 
-func apiServer(t *testing.T) *httptest.Server {
+func apiServer(t *testing.T, opts ...func(*httpapi.Deps)) *httptest.Server {
 	t.Helper()
-	srv, _ := labServer(t)
+	srv, _ := labServer(t, opts...)
 	return srv
 }
 

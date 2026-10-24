@@ -4,6 +4,23 @@
 
 package sqlite
 
+import (
+	"database/sql"
+)
+
+type Content struct {
+	Kind        string
+	Key         string
+	PackID      string
+	CourseID    sql.NullString
+	Position    int64
+	Title       string
+	ContentHash string
+	Doc         string
+	Retired     int64
+	UpdatedAt   string
+}
+
 type Instance struct {
 	ID        int64
 	CreatedAt string

@@ -173,17 +173,10 @@ text decoded in Go, times are RFC 3339 UTC text.
 ```
 identity     users(id, name, created_at)  sessions(id, user_id, csrf, created_at, expires_at)
 
-catalog      packs(id, title, version, hint_penalty, content_hash, imported_at)
-             courses(id, pack_id, title, subtitle, level, layout, needs, outcomes, requirements, description,
-                     badge_id, position, content_hash, retired)
-             course_requires(course_id, requires_course_id)
-             sections(id, course_id, position, title, layout, needs)                    -- rebuilt on import
-             items(id, course_id, section_id, position, type, ref, title, minutes, content_hash, retired)
-             lectures(id, markdown, resources, content_hash)
-             quizzes(id, title, pass, xp, shuffle, time_limit_s, draw, questions, content_hash)
-             challenges(id, title, difficulty, xp, needs, statement, starter, solution, tests, time_limit_s, hints, content_hash)
-             labs(id, pack_id, title, summary, xp, minutes, body, files, content_hash, retired)
-             badges(id, pack_id, title, description, icon, rule, position, retired)
+catalog      content(kind, key, pack_id, course_id, position, title, content_hash, doc, retired, updated_at)
+               -- one row per entry: pack, course, item, lecture, quiz, challenge, lab, badge; PK (kind, key);
+               -- doc = the entry's bundle document; keys: ids, "<course>/<id>" for items, lectures, quizzes,
+               -- challenges; other tables refer to an entry by (kind, key)
 
 progress     item_progress(user_id, item_id, status, content_hash, completed_at, last_opened_at)
              notes(id, user_id, item_id, body, created_at, updated_at)
@@ -205,6 +198,10 @@ rewards      events(id, user_id, kind, subject, data, at)                   -- a
 operations   operations(id, user_id, kind, status, result, created_at, finished_at)   -- 202 + SSE long ops
 ```
 
+- **Import** (`contentimport`): the bundle is flattened into entries and compared with the catalogue (`Diff`):
+  only added, changed (document, position, parent) or returning entries are written, missing ones retired, in one
+  transaction. One table instead of one per kind keeps that comparison generic; a pack's Phase 10 curricula stay in
+  its document until M2 turns them into courses.
 - **Completion**: lectures by `item_progress`; quizzes by a passed `quiz_attempts` row; labs by a passed `attempts`
   row for that lab (a lab passed in one course completes it in every course); challenges by an `accepted`
   submission. Stale when the completion's `content_hash` differs from the item's current one.

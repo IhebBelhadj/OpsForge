@@ -60,6 +60,9 @@ type Check struct {
 	Ok   bool   `json:"ok"`
 }
 
+// EntryCounts Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
+type EntryCounts map[string]int
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -71,6 +74,24 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// ImportReport defines model for ImportReport.
+type ImportReport struct {
+	// Added Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
+	Added EntryCounts `json:"added"`
+
+	// Changed false: the catalogue already matched the packs
+	Changed bool `json:"changed"`
+
+	// Retired Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
+	Retired EntryCounts `json:"retired"`
+
+	// Unchanged Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
+	Unchanged EntryCounts `json:"unchanged"`
+
+	// Updated Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
+	Updated EntryCounts `json:"updated"`
+}
+
 // Me defines model for Me.
 type Me struct {
 	// Csrf Send as X-CSRF-Token on every change
@@ -78,11 +99,21 @@ type Me struct {
 	User User   `json:"user"`
 }
 
+// PackError defines model for PackError.
+type PackError struct {
+	// Message <path in the pack>: what is wrong
+	Message string `json:"message"`
+	Pack    string `json:"pack"`
+}
+
 // Problem RFC 9457 problem details.
 type Problem struct {
 	Detail *string `json:"detail,omitempty"`
-	Status int     `json:"status"`
-	Title  string  `json:"title"`
+
+	// Errors Validation errors (/problems/invalid-packs), one per problem found in a pack.
+	Errors *[]PackError `json:"errors,omitempty"`
+	Status int          `json:"status"`
+	Title  string       `json:"title"`
 
 	// Type Stable URI reference, e.g. /problems/not-found
 	Type string `json:"type"`
@@ -126,6 +157,9 @@ type OpenTerminalJSONRequestBody = TerminalSize
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ImportContent Re-import the packs
+	// (POST /api/v1/admin/import)
+	ImportContent(w http.ResponseWriter, r *http.Request)
 	// GetMe Who is signed in
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -151,6 +185,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ImportContent operation middleware
+func (siw *ServerInterfaceWrapper) ImportContent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportContent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -346,6 +394,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/readyz", wrapper.GetReadyz)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sessions", wrapper.OpenSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/admin/import", wrapper.ImportContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/terminals", wrapper.OpenTerminal)
 
 	return m
@@ -354,6 +403,87 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 type ForbiddenApplicationProblemPlusJSONResponse Problem
 
 type NoSessionApplicationProblemPlusJSONResponse Problem
+
+type ImportContentRequestObject struct {
+}
+
+type ImportContentResponseObject interface {
+	VisitImportContentResponse(w http.ResponseWriter) error
+}
+
+type ImportContent200JSONResponse ImportReport
+
+func (response ImportContent200JSONResponse) VisitImportContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportContent401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response ImportContent401ApplicationProblemPlusJSONResponse) VisitImportContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportContent403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ImportContent403ApplicationProblemPlusJSONResponse) VisitImportContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportContent422ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportContent422ApplicationProblemPlusJSONResponse) VisitImportContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportContent503ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportContent503ApplicationProblemPlusJSONResponse) VisitImportContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetMeRequestObject struct {
 }
@@ -579,6 +709,9 @@ func (response GetReadyz503JSONResponse) VisitGetReadyzResponse(w http.ResponseW
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ImportContent Re-import the packs
+	// (POST /api/v1/admin/import)
+	ImportContent(ctx context.Context, request ImportContentRequestObject) (ImportContentResponseObject, error)
 	// GetMe Who is signed in
 	// (GET /api/v1/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -633,6 +766,30 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ImportContent operation middleware
+func (sh *strictHandler) ImportContent(w http.ResponseWriter, r *http.Request) {
+	var request ImportContentRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportContent(ctx, request.(ImportContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportContentResponseObject); ok {
+		if err := validResponse.VisitImportContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetMe operation middleware
