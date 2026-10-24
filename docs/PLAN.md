@@ -695,6 +695,14 @@ host (no lab RAM); database 170 KiB. Found and fixed on the way:
 - Lab texts corrected against what the lab prints (the `ip addr` output's flannel/cni interfaces, the scheduler's
   default soft spreading, the reroute time).
 
+### Phase 11: OpsForge Academy (planned 2026-10-24)
+Courses structured like Udemy's (lectures, multiple-choice quizzes, labs, LeetCode-style challenges), a VS Code-grade
+editor (Monaco) and a Kubernetes catalogue from basics to advanced, built as a production app: a Go platform service
+(modular monolith, ports and adapters, DI, sqlc + SQLite, OpenAPI first), a React + Vite + shadcn/ui front end, the
+Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. The plan lives in
+[docs/courses/](courses/README.md): architecture, frontend, design, content model, syllabus, testing, milestones
+(M0 foundations → M8 hardening). Phase 10's stdlib server is replaced at M2.
+
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets
   the same WAN conditions. Prefer **Windows Server Core** (no GUI, ~1.5–2 GB RAM, ~10–15 GB disk); Windows 11

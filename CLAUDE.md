@@ -4,6 +4,8 @@ Lab that provisions a **distributed environment spread over simulated distant si
 multi-region) on one Linux host, with realistic WAN conditions and minimal RAM. Read `docs/PLAN.md` before
 structural changes; it has the phases, acceptance criteria and design decisions.
 
+**Next: Phase 11 (planned, not started)**: OpsForge Academy, plan in `docs/courses/` (read its README first:
+Go platform `academy/`, React + Vite web, Python CLI as lab toolchain; tests first).
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML in `labs/` (curricula → levels →
 labs with probe/quiz/confirm checks, badges), progress in SQLite `.opsforge/labs.db`, `opsforge serve` = signal-box
 web UI on 127.0.0.1:8090 with a browser terminal. All 6 core labs pass on the live stretched lab and leave `verify`
