@@ -101,13 +101,16 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
 |---|---|---|
 | `compile [packs...]` | – | the bundle: packs, courses, items, lectures (Markdown), quizzes (with keys), challenges, labs, badges, content hashes, validation errors (bundle schema: `academy/api/bundle.schema.json`) |
 | `state` | – | lab up, layout, topology name, sites, links (live/desired/condition), nodes, fault |
-| `run` | `{phase: setup\|teardown, steps, namespace, attempt}` | `{metrics, log, error}` |
-| `probe` | `{steps, expect, namespace}` | `{passed, results: [{metric, want, got, passed, checked}], log, error}` (stops at the first failing named step) |
+| `run` | `{phase: setup\|teardown, steps, namespace?}` | `{metrics, log, error}`; a namespace (`lab-<attempt>`, `ch-<attempt>`, nothing else) is created before setup and deleted after teardown, even after a failing step, and fills `${ns}` |
+| `probe` | `{steps, expect, namespace?}` | `{passed, results: [{metric, want, got, passed, checked}], log, error}` (stops at the first failing named step; results in `expect` order) |
 | `apply` | `{manifest, namespace, dry_run: server\|none}` | `{ok, diagnostics: [{path, message}], output}` (kubectl through `opsforge kubectl`) |
 | `heal` | – | `{healed}` |
 | `openapi` | `{cluster}` | the cluster's OpenAPI v3 documents (for `schemas`) |
 | `snapshot-restore` | `{name}` | `{ok, seconds}` (Reset lab for `reset: snapshot` labs) |
 
+- Inputs and outputs of `run`, `probe` and `heal` are `$defs` of `academy/api/toolchain.schema.json`: the CLI checks
+  its input against them, the Go adapter its output. A step that cannot run is `error` in the result (the check
+  failed), not a problem document (the call failed).
 - The Go side wraps it in **`LabController`** (port) with one adapter `opsforgecli` (spawns the CLI with a context
   and timeout, parses, maps errors) and one adapter `fake` for tests and the e2e suite.
 - Placeholders (`${node:c}`, `${ns}`, ...): the bundle keeps texts raw (they depend on the running topology, not on

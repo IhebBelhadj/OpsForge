@@ -65,47 +65,18 @@ class LabDriver:
         return self.cli.lab_state()
 
     def run(self, steps, phase, stop=None):
-        """Runs scenario steps; returns (metrics, log lines, error message or None). `stop(step, metrics)`, called
-        after each step, ends the run early when it returns True."""
-        topo = self.topology()
-        if topo is None:
-            return {}, [], f"{self.cli.TOPOLOGY.name} is invalid"
-        lines = []
-
-        class Run(self.cli.ScenarioRun):
-            def log(self, _phase, text):
-                lines.append(f"{time.monotonic() - self.start:5.1f}s  {text}")
-
-        run = Run(topo)
+        """Runs scenario steps (the CLI's lab_run): (metrics, log lines, error message or None)."""
         try:
-            for step in steps or []:
-                run.step(phase, step)
-                if stop and stop(step, run.metrics):
-                    break
-        except (self.cli.LabError, subprocess.CalledProcessError, ValueError) as e:
-            return run.metrics, lines, str(e).strip() or type(e).__name__
+            return self.cli.lab_run(steps, phase, stop)
         finally:
-            run.stop_flap()
             self.forget_state()
-        return run.metrics, lines, None
 
     def probe(self, arg):
-        """Runs a probe check. It stops at the first named step whose expectations fail, so a check on an unchanged
-        lab answers at once instead of sitting through every later wait_until."""
-        expectations = scenario.expectations(arg)
-
-        def failed(step, metrics):
-            mine = [(m, c) for m, c in expectations if m.split(".")[0] == step.get("name")]
-            return any(not scenario.check(m, c, metrics)[0] for m, c in mine)
-
-        metrics, lines, error = self.run(arg["steps"], "check", stop=failed)
-        results = []
-        for metric, condition in expectations:
-            ok, value, _ = scenario.check(metric, condition, metrics)
-            checked = value is not None or metric.split(".")[0] in {k.split(".")[0] for k in metrics}
-            results.append({"metric": metric, "want": condition, "got": value, "passed": ok, "checked": checked})
-        return {"passed": error is None and all(r["passed"] for r in results), "results": results, "log": lines,
-                "error": error}
+        """Runs a probe check (the CLI's lab_probe)."""
+        try:
+            return self.cli.lab_probe(arg)
+        finally:
+            self.forget_state()
 
     def heal(self):
         try:

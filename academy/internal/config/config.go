@@ -20,6 +20,7 @@ type Config struct {
 	DB               string        // SQLite database
 	Toolchain        string        // the opsforge CLI the platform calls (docs/courses/architecture.md)
 	ToolchainTimeout time.Duration // default limit for one toolchain call
+	LabTimeout       time.Duration // limit for a call that runs steps on the lab (setup, a check, teardown)
 	ShutdownTimeout  time.Duration // how long running requests get on SIGTERM
 	LogLevel         slog.Level
 }
@@ -39,6 +40,7 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	db := fs.String("db", getenv("ACADEMY_DB"), "SQLite database (ACADEMY_DB, default <root>/.opsforge/academy.db)")
 	toolchain := fs.String("toolchain", getenv("ACADEMY_TOOLCHAIN"), "opsforge CLI (default <root>/opsforge)")
 	toolchainTimeout := fs.Duration("toolchain-timeout", 30*time.Second, "limit for one toolchain call")
+	labTimeout := fs.Duration("lab-timeout", 20*time.Minute, "limit for a toolchain call running steps on the lab")
 	shutdownTimeout := fs.Duration("shutdown-timeout", 15*time.Second, "grace period on SIGTERM")
 	level := fs.String("log-level", or("ACADEMY_LOG_LEVEL", "info"), "debug, info, warn or error (ACADEMY_LOG_LEVEL)")
 	if err := fs.Parse(args); err != nil {
@@ -54,7 +56,7 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	}
 	cfg := Config{
 		Addr: *addr, Root: absRoot, DB: *db, Toolchain: *toolchain,
-		ToolchainTimeout: *toolchainTimeout, ShutdownTimeout: *shutdownTimeout,
+		ToolchainTimeout: *toolchainTimeout, LabTimeout: *labTimeout, ShutdownTimeout: *shutdownTimeout,
 	}
 	if cfg.DB == "" {
 		cfg.DB = filepath.Join(absRoot, ".opsforge", "academy.db")
@@ -82,6 +84,9 @@ func (c Config) validate() error {
 	}
 	if c.ToolchainTimeout <= 0 {
 		errs = append(errs, errors.New("toolchain-timeout must be positive"))
+	}
+	if c.LabTimeout <= 0 {
+		errs = append(errs, errors.New("lab-timeout must be positive"))
 	}
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, errors.New("shutdown-timeout must be positive"))

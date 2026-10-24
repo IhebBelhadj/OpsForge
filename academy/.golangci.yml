@@ -50,6 +50,13 @@ linters:
               desc: adapters are injected, not imported
             - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli
               desc: adapters are injected, not imported
+        lab-documents-are-pure:
+          files: ["**/internal/lab/*.go"]
+          deny:
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal
+              desc: the contract documents import no module (every module imports them)
+            - pkg: os/exec
+              desc: the documents are data; internal/opsforgecli runs the toolchain
         platform-is-a-leaf:
           files: ["**/internal/platform/**"]
           list-mode: lax

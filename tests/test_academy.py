@@ -4,6 +4,7 @@ contract change fails both sides. Regenerate them with OPSFORGE_UPDATE_GOLDEN=1 
 
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -210,10 +211,9 @@ def test_sections_may_use_labs_of_other_packs(pack):
 # The CLI contract: JSON on stdout, problems on stderr
 
 
-def run_cli(*args, env=None):
+def run_cli(*args, env=None, input=""):
     return subprocess.run([str(ROOT / "opsforge"), "academy", *args], capture_output=True, text=True,
-                          env={**os.environ, "SOURCE_DATE_EPOCH": "1792800000", **(env or {})}, cwd=ROOT,
-                          stdin=subprocess.DEVNULL)
+                          env={**os.environ, "SOURCE_DATE_EPOCH": "1792800000", **(env or {})}, cwd=ROOT, input=input)
 
 
 def test_cli_compile_prints_the_bundle():
@@ -275,3 +275,132 @@ def test_state_lab_up_with_a_partition(monkeypatch):
     assert state["up"] is True and state["fault"] is True and state["error"] is None
     assert {k: v["condition"] for k, v in state["links"].items()} == {"a-b": "ok", "a-c": "cut", "b-c": "cut"}
     golden("state.up.json", state)
+
+
+# run, probe, heal: scenario steps on the lab. Host `run` steps need no Incus, so these run the real step runner.
+
+TOOLCHAIN_SCHEMA = json.loads((ROOT / "academy" / "api" / "toolchain.schema.json").read_text())
+
+
+def contract_doc(kind, doc):
+    """`doc` checked against the toolchain schema's $defs/<kind>."""
+    jsonschema.validate(doc, {**TOOLCHAIN_SCHEMA, "$ref": f"#/$defs/{kind}"})
+    return doc
+
+
+def timeless(doc):
+    """Timings zeroed (log stamps, *.seconds metrics), for golden documents."""
+    doc = json.loads(json.dumps(doc))
+    if "metrics" in doc:
+        doc["metrics"] = {k: 0.0 if k.endswith(".seconds") else v for k, v in doc["metrics"].items()}
+    doc["log"] = [re.sub(r"seconds=[\d.e+-]+", "seconds=0", re.sub(r"^\s*[\d.]+s", "  0.0s", line))
+                  for line in doc["log"]]
+    return doc
+
+
+def echo(name, value):
+    return {"name": name, "run": {"cmd": f"echo {value}"}}
+
+
+def test_with_namespace_fills_the_placeholder_everywhere():
+    steps = [{"run": {"cmd": "kubectl -n ${ns} get pods", "host": "host"}}, {"sleep": "1s"}]
+    assert academy.with_namespace(steps, "lab-7") == [{"run": {"cmd": "kubectl -n lab-7 get pods", "host": "host"}},
+                                                      {"sleep": "1s"}]
+    assert academy.with_namespace(steps[1:], None) == steps[1:]
+    with pytest.raises(ValueError, match=r"\$\{ns\}"):
+        academy.with_namespace(steps, None)
+
+
+@pytest.mark.parametrize("kind, doc, message", [
+    ("runInput", {"contract": 1, "phase": "check", "steps": []}, "phase"),
+    ("runInput", {"contract": 1, "phase": "setup", "steps": [], "namespace": "kube-system"}, "namespace"),
+    ("runInput", {"contract": 1, "phase": "setup", "steps": [], "attempt": 3}, "attempt"),
+    ("probeInput", {"contract": 1, "steps": [echo("a", 1)], "expect": {}}, "expect"),
+])
+def test_input_errors(kind, doc, message):
+    errs = academy.input_errors(kind, doc)
+    assert errs and message in " ".join(errs), errs
+
+
+def test_run_reports_metrics_and_log():
+    doc = contract_doc("runOutput", cli.academy_run(
+        {"contract": 1, "phase": "setup", "steps": [echo("x", 42), {"run": {"cmd": "true"}}]}))
+    assert doc["error"] is None and doc["metrics"]["x.value"] == 42 and doc["metrics"]["x.exit"] == 0
+    assert doc["log"][0].endswith("s  run cmd=echo 42  -> x")
+    golden("run.golden.json", timeless(doc))
+
+
+def test_run_stops_at_a_failing_step():
+    doc = contract_doc("runOutput", cli.academy_run(
+        {"contract": 1, "phase": "setup", "steps": [{"run": {"cmd": "echo ${node:zz}"}}, echo("never", 1)]}))
+    assert "no K3s node in site 'zz'" in doc["error"] and doc["metrics"] == {}
+
+
+def test_probe_passes():
+    doc = contract_doc("probeOutput", cli.academy_probe(
+        {"contract": 1, "steps": [echo("a", 1), echo("b", 2)], "expect": {"a.value": "== 1", "b.value": [">= 2", "<= 2"]}}))
+    assert doc["passed"] is True and [r["passed"] for r in doc["results"]] == [True, True, True]
+    golden("probe.passed.json", timeless(doc))
+
+
+def test_probe_stops_at_the_first_failing_named_step():
+    doc = contract_doc("probeOutput", cli.academy_probe(
+        {"contract": 1, "steps": [echo("a", 1), echo("b", 2)], "expect": {"a.value": "== 0", "b.value": "== 2"}}))
+    assert doc["passed"] is False
+    assert [(r["metric"], r["got"], r["passed"], r["checked"]) for r in doc["results"]] == [
+        ("a.value", 1, False, True), ("b.value", None, False, False)]
+    golden("probe.failed.json", timeless(doc))
+
+
+@pytest.fixture
+def kube(monkeypatch):
+    """Records the commands run in instances; namespaces are made with `k3s kubectl` on each cluster's server."""
+    calls = []
+
+    def run_in(name, *cmd):
+        calls.append((name, " ".join(cmd)))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(cli, "run_in", run_in)
+    return calls
+
+
+def test_setup_creates_the_namespace_first_and_teardown_deletes_it_last(kube):
+    marker = {"run": {"host": "a-gw", "cmd": "step -n ${ns}"}}
+    assert cli.academy_run({"contract": 1, "phase": "setup", "steps": [marker], "namespace": "lab-7"})["error"] is None
+    assert cli.academy_run({"contract": 1, "phase": "teardown", "steps": [marker], "namespace": "lab-7"})["error"] is None
+    cmds = [c for _, c in kube]
+    assert "create namespace lab-7" in cmds[0] and "step -n lab-7" in cmds[1]
+    assert "step -n lab-7" in cmds[2] and "delete namespace lab-7" in cmds[3] and len(cmds) == 4
+    assert kube[0][0] == cli.render.k3s_clusters(cli.load_valid_topology())["lab"]["server"]
+
+
+def test_teardown_deletes_the_namespace_even_after_a_failing_step(kube):
+    doc = cli.academy_run({"contract": 1, "phase": "teardown", "steps": [{"run": {"cmd": "echo ${node:zz}"}}],
+                           "namespace": "lab-7"})
+    assert "zz" in doc["error"] and "delete namespace lab-7" in kube[-1][1]
+
+
+def test_heal(monkeypatch):
+    monkeypatch.setattr(cli, "heal_links", lambda: True)
+    golden("heal.json", contract_doc("healOutput", cli.academy_heal()))
+    monkeypatch.setattr(cli, "heal_links", lambda: False)
+    assert cli.academy_heal()["healed"] is False
+
+
+def test_cli_probe_reads_its_input_on_stdin():
+    out = run_cli("probe", "--json", input=json.dumps(
+        {"contract": 1, "steps": [echo("a", 41)], "expect": {"a.value": "> 40"}}))
+    assert out.returncode == 0, out.stderr
+    assert contract_doc("probeOutput", json.loads(out.stdout))["passed"] is True
+
+
+@pytest.mark.parametrize("stdin, slug", [
+    ("not json", "bad-input"),
+    (json.dumps({"contract": 2, "phase": "setup", "steps": []}), "contract-mismatch"),
+    (json.dumps({"contract": 1, "phase": "setup", "steps": [], "namespace": "default"}), "bad-input"),
+])
+def test_cli_rejects_bad_input(stdin, slug):
+    out = run_cli("run", "--json", input=stdin)
+    assert out.returncode == 1 and out.stdout == ""
+    assert json.loads(out.stderr)["type"] == f"/problems/{slug}"

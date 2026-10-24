@@ -81,7 +81,7 @@ func provideStore(ctx context.Context, cfg config.Config, clock platform.Clock) 
 }
 
 func provideToolchain(cfg config.Config) *opsforgecli.Runner {
-	return opsforgecli.New(cfg.Toolchain, cfg.Root, cfg.ToolchainTimeout)
+	return opsforgecli.New(cfg.Toolchain, cfg.Root, cfg.ToolchainTimeout, cfg.LabTimeout)
 }
 
 func provideReadiness(store *sqlite.Store, toolchain *opsforgecli.Runner) []httpapi.ReadinessCheck {

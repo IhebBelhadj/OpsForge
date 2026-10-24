@@ -20,7 +20,8 @@ func TestDefaultsDeriveFromTheRepositoryRoot(t *testing.T) {
 	}
 	want := config.Config{
 		Addr: "127.0.0.1:8090", Root: "/repo", DB: "/repo/.opsforge/academy.db", Toolchain: "/repo/opsforge",
-		ToolchainTimeout: 30 * time.Second, ShutdownTimeout: 15 * time.Second, LogLevel: slog.LevelInfo,
+		ToolchainTimeout: 30 * time.Second, LabTimeout: 20 * time.Minute, ShutdownTimeout: 15 * time.Second,
+		LogLevel: slog.LevelInfo,
 	}
 	if cfg != want {
 		t.Fatalf("got %+v\nwant %+v", cfg, want)
@@ -49,6 +50,7 @@ func TestInvalidConfigurationIsRejected(t *testing.T) {
 		"no port":          {[]string{"--addr", "127.0.0.1"}, "addr"},
 		"unknown level":    {[]string{"--log-level", "loud"}, "log-level"},
 		"zero timeout":     {[]string{"--toolchain-timeout", "0s"}, "toolchain-timeout"},
+		"zero lab timeout": {[]string{"--lab-timeout", "0s"}, "lab-timeout"},
 		"unknown flag":     {[]string{"--nope"}, "nope"},
 		"positional args":  {[]string{"extra"}, "unexpected"},
 		"relative db path": {[]string{"--db", "academy.db"}, "absolute"},

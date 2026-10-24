@@ -36,21 +36,27 @@ func (e *ContractError) Error() string {
 		Contract)
 }
 
-// Runner calls the CLI at Path from the repository Root.
+// Runner calls the CLI at Path from the repository Root. Timeout bounds a call, LabTimeout one that runs steps on
+// the lab (they wait for the cluster), unless the context ends sooner.
 type Runner struct {
-	Path    string
-	Root    string
-	Timeout time.Duration
+	Path       string
+	Root       string
+	Timeout    time.Duration
+	LabTimeout time.Duration
 }
 
-// New returns a Runner; timeout bounds every call unless the context ends sooner.
-func New(path, root string, timeout time.Duration) *Runner {
-	return &Runner{Path: path, Root: root, Timeout: timeout}
+// New returns a Runner.
+func New(path, root string, timeout, labTimeout time.Duration) *Runner {
+	return &Runner{Path: path, Root: root, Timeout: timeout, LabTimeout: labTimeout}
 }
 
-// Run executes `academy <command> --json` with `in` (nil: no input) as stdin and decodes stdout into out.
-func (r *Runner) Run(ctx context.Context, command string, in, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+// Call executes `academy <command> --json` with `in` (nil: no input) as stdin and decodes stdout into out.
+func (r *Runner) Call(ctx context.Context, command string, in, out any) error {
+	return r.call(ctx, r.Timeout, command, in, out)
+}
+
+func (r *Runner) call(ctx context.Context, timeout time.Duration, command string, in, out any) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// The CLI path is configuration and the command one of the contract's: no learner input reaches argv
 	cmd := exec.CommandContext(ctx, r.Path, "academy", command, "--json") //nolint:gosec // see above
@@ -107,8 +113,11 @@ func decode(command string, stdout []byte, out any) error {
 // Ready reports whether the toolchain runs and speaks this contract (readyz).
 func (r *Runner) Ready(ctx context.Context) error {
 	var v struct{}
-	return r.Run(ctx, "version", nil, &v)
+	return r.Call(ctx, "version", nil, &v)
 }
 
 // ErrInvalidBundle wraps a bundle that does not match bundle.schema.json.
 var ErrInvalidBundle = errors.New("bundle does not match bundle.schema.json")
+
+// ErrInvalidDocument wraps a run, probe or heal document that does not match toolchain.schema.json.
+var ErrInvalidDocument = errors.New("document does not match toolchain.schema.json")

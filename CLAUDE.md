@@ -48,7 +48,7 @@ reboot-survival check).
 | `lab/labs.py`, `lab/labpack.schema.json` | Pure pack logic: loading, schema + cross-reference validation, content hashes, check types (`CHECKS`), badge rules (`RULES`), XP, `unmet_needs` (layout/needs vs topology). |
 | `lab/labsdb.py`, `lab/migrations/` | SQLite: numbered migrations (`PRAGMA user_version`), idempotent pack import, catalog with unlocks, attempts, hints, events, badge awards. |
 | `lab/labserver.py`, `lab/web/` | `opsforge serve`: stdlib HTTP + JSON API, checks via `ScenarioRun`, WebSocket terminal on a pty; static UI (no build step). Deleted in Phase 11 M2. |
-| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, oapi-codegen config), `internal/{config,httpapi,opsforgecli,platform,terminal}` (+ modules from M1), `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
+| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, `toolchain.schema.json`, oapi-codegen config), `internal/{config,httpapi,lab,opsforgecli,platform,terminal}` (+ modules from M1), `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
 | `web/` | Phase 11 React 19 + Vite + TS app (pnpm): `src/{app,routes,features,components/ui,api,lib,test,styles}`, `e2e/` (Playwright against the built binary + `e2e/fake-opsforge.sh`). `src/api/schema.d.ts` and `src/routeTree.gen.ts` are generated and committed. |
 | `lab/academy.py`, `lab/course.schema.json` | Pure course-pack compiler: `courses/<id>/` (course.yml, lectures/*.md with front matter, quizzes, challenges) + Phase 10 labs/badges → the bundle (`compile_bundle`). |
 | `scenarios/` | `<name>.yml` experiments run by `opsforge scenario <name>`; `manifests/` holds what they apply to the cluster. Results: `.opsforge/results/`. |
@@ -174,6 +174,12 @@ reboot-survival check).
   `opsforgecli.Contract` together. The golden documents `academy/testdata/{bundle.golden,state.*,version}.json` are
   written by pytest (`OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/test_academy.py`, review the diff) and read by
   the Go tests: change both sides in one commit. Labs without `files` keep Phase 10's content hash (passes stay fresh).
+  `run`/`probe`/`heal` (`lab_run`, `lab_probe`, also used by Phase 10's `LabDriver`) read their input on stdin, checked
+  against `academy/api/toolchain.schema.json` (the Go adapter checks the outputs); a failing step is the result's
+  `error`, a bad call a problem. A `namespace` must be `lab-*`/`ch-*` (setup creates it on every cluster, labelled
+  `app.kubernetes.io/managed-by=opsforge-academy`; teardown always deletes it). The documents are Go types in the pure
+  package `internal/lab`, so module ports and the `opsforgecli` adapter share them; lab calls use `LabTimeout`
+  (20 min), others `ToolchainTimeout`. Golden: `run.golden`, `probe.{passed,failed}`, `heal` (timings zeroed).
 - Academy contract-first: edit `academy/api/openapi.yaml`, `make gen`, then tests, then handlers. Generated files
   (`*.gen.go`, `wire_gen.go`, `web/src/api/schema.d.ts`, `web/src/routeTree.gen.ts`) are committed; `gen-check` fails
   when stale. httpapi's TestMain fails when a documented response has no contract test. Module layering is enforced by

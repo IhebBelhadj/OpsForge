@@ -1997,6 +1997,115 @@ def academy_state():
     return {"contract": academy.CONTRACT, **lab_state()}
 
 
+# A step that cannot run ends the run with its message; anything else is a bug and raises
+RUN_ERRORS = (LabError, subprocess.CalledProcessError, ValueError)
+ACADEMY_LABEL = "app.kubernetes.io/managed-by=opsforge-academy"
+
+
+def _message(e):
+    return str(e).strip() or type(e).__name__
+
+
+def lab_run(steps, phase, stop=None, namespace=None):
+    """Runs scenario steps on the lab: (metrics, log lines, error message or None). `stop(step, metrics)`, called
+    after each step, ends the run early when it returns True. With a namespace, setup creates it first and teardown
+    deletes it last, even after a failing step (the next attempt starts clean)."""
+    try:
+        topo = load_valid_topology()
+    except (LabError, OSError):
+        return {}, [], f"{TOPOLOGY.name} is invalid"
+    lines = []
+
+    class Run(ScenarioRun):
+        def log(self, _phase, text):
+            lines.append(f"{time.monotonic() - self.start:5.1f}s  {text}")
+
+    run, error = Run(topo), None
+    try:
+        if namespace and phase == "setup":
+            lab_namespace(run, phase, namespace, create=True)
+        for step in academy.with_namespace(steps or [], namespace):
+            run.step(phase, step)
+            if stop and stop(step, run.metrics):
+                break
+    except RUN_ERRORS as e:
+        error = _message(e)
+    finally:
+        run.stop_flap()
+    if namespace and phase == "teardown":
+        try:
+            lab_namespace(run, phase, namespace, create=False)
+        except RUN_ERRORS as e:
+            error = error or _message(e)
+    return run.metrics, lines, error
+
+
+def lab_namespace(run, phase, namespace, create):
+    """Creates (labelled as the Academy's) or deletes `namespace` on every K3s cluster."""
+    clusters = render.k3s_clusters(run.topo)
+    if not clusters:
+        raise LabError(f"namespace {namespace} needs a K3s cluster")
+    for c in clusters.values():
+        run.log(phase, f"{'create' if create else 'delete'} namespace {namespace} on {c['server']}")
+        if create:
+            cmd = (f"k3s kubectl get namespace {namespace} >/dev/null 2>&1 || k3s kubectl create namespace {namespace}"
+                   f" && k3s kubectl label --overwrite namespace {namespace} {ACADEMY_LABEL}")
+        else:
+            cmd = f"k3s kubectl delete namespace {namespace} --ignore-not-found --timeout=120s"
+        res = run_in(c["server"], "sh", "-c", cmd)
+        if res.returncode:
+            raise LabError(f"namespace {namespace} on {c['server']}: {(res.stderr or res.stdout).strip()}")
+
+
+def lab_probe(arg, namespace=None):
+    """Runs a probe check. It stops at the first named step whose expectations fail, so a check on an unchanged
+    lab answers at once instead of sitting through every later wait_until."""
+    expectations = scenario.expectations(arg)
+
+    def failed(step, metrics):
+        mine = [(m, c) for m, c in expectations if m.split(".")[0] == step.get("name")]
+        return any(not scenario.check(m, c, metrics)[0] for m, c in mine)
+
+    metrics, lines, error = lab_run(arg["steps"], "check", stop=failed, namespace=namespace)
+    results = []
+    for metric, condition in expectations:
+        ok, value, _ = scenario.check(metric, condition, metrics)
+        checked = value is not None or metric.split(".")[0] in {k.split(".")[0] for k in metrics}
+        results.append({"metric": metric, "want": condition, "got": value, "passed": ok, "checked": checked})
+    return {"passed": error is None and all(r["passed"] for r in results), "results": results, "log": lines,
+            "error": error}
+
+
+def academy_input(kind):
+    """The command's input document from stdin, checked against toolchain.schema.json."""
+    try:
+        doc = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        raise Problem("bad-input", "Bad input", f"stdin is not one JSON document: {e}") from None
+    if isinstance(doc, dict) and doc.get("contract") != academy.CONTRACT:
+        raise Problem("contract-mismatch", "Contract mismatch",
+                      f"input is contract {doc.get('contract')}, this toolchain speaks {academy.CONTRACT}")
+    if errs := academy.input_errors(kind, doc):
+        raise Problem("bad-input", "Bad input", "; ".join(errs))
+    return doc
+
+
+def academy_run(doc):
+    """`opsforge academy run`: a lab's setup or teardown steps."""
+    metrics, lines, error = lab_run(doc["steps"], doc["phase"], namespace=doc.get("namespace"))
+    return {"contract": academy.CONTRACT, "metrics": metrics, "log": lines, "error": error}
+
+
+def academy_probe(doc):
+    """`opsforge academy probe`: a probe check (passed, one result per expectation)."""
+    return {"contract": academy.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"))}
+
+
+def academy_heal():
+    """`opsforge academy heal`: every link back to its state from before the first fault."""
+    return {"contract": academy.CONTRACT, "healed": heal_links()}
+
+
 def academy_compile(paths):
     for path in paths:
         if not (path / "pack.yml").is_file():
@@ -2015,6 +2124,12 @@ def cmd_academy(args):
             doc = academy_compile([p.resolve() for p in args.packs] or labs.find_packs(LABS))
         elif args.action == "state":
             doc = academy_state()
+        elif args.action == "run":
+            doc = academy_run(academy_input("runInput"))
+        elif args.action == "probe":
+            doc = academy_probe(academy_input("probeInput"))
+        elif args.action == "heal":
+            doc = academy_heal()
         else:
             doc = {"contract": academy.CONTRACT}
     except Problem as e:
@@ -2038,6 +2153,17 @@ def cmd_academy(args):
         for e in doc["errors"]:
             print(f"  {e['pack']}: {e['message']}")
         return 1 if doc["errors"] else 0
+    if args.action in ("run", "probe"):
+        print("\n".join(doc["log"]))
+        if "passed" in doc:
+            for r in doc["results"]:
+                print(f"{'PASS' if r['passed'] else 'FAIL'}  {r['metric']} {r['want']} (got {r['got']})")
+        if doc["error"]:
+            print(f"error: {doc['error']}", file=sys.stderr)
+        return 0 if doc.get("passed", True) and not doc["error"] else 1
+    if args.action == "heal":
+        print("healed" if doc["healed"] else "no fault to heal")
+        return 0
     if args.action == "state":
         print(f"{doc['topology']} ({doc['layout']}): lab {'up' if doc['up'] else 'down'}"
               + (", fault active" if doc["fault"] else "") + (f" ({doc['error']})" if doc["error"] else ""))
@@ -2172,8 +2298,10 @@ def main():
     p = sub.add_parser("serve", help="the teaching-lab web interface on 127.0.0.1 (browser terminal included)")
     p.add_argument("--port", type=int, default=LABS_PORT, help=f"port (default {LABS_PORT})")
     p.set_defaults(func=cmd_serve)
-    p = sub.add_parser("academy", help="the Academy platform's lab toolchain: compile course packs, lab state (JSON)")
-    p.add_argument("action", choices=("compile", "state", "version"))
+    p = sub.add_parser("academy", help="the Academy platform's lab toolchain: compile course packs, lab state, run "
+                       "and probe steps (JSON)")
+    p.add_argument("action", choices=("compile", "state", "run", "probe", "heal", "version"),
+                   help="run and probe read their input document on stdin")
     p.add_argument("packs", nargs="*", type=Path, help="compile: pack folders (default: every pack in labs/)")
     p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
     p.set_defaults(func=cmd_academy)

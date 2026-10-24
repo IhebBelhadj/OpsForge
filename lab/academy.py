@@ -22,6 +22,8 @@ import scenario
 # Major version of the JSON contract between `academy` (Go) and `opsforge academy` (docs/courses/architecture.md)
 CONTRACT = 1
 COURSE_SCHEMA = Path(__file__).resolve().parent / "course.schema.json"
+# Inputs and outputs of `run`, `probe` and `heal` (shared with the Go side)
+TOOLCHAIN_SCHEMA = Path(__file__).resolve().parents[1] / "academy" / "api" / "toolchain.schema.json"
 ITEM_TYPES = ("lecture", "quiz", "lab", "challenge")
 QUIZ_PASS = 70
 QUIZ_XP = 20
@@ -29,6 +31,26 @@ CHALLENGE_XP = 100
 CHALLENGE_TIME_LIMIT = 120
 _IMAGE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)")
 _UNITS = {"s": 1, "m": 60, "h": 3600}
+
+
+def input_errors(kind, doc):
+    """Why `doc` is not a valid `kind` document (toolchain.schema.json's $defs: runInput, probeInput)."""
+    schema = {**json.loads(TOOLCHAIN_SCHEMA.read_text()), "$ref": f"#/$defs/{kind}"}
+    return [f"{'/'.join(map(str, e.absolute_path)) or 'document'}: {e.message}"
+            for e in jsonschema.Draft202012Validator(schema).iter_errors(doc)]
+
+
+def with_namespace(obj, namespace):
+    """`obj` (steps, a text) with `${ns}` replaced by the attempt's namespace; ValueError if it has none."""
+    if isinstance(obj, dict):
+        return {k: with_namespace(v, namespace) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [with_namespace(v, namespace) for v in obj]
+    if isinstance(obj, str) and "${ns}" in obj:
+        if namespace is None:
+            raise ValueError(f"{obj!r} uses ${{ns}}, but the lab has no namespace (namespace: auto)")
+        return obj.replace("${ns}", namespace)
+    return obj
 
 
 def content_hash(obj):
