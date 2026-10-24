@@ -1,0 +1,39 @@
+#!/bin/sh
+# Managed by Ansible
+# Geo-aware DNS health checker (docs/PLAN.md Phase 9). Every INTERVAL seconds, probes the sites' ingresses in this
+# gateway's order of preference (own site first, then the others by RTT) and points NAME at the first one that
+# answers, through dnsmasq's addn-hosts file HOSTS (re-read on SIGHUP). With none answering, it falls back to the
+# first. Usage: opsforge-geo <config>; the config sets NAME, INTERVAL, TIMEOUT, HOSTS and TARGETS ("site address url"
+# per line). POSIX sh: the gateways are Alpine (busybox).
+set -u
+# shellcheck source=/dev/null
+. "$1"
+
+# Two tries, so one lost SYN on a lossy link is not an outage
+probe() {
+	wget -q -T "$TIMEOUT" -O /dev/null "$1" || wget -q -T "$TIMEOUT" -O /dev/null "$1"
+}
+
+current=$(cat "$HOSTS" 2>/dev/null)
+while :; do
+	choice=
+	fallback=
+	while read -r site address url; do
+		[ -n "$site" ] || continue
+		[ -n "$fallback" ] || fallback="$address $NAME # $site, none healthy"
+		if probe "$url"; then
+			choice="$address $NAME # $site"
+			break
+		fi
+	done <<-END
+		$TARGETS
+	END
+	choice=${choice:-$fallback}
+	if [ "$choice" != "$current" ]; then
+		printf '%s\n' "$choice" >"$HOSTS.tmp" && mv "$HOSTS.tmp" "$HOSTS"
+		killall -HUP dnsmasq
+		logger -t opsforge-geo "$choice"
+		current=$choice
+	fi
+	sleep "$INTERVAL"
+done

@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# opsforge-geo: {{ lab_geo_name }} for site {{ lab_site }}, in order of preference (own ingress, then by RTT)
+NAME={{ lab_geo_name }}
+INTERVAL={{ dns_geo_interval }}
+TIMEOUT={{ dns_geo_timeout }}
+HOSTS={{ dns_geo_hosts }}
+TARGETS='
+{% for target in lab_geo %}
+{{ target.site }} {{ target.address }} {{ target.url }}
+{% endfor %}'

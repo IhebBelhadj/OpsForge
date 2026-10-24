@@ -180,6 +180,8 @@ def topology_errors(topo):
     if cache in public_ips.values():
         errors.append(f"transit: {cache} is reserved for the image cache, not usable as a site public_ip")
 
+    if render.GEO_ZONE in sites:
+        errors.append(f"sites/{render.GEO_ZONE}: name is reserved for the geo-aware DNS zone")
     reserved_names = {render.WAN_CORE} | {render.gateway_name(s) for s in sites}
     exposed = set()
     for name, node in topo["nodes"].items():
@@ -1109,17 +1111,21 @@ def provisioned(topo):
 
 
 def check_dns(r, topo):
-    print(f"DNS (every node resolves every lab host as <name>.<site>.{render.LAB_DOMAIN} and by short name)")
+    print(f"DNS (every node resolves every lab host as <name>.<site>.{render.LAB_DOMAIN} and by short name, and "
+          f"{render.GEO_NAME} to its nearest ingress)")
     addrs = render.node_addresses(topo)
     want = {render.gateway_name(s): (s, str(render.gateway_address(site).ip)) for s, site in topo["sites"].items()}
     want |= {n: (topo["nodes"][n]["site"], str(addrs[n].ip)) for n in topo["nodes"]}
     names = [f"{n}.{site}.{render.LAB_DOMAIN}" for n, (site, _) in want.items()] + list(want)
     lookup = 'for n in "$@"; do echo "$n $(getent hosts "$n" | cut -d" " -f1)"; done'
     for node in topo["nodes"]:
-        out = run_in(node, "sh", "-c", lookup, "sh", *names).stdout
+        # Geo-aware DNS: with every ingress up, each site's nearest is its own (or the closest other site's)
+        geo = render.geo_targets(topo, topo["nodes"][node]["site"])
+        expected = {n: want[n.split(".")[0]][1] for n in names} | ({render.GEO_NAME: geo[0][1]} if geo else {})
+        out = run_in(node, "sh", "-c", lookup, "sh", *expected).stdout
         got = dict(line.split() for line in out.splitlines() if len(line.split()) == 2)
-        wrong = [n for n in names if got.get(n) != want[n.split(".")[0]][1]]
-        msg = f"{node} resolves {len(names) - len(wrong)}/{len(names)} names"
+        wrong = [n for n in expected if got.get(n) != expected[n]]
+        msg = f"{node} resolves {len(expected) - len(wrong)}/{len(expected)} names"
         (r.fail if wrong else r.ok)(msg + (f", wrong or missing: {', '.join(wrong)}" if wrong else ""))
 
 

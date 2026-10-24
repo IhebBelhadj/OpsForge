@@ -15,3 +15,44 @@
     name: dnsmasq
     state: started
     enabled: true
+
+# Geo-aware DNS: opsforge-geo health-checks the sites' ingresses and keeps lab_geo_name on the nearest one that answers
+- name: Run the geo-aware DNS health checker
+  when: lab_geo | length > 0
+  block:
+    - name: Install the health checker
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0755"
+      loop:
+        - { src: opsforge-geo, dest: /usr/local/bin/opsforge-geo }
+        - { src: opsforge-geo.initd, dest: /etc/init.d/opsforge-geo }
+      notify: Restart opsforge-geo
+
+    - name: Configure the health checker
+      ansible.builtin.template:
+        src: geo.conf.j2
+        dest: /etc/opsforge/geo.conf
+        mode: "0644"
+      notify: Restart opsforge-geo
+
+    - name: Create the directory of the geo answer
+      ansible.builtin.file:
+        path: "{{ dns_geo_hosts | dirname }}"
+        state: directory
+        mode: "0755"
+
+    # Only when missing: afterwards opsforge-geo owns it
+    - name: Answer with the own site's ingress until the first health check
+      ansible.builtin.copy:
+        content: "{{ lab_geo[0].address }} {{ lab_geo_name }} # {{ lab_geo[0].site }}\n"
+        dest: "{{ dns_geo_hosts }}"
+        mode: "0644"
+        force: false
+
+    - name: Run the health checker at boot
+      ansible.builtin.service:
+        name: opsforge-geo
+        state: started
+        enabled: true

@@ -4,7 +4,10 @@ Lab that provisions a **distributed environment spread over simulated distant si
 multi-region) on one Linux host, with realistic WAN conditions and minimal RAM. Read `docs/PLAN.md` before
 structural changes; it has the phases, acceptance criteria and design decisions.
 
-Current status: **Phase 8 done** (2026-10-23): per-node `cluster:` (default `lab` = Phase 4's stretched cluster);
+Current status: **Phase 9 done** (2026-10-23): geo-aware DNS: every gateway's dnsmasq answers `www.global.lab`
+(`render.GEO_NAME`) with the nearest site whose ingress passes `opsforge-geo`'s health check (own site first, then
+by link RTT); scenario `geo-dns-failover` (c's ingress dark → b in ~5 s, back in ~1 s).
+**Phase 8 done** (2026-10-23): per-node `cluster:` (default `lab` = Phase 4's stretched cluster);
 `topologies/multi-cluster.yml` (one cluster per site, via `OPSFORGE_TOPOLOGY`) linked by Skupper 2.2.3 (site per
 cluster in namespace `mesh`, nodeport link access over the VPN, link cost = RTT); scenario `cluster-failover` (2 failed
 requests when the serving cluster is lost); multi-cluster idles at 4450 MiB anon+kernel, pool 12 GiB.
@@ -18,8 +21,8 @@ blackbox probes per site pair from each gateway, three dashboards); fault comman
 and the scenario runner (`scenarios/*.yml`, 5 scenarios passing); 1635 MiB anon+kernel idle, pool 6.47 GiB.
 Phase 4 done: stretched K3s v1.37.1 in **unprivileged** containers (profile `k3s-node`), flannel vxlan inside the
 VPN, per-site Traefik ingress, zot cache `opsforge-cache`, `opsforge kubectl`. Phase 2.5 done except **reboot
-survival** (needs a host reboot by the user). **Next:** not planned yet (open: geo-aware DNS, Windows nodes,
-the reboot-survival check).
+survival** (needs a host reboot by the user). **Next:** not planned yet (open: Windows nodes, the
+reboot-survival check).
 
 ## Layout / index
 
@@ -130,6 +133,11 @@ the reboot-survival check).
   the lookup walks the nodes' `*.lab` search domains and a partitioned site's zone stalls every new connection by
   seconds. Servers in multi-cluster need 2 GiB (≈1.2 GiB anon each; 1.5 GiB thrashed). `verify --mem/--disk`
   defaults are per layout (`MEM_CEILING_MIB`/`DISK_CEILING_GIB` dicts, `scenario.layout()`).
+- Geo-aware DNS (Phase 9): `render.geo_targets()` → per-gateway inventory `lab_geo` (ordered site, address, probe
+  URL) → `/etc/opsforge/geo.conf`; `ansible/roles/dns/files/opsforge-geo` (POSIX sh: gateways are Alpine/busybox,
+  no bash; listed in the Makefile's `SHELL_SCRIPTS`) writes dnsmasq's `addn-hosts` file and SIGHUPs dnsmasq. Gateways
+  do no hairpin NAT, so the own site is answered with the ingress node's VPC address. Alpine has no `/usr/local/sbin`.
+  The site name `global` is reserved (the zone).
 - Scenarios: `${node:<site>}`, `${server:<site>}`, `${cluster:<site>}` resolve per layout (never hard-code `b-w1`);
   `layout: stretched|multi-cluster` skips a scenario on the other layout.
 - Scenario files: step keys must not be YAML 1.1 booleans (`on`, `yes`, ...): `run` takes `host:`, not `on:`.

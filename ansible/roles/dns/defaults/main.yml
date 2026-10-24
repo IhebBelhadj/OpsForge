@@ -1,0 +1,6 @@
+---
+# Geo-aware DNS (docs/PLAN.md Phase 9): how often each gateway probes the sites' ingresses, and each probe's timeout
+dns_geo_interval: 2
+dns_geo_timeout: 2
+# dnsmasq addn-hosts file holding the current answer for lab_geo_name (rewritten by opsforge-geo, re-read on SIGHUP)
+dns_geo_hosts: /var/lib/opsforge-geo/hosts

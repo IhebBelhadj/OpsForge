@@ -12,6 +12,10 @@ bogus-priv
 cache-size=1000
 local=/{{ lab_domain }}/
 server={{ lab_upstream_dns }}
+{% if lab_geo %}
+# {{ lab_geo_name }}: the nearest healthy ingress, kept current by opsforge-geo
+addn-hosts={{ dns_geo_hosts }}
+{% endif %}
 {% for site, info in lab_sites.items() if site != lab_site %}
 server=/{{ site }}.{{ lab_domain }}/{{ info.public_ip }}
 {% endfor %}

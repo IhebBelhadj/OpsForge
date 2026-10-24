@@ -1,4 +1,4 @@
-SHELL_SCRIPTS := $(shell find . -name '*.sh' -not -path './.git/*')
+SHELL_SCRIPTS := $(shell find . -name '*.sh' -not -path './.git/*') ansible/roles/dns/files/opsforge-geo
 # Fall back to the official image when the local binary is missing or broken (e.g. Arch partial upgrade)
 SHELLCHECK := $(shell shellcheck --version >/dev/null 2>&1 && echo shellcheck || \
 	echo docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0)

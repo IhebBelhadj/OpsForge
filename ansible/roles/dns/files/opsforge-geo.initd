@@ -1,0 +1,10 @@
+#!/sbin/openrc-run
+# Managed by Ansible
+description="OpsForge geo-aware DNS health checker"
+command=/usr/local/bin/opsforge-geo
+command_args=/etc/opsforge/geo.conf
+supervisor=supervise-daemon
+
+depend() {
+	need dnsmasq
+}

@@ -22,6 +22,7 @@ on one laptop, with the smallest possible RAM footprint.
 | Kubernetes | **K3s**, embedded SQLite, bundled extras disabled | Lightest conformant distro; SQLite avoids etcd's latency sensitivity. |
 | Control-plane placement | Single site; workers stretched across sites (`topology.yml`); or one cluster per site (`topologies/multi-cluster.yml`, Phase 8) | etcd/control planes over a lossy WAN is an anti-pattern. |
 | Multi-cluster interconnect | Skupper 2 (application-level links, cost = RTT), over the VPN | No CNI change or CIDR planning; cost-based failover between clusters. Submariner/Cilium Cluster Mesh heavier. |
+| Geo-aware DNS | Each gateway's dnsmasq + a sh health-check loop (`opsforge-geo`), order by link RTT (Phase 9) | No extra daemon or RAM (PowerDNS/CoreDNS GSLB plugins, k8gb heavier); every site is its own resolver, so no client-subnet logic. |
 | Provisioning | Ansible from the host (controller), inventory generated | Manages "remote" machines the way real ops does; idempotent. |
 | Monitoring | Prometheus (short retention) or VictoriaMetrics + Grafana, blackbox probes | WAN health must be visible. |
 | CI/CD | Optional `ci` node: Gitea + Actions (runner building with buildah) + `registry:2` + Flux | Fraction of Jenkins/Sonar/Nexus RAM; GitOps pull across the WAN is realistic. |
@@ -596,9 +597,8 @@ buildah, Gitea, git, the golang base image).
       servers thrashed (memory pressure 46–70 %, a TLS handshake timeout on the API, a Skupper site stuck Pending,
       a link generation failing); at 2 GiB pressure is ~0. `verify --mem/--disk` ceilings are now per layout
       (stretched 2500 MiB / 10 GiB, multi-cluster 4800 MiB / 14 GiB).
-- [ ] Geo-aware DNS: not built. Skupper's cost-based routing already serves each client from the nearest live
-      cluster; a health-checked GeoDNS (each site resolving a global name to the nearest healthy ingress) would be a
-      separate component.
+- [x] Geo-aware DNS: built as Phase 9 (Skupper's cost-based routing serves services between clusters; GeoDNS
+      steers clients between the sites' ingresses).
 - [ ] Flannel `wireguard-native` with public node IPs (deferred here from Phase 4): not done; Skupper made it
       unnecessary for linking clusters.
 - Not explained: through Skupper, curl's per-request timer reports about half the RTT for connections Skupper
@@ -612,6 +612,41 @@ from scratch (`down`, then `up` and `provision` with `OPSFORGE_TOPOLOGY=topologi
 `verify` green (3 clusters, 3 sites and 3 links Ready, 3 Flux, webapp in every region through Skupper, monitoring of
 all three); every scenario passes, `partition-b-writes` skipped; a no-op `provision` 89 s with `changed=0`.
 `verify --mem --disk`: **4450 MiB** anon + kernel (servers 1176–1245, mon 467, ci 188), pool 11.98 GiB.
+
+### Phase 9: Geo-aware DNS (done 2026-10-23)
+A global name, `www.global.lab` (`render.GEO_NAME`), that every site resolves to the nearest ingress that is up: the
+GSLB / health-checked GeoDNS of a multi-region deployment. Works on both layouts (it only needs `expose: ["80"]`).
+- [x] **Preference order per site, from `topology.yml`** (`render.geo_targets`): the own site's ingress first, then
+      the other sites' by link RTT (`ospf_cost`, the same cost as OSPF and Skupper; ties in topology order). Sites
+      without an HTTP ingress (`expose` of public 80/tcp) are skipped. Live `link` edits do not reorder it, like
+      geography-based GeoDNS. Split horizon: the own site is answered with the ingress node's VPC address (gateways do
+      no hairpin NAT), the others with their public IP, so clients reach them across the WAN like any internet client.
+- [x] **Health checks on each gateway** (Ansible role `dns`; inventory `lab_geo` per gateway, `lab_geo_name`):
+      `opsforge-geo`, a POSIX sh loop (busybox `wget`, ~1.4 MiB RSS) under OpenRC's `supervise-daemon`. Every 2 s it
+      probes the sites in order (`GET /`, 2 s timeout, a second try so one lost SYN on a lossy link is not an outage)
+      and stops at the first that answers, so a healthy lab costs one local request per site every 2 s. The answer is
+      a dnsmasq `addn-hosts` file, rewritten and re-read (SIGHUP) only when it changes, and logged to syslog
+      (`opsforge-geo`). With no site answering it falls back to the first. TTL 0 (dnsmasq's local default), so
+      clients re-resolve on every lookup. Detection = one interval plus the failed probes: ~5 s for a black hole.
+- [x] `topology_errors`: no site may be named `global` (the zone). `verify`'s DNS check resolves the name on every
+      node and expects its site's first target.
+- [x] Scenario `geo-dns-failover` (both layouts): c's ingress goes dark (an nft `prerouting` drop of port 80 at raw
+      priority on c's node, before the hostPort DNAT: a dead load balancer, K3s untouched); c's clients must resolve
+      b's public IP (b is 90 ms from c, a 120 ms) and get every request answered there, then come back.
+- Not built: answers per client subnet (EDNS Client Subnet; each site's resolver already is the "region"),
+  weighted/latency-measured routing, or a resolver reachable from outside the lab.
+
+**Done when:** a client is sent to the next-nearest healthy site within seconds of its own site's ingress failing,
+and back after it recovers.
+**Met 2026-10-23 (stretched):** `geo-dns-failover` passes: resolved to b 4.9 s after the fault, 10/10 requests
+answered through b (p50 197 ms: TCP handshake + request on the 90 ms b-c link), back to c 1.0 s after recovery.
+`verify` green, a second `provision` `changed=0`; gateways 29.5 MiB anon + kernel each (unchanged within noise).
+From scratch (stretched, 391 s): `verify` green at 2031 MiB anon + kernel, pool 8.84 GiB; every scenario passes
+(`cluster-failover` skipped); failover 6.3 s this run; a second `provision` `changed=0`.
+**Met 2026-10-23 (multi-cluster, from scratch):** build 435 s; `geo-dns-failover` resolved to b after 6.1 s, 10/10
+requests through b (p50 187 ms), back after 0.3 s; every other scenario passes (`partition-b-writes` skipped); a
+second `provision` `changed=0`; 3660 MiB anon + kernel, pool 11.82 GiB. `verify` right after the build once saw the
+b→c `wan_icmp` probe down (the VPN still converging); it passed on the next run.
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets

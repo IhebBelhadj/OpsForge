@@ -11,3 +11,8 @@
   ansible.builtin.systemd_service:
     name: systemd-resolved
     state: restarted
+
+- name: Restart opsforge-geo
+  ansible.builtin.service:
+    name: opsforge-geo
+    state: restarted

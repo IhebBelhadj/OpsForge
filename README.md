@@ -8,10 +8,11 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 8 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
+> **Status:** Phase 9 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
 > SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, or one cluster per site linked by
 > Skupper (`topologies/multi-cluster.yml`), WAN-aware monitoring (VictoriaMetrics + Grafana, site-pair probes),
-> scripted fault-injection scenarios and optional CI/CD (Gitea Actions, a registry and Flux GitOps across the WAN).
+> scripted fault-injection scenarios, optional CI/CD (Gitea Actions, a registry and Flux GitOps across the WAN) and
+> geo-aware DNS (`www.global.lab` resolves to the nearest healthy site's ingress).
 
 ## Requirements
 
@@ -50,6 +51,7 @@ incus exec wan-core -- wget -qO- http://203.0.113.30/app   # the webapp Flux dep
 export OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml   # another layout: one K3s cluster per site (down first)
 ./opsforge kubectl --cluster c get pods -A   # each cluster has its own API on the host (6443, 6444, 6445)
 ./opsforge scenario cluster-failover   # lose the cluster serving a service: Skupper serves it from the next one
+./opsforge scenario geo-dns-failover   # a site's ingress goes dark: its clients resolve the next-nearest site
 ./opsforge down                # delete the lab (keeps cached images and the image cache; --purge drops them)
 ./opsforge gc                  # delete images left by older opsforge builds
 ./opsforge snapshot provisioned   # snapshot every instance (btrfs CoW, <1 s); --list, --delete NAME

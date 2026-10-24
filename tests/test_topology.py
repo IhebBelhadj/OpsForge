@@ -157,3 +157,8 @@ def test_k3s_role_or_cluster_change_recreates():
     assert changed(agent, {"user.opsforge.role": "k3s-server", "user.opsforge.cluster": "b"})
     assert changed({**agent, "user.opsforge.cluster": "lab"}, {"user.opsforge.role": "k3s-agent", "user.opsforge.cluster": "b"})
     assert not changed({"user.opsforge.role": "plain"}, {"user.opsforge.role": "monitoring"})
+
+
+def test_global_is_not_a_site_name(topo):
+    topo["sites"]["global"] = {"vpc": "10.40.0.0/24", "public_ip": "203.0.113.40"}
+    assert any("reserved for the geo-aware DNS zone" in e for e in errors(topo))

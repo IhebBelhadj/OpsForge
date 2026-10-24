@@ -128,6 +128,9 @@ OSPF_DEAD = 10
 NODE_EXPORTER_PORT = 9100
 BLACKBOX_PORT = 9115
 LAB_DOMAIN = "lab"  # each site's zone is <site>.lab, served by its gateway (ansible/roles/dns)
+# Geo-aware DNS: every gateway answers this name with the nearest site whose ingress passes its health check
+GEO_ZONE = "global"
+GEO_NAME = f"www.{GEO_ZONE}.{LAB_DOMAIN}"
 # The controller (host) enters the lab like an operator on the internet: through wan-core, which it can
 # reach over incusbr0, to the gateways' public IPs. That first hop is wan-core's own traffic: unshaped.
 SSH_ENTRY = f"incus exec {WAN_CORE} -- nc %h %p"
@@ -472,6 +475,36 @@ def cluster_links(topo):
     ]
 
 
+def ingress_node(topo, site):
+    """(node, private port) behind the site's public HTTP port (expose 80/tcp), or None."""
+    for name, node in topo["nodes"].items():
+        if node["site"] == site:
+            for spec in node.get("expose", []):
+                public, private, proto = parse_expose(spec)
+                if (public, proto) == (80, "tcp"):
+                    return name, private
+    return None
+
+
+def geo_targets(topo, site):
+    """[(site, address, url)] in the order `site`'s gateway prefers them for GEO_NAME: its own ingress first, then
+    the other sites' by link RTT (ospf_cost; ties in topology order). Split horizon: the own site's answer is the
+    ingress node's VPC address (gateways do no hairpin NAT), the others' their public IP, reached across the WAN."""
+    addrs = node_addresses(topo)
+    targets = []
+    for peer in sorted(topo["sites"], key=lambda p: 0 if p == site else ospf_cost(topo, site, p)):
+        ingress = ingress_node(topo, peer)
+        if ingress is None:
+            continue
+        if peer == site:
+            ip = str(addrs[ingress[0]].ip)
+            targets.append((peer, ip, f"http://{ip}:{ingress[1]}/"))
+        else:
+            ip = topo["sites"][peer]["public_ip"]
+            targets.append((peer, ip, f"http://{ip}/"))
+    return targets
+
+
 def render_gateway(topo, name, addrs, wg_keys):
     site = topo["sites"][name]
     core = core_address(topo)
@@ -696,6 +729,7 @@ def render_inventory(topo, ssh_config, state_dir):
             "lab_site": name,
             "lab_address": str(gateway_address(site).ip),
             "lab_public_ip": site["public_ip"],
+            "lab_geo": [{"site": s, "address": ip, "url": url} for s, ip, url in geo_targets(topo, name)],
         }
         for name, site in topo["sites"].items()
     }
@@ -716,6 +750,7 @@ def render_inventory(topo, ssh_config, state_dir):
                 "ansible_ssh_common_args": f"-F {ssh_config}",
                 "ansible_python_interpreter": "/usr/bin/python3",
                 "lab_domain": LAB_DOMAIN,
+                "lab_geo_name": GEO_NAME,
                 "lab_upstream_dns": str(core_address(topo)),
                 "lab_state_dir": str(state_dir),
                 # Smallest MTU on the path between VPCs: the WireGuard tunnels' (flannel's VXLAN goes inside them)
@@ -730,11 +765,7 @@ def render_inventory(topo, ssh_config, state_dir):
                         "public_ip": site["public_ip"],
                         "gateway": str(gateway_address(site).ip),
                         # A node exposes HTTP on the public IP: the monitoring node probes it from the other sites
-                        "ingress": any(
-                            parse_expose(spec)[::2] == (80, "tcp")
-                            for node in topo["nodes"].values() if node["site"] == name
-                            for spec in node.get("expose", [])
-                        ),
+                        "ingress": ingress_node(topo, name) is not None,
                     }
                     for name, site in topo["sites"].items()
                 },

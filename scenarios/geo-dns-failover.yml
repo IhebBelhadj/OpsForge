@@ -1,0 +1,48 @@
+description: >
+  Geo-aware DNS: every gateway answers www.global.lab with the nearest site whose ingress passes its health check.
+  Site c's ingress goes dark (port 80 dropped on its node, like a dead load balancer): c's clients must be sent to
+  the next-nearest site (b, 90 ms; a is 120 ms) within seconds, and come back once it recovers.
+setup:
+  - wait_until: { host: "${node:c}", cmd: "getent hosts www.global.lab | grep -q '^${ip:${node:c}} '", timeout: 30s }
+    name: local
+  - http: { from: "${node:c}", url: "http://www.global.lab/", count: 5, timeout: 5s }
+    name: base
+fault:
+  # Priority raw: before conntrack and the hostPort DNAT, so nothing reaches Traefik on port 80
+  - run:
+      host: "${node:c}"
+      cmd: >-
+        PATH=/var/lib/rancher/k3s/data/current/bin/aux:$PATH &&
+        nft add table inet opsforge_scenario &&
+        nft add chain inet opsforge_scenario pre '{ type filter hook prerouting priority -300; }' &&
+        nft add rule inet opsforge_scenario pre tcp dport 80 drop
+    name: dark
+measure:
+  - wait_until:
+      host: "${node:c}"
+      cmd: "getent hosts www.global.lab | grep -q '^${public:b} '"
+      timeout: 60s
+      interval: 0.5s
+    name: failover
+  - http: { from: "${node:c}", url: "http://www.global.lab/", count: 10, timeout: 5s }
+    name: during
+teardown:
+  - run:
+      host: "${node:c}"
+      cmd: PATH=/var/lib/rancher/k3s/data/current/bin/aux:$PATH nft delete table inet opsforge_scenario
+    name: restore
+  - wait_until:
+      host: "${node:c}"
+      cmd: "getent hosts www.global.lab | grep -q '^${ip:${node:c}} '"
+      timeout: 60s
+      interval: 0.5s
+    name: back
+expect:
+  local.ok: "== 1"
+  base.success_pct: "== 100"
+  dark.exit: "== 0"
+  failover.ok: "== 1"
+  # Detection: one probe interval (2 s) plus two timed-out probes (2 s each)
+  failover.seconds: "< 10"
+  during.success_pct: "== 100"
+  back.ok: "== 1"

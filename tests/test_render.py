@@ -296,3 +296,21 @@ def test_inventory_tags_k3s_nodes_with_their_cluster(multi, tmp_path):
     assert "lab_cluster" not in nodes["mon"]
     assert inv["vars"]["lab_clusters"]["c"]["links"] == {"a": 120, "b": 90}
     assert next(i for i in render.plan(multi, "10.99.0.1")[1] if i.name == "c-cp1").cluster == "c"
+
+
+def test_geo_targets_prefer_the_own_site_then_rtt(topo):
+    # c: own ingress (VPC address, gateways do no hairpin NAT), then b (90 ms) before a (120 ms), by public IP
+    c_w1 = str(render.node_addresses(topo)["c-w1"].ip)
+    assert render.geo_targets(topo, "c") == [
+        ("c", c_w1, f"http://{c_w1}:80/"),
+        ("b", "203.0.113.20", "http://203.0.113.20/"),
+        ("a", "203.0.113.10", "http://203.0.113.10/"),
+    ]
+    assert [s for s, _, _ in render.geo_targets(topo, "a")] == ["a", "b", "c"]
+
+
+def test_geo_targets_skip_sites_without_an_http_ingress(topo, tmp_path):
+    topo["nodes"]["c-w1"]["expose"] = ["443"]
+    assert [s for s, _, _ in render.geo_targets(topo, "c")] == ["b", "a"]
+    gws = render.render_inventory(topo, tmp_path / "c", tmp_path)["all"]["children"]["lab"]["children"]["gateways"]["hosts"]
+    assert gws["c-gw"]["lab_geo"][0] == {"site": "b", "address": "203.0.113.20", "url": "http://203.0.113.20/"}
