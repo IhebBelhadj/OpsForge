@@ -57,6 +57,10 @@ func checkContract(t *testing.T, method, path string, rec *httptest.ResponseReco
 	if !ok {
 		t.Fatalf("%s %s: status %s is not documented", method, path, status)
 	}
+	if ref, ok := resp["$ref"].(string); ok { // #/components/responses/<name>
+		resp = doc["components"].(map[string]any)["responses"].(map[string]any)[strings.TrimPrefix(ref,
+			"#/components/responses/")].(map[string]any)
+	}
 	media := strings.Split(rec.Header().Get("Content-Type"), ";")[0]
 	content, _ := resp["content"].(map[string]any)[media].(map[string]any)
 	if content == nil {

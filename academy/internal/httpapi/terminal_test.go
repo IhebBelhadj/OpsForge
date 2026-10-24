@@ -38,6 +38,7 @@ func labServer(t *testing.T) (*httptest.Server, *terminal.Service) {
 		Web:       built,
 		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Terminals: terminal.NewShells(svc, spec),
+		Identity:  identities(t),
 	}))
 	t.Cleanup(func() {
 		svc.Shutdown()
@@ -46,18 +47,14 @@ func labServer(t *testing.T) (*httptest.Server, *terminal.Service) {
 	return srv, svc
 }
 
-func openTerminal(t *testing.T, srv *httptest.Server, body string) *http.Response {
+func openTerminal(t *testing.T, b *browser, body string) *http.Response {
 	t.Helper()
-	resp, err := http.Post(srv.URL+"/api/v1/terminals", "application/json", strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return resp
+	return b.send(t, http.MethodPost, "/api/v1/terminals", body, nil)
 }
 
-func sessionID(t *testing.T, srv *httptest.Server, body string) string {
+func sessionID(t *testing.T, b *browser, body string) string {
 	t.Helper()
-	resp := openTerminal(t, srv, body)
+	resp := openTerminal(t, b, body)
 	defer func() { _ = resp.Body.Close() }()
 	var s httpapi.TerminalSession
 	if resp.StatusCode != http.StatusCreated || json.NewDecoder(resp.Body).Decode(&s) != nil {
@@ -66,11 +63,16 @@ func sessionID(t *testing.T, srv *httptest.Server, body string) string {
 	return s.Session
 }
 
-func dial(t *testing.T, srv *httptest.Server, id string) *websocket.Conn {
+func wsURL(srv *httptest.Server, id string) string {
+	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/terminal/" + id
+}
+
+// dial connects the page's WebSocket (its cookie and Origin).
+func dial(t *testing.T, b *browser, id string) *websocket.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/terminal/"+id, nil)
+	c, resp, err := websocket.Dial(ctx, wsURL(b.srv, id), &websocket.DialOptions{HTTPClient: b.client})
 	if err != nil {
 		t.Fatalf("dial: %v (%v)", err, resp)
 	}
@@ -108,8 +110,9 @@ func expect(t *testing.T, c *websocket.Conn, want string) string {
 // with replay, and the end of the shell.
 func TestTerminalParityWithPhase10(t *testing.T) {
 	srv, _ := labServer(t)
-	id := sessionID(t, srv, `{"cols": 100, "rows": 30}`)
-	c := dial(t, srv, id)
+	b := signIn(t, srv)
+	id := sessionID(t, b, `{"cols": 100, "rows": 30}`)
+	c := dial(t, b, id)
 	expect(t, c, "Lab terminal in")
 
 	send(t, c, map[string]any{"t": "i", "d": "\x1b[200~echo parity-$((6*7))\x1b[201~"})
@@ -126,7 +129,7 @@ func TestTerminalParityWithPhase10(t *testing.T) {
 	expect(t, c, "opsforge kubectl get nodes\r\n")
 
 	_ = c.CloseNow() // the tab dropped its socket
-	again := dial(t, srv, id)
+	again := dial(t, b, id)
 	replay := expect(t, again, "parity-42")
 	if !strings.Contains(replay, "Lab terminal in") {
 		t.Fatalf("replay misses the start of the session: %q", replay)
@@ -140,10 +143,7 @@ func TestTerminalParityWithPhase10(t *testing.T) {
 	if websocket.CloseStatus(err) != websocket.StatusNormalClosure || !strings.Contains(err.Error(), "exited") {
 		t.Fatalf("close after exit: %v", err)
 	}
-	resp, err := http.Get(srv.URL + "/ws/terminal/" + id)
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp := b.send(t, http.MethodGet, "/ws/terminal/"+id, "", nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("an ended session answers %d", resp.StatusCode)
@@ -152,10 +152,11 @@ func TestTerminalParityWithPhase10(t *testing.T) {
 
 func TestASecondTabTakesTheSessionOver(t *testing.T) {
 	srv, _ := labServer(t)
-	id := sessionID(t, srv, "")
-	first := dial(t, srv, id)
+	b := signIn(t, srv)
+	id := sessionID(t, b, "")
+	first := dial(t, b, id)
 	expect(t, first, "Lab terminal in")
-	second := dial(t, srv, id)
+	second := dial(t, b, id)
 	expect(t, second, "Lab terminal in")
 	_, _, err := first.Read(context.Background())
 	for err == nil {
@@ -168,7 +169,8 @@ func TestASecondTabTakesTheSessionOver(t *testing.T) {
 
 func TestShutdownClosesTerminalsAsGoingAway(t *testing.T) {
 	srv, svc := labServer(t)
-	c := dial(t, srv, sessionID(t, srv, ""))
+	b := signIn(t, srv)
+	c := dial(t, b, sessionID(t, b, ""))
 	expect(t, c, "Lab terminal in")
 	svc.Shutdown()
 	_, _, err := c.Read(context.Background())
@@ -182,14 +184,11 @@ func TestShutdownClosesTerminalsAsGoingAway(t *testing.T) {
 
 func TestOpenTerminalContract(t *testing.T) {
 	srv, _ := labServer(t)
+	b := signIn(t, srv)
 	for range terminal.MaxSessions {
-		rec := httptest.NewRecorder()
-		resp := openTerminal(t, srv, "")
-		copyResponse(rec, resp)
-		checkContract(t, "POST", "/api/v1/terminals", rec)
+		checkContract(t, "POST", "/api/v1/terminals", record(openTerminal(t, b, "")))
 	}
-	rec := httptest.NewRecorder()
-	copyResponse(rec, openTerminal(t, srv, `{"cols": 80, "rows": 24}`))
+	rec := record(openTerminal(t, b, `{"cols": 80, "rows": 24}`))
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("past the cap: %d", rec.Code)
 	}
@@ -198,8 +197,7 @@ func TestOpenTerminalContract(t *testing.T) {
 
 func TestOpenTerminalRejectsAnAbsurdSize(t *testing.T) {
 	srv, _ := labServer(t)
-	rec := httptest.NewRecorder()
-	copyResponse(rec, openTerminal(t, srv, `{"cols": 0, "rows": 24}`))
+	rec := record(openTerminal(t, signIn(t, srv), `{"cols": 0, "rows": 24}`))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d", rec.Code)
 	}
@@ -208,8 +206,19 @@ func TestOpenTerminalRejectsAnAbsurdSize(t *testing.T) {
 
 func TestUnknownTerminalSessionIs404(t *testing.T) {
 	srv, _ := labServer(t)
-	_, resp, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/terminal/nope", nil)
+	b := signIn(t, srv)
+	_, resp, err := websocket.Dial(context.Background(), wsURL(srv, "nope"), &websocket.DialOptions{HTTPClient: b.client})
 	if err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("err %v, resp %v", err, resp)
+	}
+}
+
+// The terminal is a shell: its WebSocket needs the session cookie like the API.
+func TestTerminalSocketsNeedASession(t *testing.T) {
+	srv, _ := labServer(t)
+	id := sessionID(t, signIn(t, srv), "")
+	_, resp, err := websocket.Dial(context.Background(), wsURL(srv, id), nil)
+	if err == nil || resp == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("err %v, resp %v", err, resp)
 	}
 }
@@ -217,9 +226,10 @@ func TestUnknownTerminalSessionIs404(t *testing.T) {
 // A page on another site may open a WebSocket to 127.0.0.1: the upgrade must check its Origin.
 func TestCrossSiteWebSocketsAreRefused(t *testing.T) {
 	srv, _ := labServer(t)
-	id := sessionID(t, srv, "")
-	_, resp, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/terminal/"+id,
-		&websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"https://evil.example"}}})
+	b := signIn(t, srv)
+	id := sessionID(t, b, "")
+	_, resp, err := websocket.Dial(context.Background(), wsURL(srv, id),
+		&websocket.DialOptions{HTTPClient: b.client, HTTPHeader: http.Header{"Origin": {"https://evil.example"}}})
 	if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("err %v, resp %v", err, resp)
 	}

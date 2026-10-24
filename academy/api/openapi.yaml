@@ -17,6 +17,7 @@ paths:
       operationId: getHealthz
       summary: The process is up
       tags: [operations]
+      security: []
       responses:
         "200":
           description: Always, while the process serves requests.
@@ -28,6 +29,7 @@ paths:
       operationId: getReadyz
       summary: The database and the lab toolchain answer
       tags: [operations]
+      security: []
       responses:
         "200":
           description: Every check passed.
@@ -39,6 +41,40 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Readiness" }
+  /api/v1/sessions:
+    post:
+      operationId: openSession
+      summary: Sign the local user in
+      description: >-
+        Opens a session for the local user: the token goes in an HttpOnly, SameSite=Strict cookie, the response
+        carries the CSRF token the page sends as X-CSRF-Token on every change. The page calls it when GET /api/v1/me
+        answers 401. Refused (403) from another site's page.
+      tags: [identity]
+      security: []
+      responses:
+        "201":
+          description: Signed in.
+          headers:
+            Set-Cookie:
+              description: "academy_session=<token>; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict"
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/me:
+    get:
+      operationId: getMe
+      summary: Who is signed in
+      description: The user and the session's CSRF token (a reloaded page has the cookie but not the token).
+      tags: [identity]
+      responses:
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/NoSession" }
   /api/v1/terminals:
     post:
       operationId: openTerminal
@@ -64,13 +100,48 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429":
           description: Too many terminals are open.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+security:
+  - session: []
 components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: academy_session
+      description: >-
+        Every /api/v1 operation but openSession needs the session cookie; every change (POST, PUT, PATCH, DELETE)
+        also needs the session's CSRF token in X-CSRF-Token, and is refused when its Origin is another site.
+  responses:
+    NoSession:
+      description: No valid session (no cookie, an unknown or expired one); POST /api/v1/sessions opens one.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: A change from another site's page (Origin, Sec-Fetch-Site) or without the session's CSRF token.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
   schemas:
+    User:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+    Me:
+      type: object
+      required: [user, csrf]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        csrf: { type: string, description: "Send as X-CSRF-Token on every change" }
     Health:
       type: object
       required: [status, version]

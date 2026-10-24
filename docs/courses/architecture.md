@@ -149,7 +149,10 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
 - Binds 127.0.0.1 only by default. Middleware rejects any `Host` other than `127.0.0.1:<port>`/`localhost:<port>`
   (DNS rebinding) and any state-changing request or WebSocket upgrade whose `Origin` differs (cross-site WebSocket).
 - Session cookie `HttpOnly; SameSite=Strict` + CSRF token header on mutations (the local user is created at first
-  start; the cookie makes a future multi-user mode an extension, not a redesign).
+  start; the cookie makes a future multi-user mode an extension, not a redesign). The page calls `GET /api/v1/me`
+  (user + CSRF token), and on 401 `POST /api/v1/sessions` (the one open endpoint, still Origin-checked); the token
+  is stored only as its SHA-256. Requests without Origin and Sec-Fetch-Site (tools on the machine) pass the origin
+  check; the CSRF token still applies to them.
 - Workspace paths are confined (`filepath.Rel` + no symlinks out), size-capped (10 MB per workspace, 1 MB per file).
 - Quiz keys and challenge reference solutions never leave the server before they are earned.
 - Lecture Markdown is rendered without raw HTML (sanitised on the client too).

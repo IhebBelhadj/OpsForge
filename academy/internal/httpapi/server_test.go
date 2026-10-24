@@ -107,8 +107,9 @@ func TestTheWebAppIsServedWithDeepLinks(t *testing.T) {
 }
 
 func TestUnknownAPIPathsAreProblems(t *testing.T) {
+	b := signIn(t, apiServer(t))
 	for _, path := range []string{"/api/v1/nope", "/api/"} {
-		rec := do(handler(built), http.MethodGet, path)
+		rec := record(b.send(t, http.MethodGet, path, "", nil))
 		if rec.Code != 404 || rec.Header().Get("Content-Type") != "application/problem+json" {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Header().Get("Content-Type"))
 		}

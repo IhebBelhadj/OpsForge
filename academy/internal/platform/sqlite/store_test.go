@@ -70,3 +70,15 @@ func TestOpenFailsOnAnUnwritablePath(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+func TestStoredTimesSortAsText(t *testing.T) {
+	a := time.Date(2026, 10, 24, 9, 0, 0, 5, time.UTC)
+	b := a.Add(time.Nanosecond * 999_999_990) // more digits after the second, still later
+	c := time.Date(2026, 10, 24, 10, 0, 0, 0, time.FixedZone("CET", 3600))
+	if sqlite.FormatTime(a) >= sqlite.FormatTime(b) || sqlite.FormatTime(b) <= sqlite.FormatTime(c) {
+		t.Fatalf("%s %s %s", sqlite.FormatTime(a), sqlite.FormatTime(b), sqlite.FormatTime(c))
+	}
+	if got, err := sqlite.ParseTime(sqlite.FormatTime(c)); err != nil || !got.Equal(c) {
+		t.Fatalf("round trip: %v, %v", got, err)
+	}
+}

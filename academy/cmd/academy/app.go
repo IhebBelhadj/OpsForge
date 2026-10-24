@@ -13,6 +13,8 @@ import (
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
 	"github.com/IhebBelhadj/opsforge/academy/internal/httpapi"
+	"github.com/IhebBelhadj/opsforge/academy/internal/identity"
+	identitysqlite "github.com/IhebBelhadj/opsforge/academy/internal/identity/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite"
@@ -103,9 +105,15 @@ func provideShells(cfg config.Config, svc *terminal.Service) (terminal.Shells, e
 	return terminal.NewShells(svc, spec), nil
 }
 
+func provideIdentity(store *sqlite.Store, clock platform.Clock) *identity.Service {
+	return identity.NewService(identitysqlite.NewRepo(store.DB), clock)
+}
+
 func provideHandler(build platform.Build, checks []httpapi.ReadinessCheck, shells terminal.Shells,
-	log *slog.Logger) http.Handler {
-	return httpapi.NewHandler(httpapi.Deps{Build: build, Readiness: checks, Web: web.FS(), Log: log, Terminals: shells})
+	ids *identity.Service, log *slog.Logger) http.Handler {
+	return httpapi.NewHandler(httpapi.Deps{
+		Build: build, Readiness: checks, Web: web.FS(), Log: log, Terminals: shells, Identity: ids,
+	})
 }
 
 func newApp(cfg config.Config, log *slog.Logger, handler http.Handler, terminals *terminal.Service) *App {

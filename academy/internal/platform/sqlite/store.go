@@ -79,3 +79,13 @@ func (s *Store) Close() error {
 	_, err := s.DB.ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
 	return errors.Join(err, s.DB.Close())
 }
+
+// TimeLayout is how timestamps are stored: UTC, fixed width (nanoseconds always written), so text order is time
+// order and queries can compare them.
+const TimeLayout = "2006-01-02T15:04:05.000000000Z"
+
+// FormatTime is t as stored.
+func FormatTime(t time.Time) string { return t.UTC().Format(TimeLayout) }
+
+// ParseTime reads a stored timestamp.
+func ParseTime(s string) (time.Time, error) { return time.Parse(TimeLayout, s) }

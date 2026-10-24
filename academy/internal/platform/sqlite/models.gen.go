@@ -8,3 +8,17 @@ type Instance struct {
 	ID        int64
 	CreatedAt string
 }
+
+type Session struct {
+	TokenHash string
+	UserID    int64
+	Csrf      string
+	CreatedAt string
+	ExpiresAt string
+}
+
+type User struct {
+	ID        int64
+	Name      string
+	CreatedAt string
+}

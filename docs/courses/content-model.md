@@ -224,7 +224,7 @@ operations   operations(id, user_id, kind, status, result, created_at, finished_
 
 | Method and path | Purpose |
 |---|---|
-| `GET /me` | user, XP, badge counts, running lab, resume item |
+| `POST /sessions` · `GET /me` | sign the local user in (cookie); user, CSRF token, XP, badge counts, running lab, resume item |
 | `GET /courses` · `GET /courses/{course}` | catalogue; course page with sections, items, statuses, requirement check against the lab |
 | `GET /courses/{course}/items/{item}` | the item (lecture Markdown, quiz without keys, lab view, challenge without solution) |
 | `POST /courses/{course}/items/{item}/complete` | complete a lecture |

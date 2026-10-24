@@ -34,6 +34,7 @@ type Deps struct {
 	Web       fs.FS
 	Log       *slog.Logger
 	Terminals Terminals
+	Identity  Identity
 }
 
 type server struct {
@@ -56,7 +57,7 @@ func NewHandler(deps Deps) http.Handler {
 		writeProblem(w, http.StatusNotFound, "/problems/not-found", "Not found", r.URL.Path+" is not an API resource")
 	})
 	mux.Handle("/", webApp(deps.Web))
-	return requestLog(deps.Log, hostGuard(mux))
+	return requestLog(deps.Log, hostGuard(guard(deps.Identity, mux)))
 }
 
 func (s *server) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {

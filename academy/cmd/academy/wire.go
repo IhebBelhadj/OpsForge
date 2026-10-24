@@ -22,6 +22,7 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		provideReadiness,
 		provideTerminals,
 		provideShells,
+		provideIdentity,
 		provideHandler,
 		newApp,
 	)

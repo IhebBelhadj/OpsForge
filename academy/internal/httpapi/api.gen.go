@@ -71,6 +71,13 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// Me defines model for Me.
+type Me struct {
+	// Csrf Send as X-CSRF-Token on every change
+	Csrf string `json:"csrf"`
+	User User   `json:"user"`
+}
+
 // Problem RFC 9457 problem details.
 type Problem struct {
 	Detail *string `json:"detail,omitempty"`
@@ -102,11 +109,29 @@ type TerminalSize struct {
 	Rows *int `json:"rows,omitempty"`
 }
 
+// User defines model for User.
+type User struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Forbidden RFC 9457 problem details.
+type Forbidden = Problem
+
+// NoSession RFC 9457 problem details.
+type NoSession = Problem
+
 // OpenTerminalJSONRequestBody defines body for OpenTerminal for application/json ContentType.
 type OpenTerminalJSONRequestBody = TerminalSize
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetMe Who is signed in
+	// (GET /api/v1/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
+	// OpenSession Sign the local user in
+	// (POST /api/v1/sessions)
+	OpenSession(w http.ResponseWriter, r *http.Request)
 	// OpenTerminal Start a shell for a browser terminal
 	// (POST /api/v1/terminals)
 	OpenTerminal(w http.ResponseWriter, r *http.Request)
@@ -126,6 +151,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenSession operation middleware
+func (siw *ServerInterfaceWrapper) OpenSession(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // OpenTerminal operation middleware
 func (siw *ServerInterfaceWrapper) OpenTerminal(w http.ResponseWriter, r *http.Request) {
@@ -291,9 +344,99 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealthz)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/readyz", wrapper.GetReadyz)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sessions", wrapper.OpenSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/terminals", wrapper.OpenTerminal)
 
 	return m
+}
+
+type ForbiddenApplicationProblemPlusJSONResponse Problem
+
+type NoSessionApplicationProblemPlusJSONResponse Problem
+
+type GetMeRequestObject struct {
+}
+
+type GetMeResponseObject interface {
+	VisitGetMeResponse(w http.ResponseWriter) error
+}
+
+type GetMe200JSONResponse Me
+
+func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMe401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response GetMe401ApplicationProblemPlusJSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenSessionRequestObject struct {
+}
+
+type OpenSessionResponseObject interface {
+	VisitOpenSessionResponse(w http.ResponseWriter) error
+}
+
+type OpenSession201ResponseHeaders struct {
+	SetCookie *string
+}
+
+type OpenSession201JSONResponse struct {
+	Body    Me
+	Headers OpenSession201ResponseHeaders
+}
+
+func (response OpenSession201JSONResponse) VisitOpenSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenSession403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response OpenSession403ApplicationProblemPlusJSONResponse) VisitOpenSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type OpenTerminalRequestObject struct {
@@ -328,6 +471,38 @@ func (response OpenTerminal400ApplicationProblemPlusJSONResponse) VisitOpenTermi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenTerminal401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response OpenTerminal401ApplicationProblemPlusJSONResponse) VisitOpenTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenTerminal403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response OpenTerminal403ApplicationProblemPlusJSONResponse) VisitOpenTerminalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -404,6 +579,12 @@ func (response GetReadyz503JSONResponse) VisitGetReadyzResponse(w http.ResponseW
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetMe Who is signed in
+	// (GET /api/v1/me)
+	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// OpenSession Sign the local user in
+	// (POST /api/v1/sessions)
+	OpenSession(ctx context.Context, request OpenSessionRequestObject) (OpenSessionResponseObject, error)
 	// OpenTerminal Start a shell for a browser terminal
 	// (POST /api/v1/terminals)
 	OpenTerminal(ctx context.Context, request OpenTerminalRequestObject) (OpenTerminalResponseObject, error)
@@ -452,6 +633,54 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetMe operation middleware
+func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	var request GetMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMe(ctx, request.(GetMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMeResponseObject); ok {
+		if err := validResponse.VisitGetMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OpenSession operation middleware
+func (sh *strictHandler) OpenSession(w http.ResponseWriter, r *http.Request) {
+	var request OpenSessionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenSession(ctx, request.(OpenSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenSessionResponseObject); ok {
+		if err := validResponse.VisitOpenSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // OpenTerminal operation middleware

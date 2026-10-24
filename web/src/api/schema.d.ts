@@ -38,6 +38,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign the local user in
+         * @description Opens a session for the local user: the token goes in an HttpOnly, SameSite=Strict cookie, the response carries the CSRF token the page sends as X-CSRF-Token on every change. The page calls it when GET /api/v1/me answers 401. Refused (403) from another site's page.
+         */
+        post: operations["openSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who is signed in
+         * @description The user and the session's CSRF token (a reloaded page has the cookie but not the token).
+         */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/terminals": {
         parameters: {
             query?: never;
@@ -62,6 +102,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        User: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        Me: {
+            user: components["schemas"]["User"];
+            /** @description Send as X-CSRF-Token on every change */
+            csrf: string;
+        };
         Health: {
             /** @enum {string} */
             status: "ok";
@@ -99,7 +149,26 @@ export interface components {
             detail?: string;
         };
     };
-    responses: never;
+    responses: {
+        /** @description No valid session (no cookie, an unknown or expired one); POST /api/v1/sessions opens one. */
+        NoSession: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description A change from another site's page (Origin, Sec-Fetch-Site) or without the session's CSRF token. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+    };
     parameters: never;
     requestBodies: never;
     headers: never;
@@ -156,6 +225,50 @@ export interface operations {
             };
         };
     };
+    openSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed in. */
+            201: {
+                headers: {
+                    /** @description academy_session=<token>; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed-in user. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+        };
+    };
     openTerminal: {
         parameters: {
             query?: never;
@@ -187,6 +300,8 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
             /** @description Too many terminals are open. */
             429: {
                 headers: {
