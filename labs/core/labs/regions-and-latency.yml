@@ -1,0 +1,73 @@
+title: Regions and latency
+summary: Measure the distance between regions, then move one further away and see what it costs.
+minutes: 15
+xp: 100
+needs: [k3s]
+concepts: [region, round-trip time, latency budget]
+briefing: |
+  Sites **a**, **b** and **c** play three regions of a cloud provider. Between them runs a simulated internet that
+  adds the delay, jitter and loss real distance does: light in fibre covers about 200 km per millisecond, so a
+  region on another continent is tens of milliseconds away whatever you pay for.
+
+  You will measure the round trip between two regions, make one of them more distant, and work out what that does
+  to a single web request.
+steps:
+  - id: measure
+    title: Measure a round trip
+    body: |
+      From the node in site a, ping site c's public address:
+
+      ```
+      opsforge ssh ${node:a} ping -c 10 ${public:c}
+      ```
+
+      Read the `avg` in the last line. That is the round-trip time (RTT): there and back again.
+    hints:
+      - The summary line looks like `rtt min/avg/max/mdev = 118.2/121.4/139.0/6.1 ms`. The second number is the average.
+    check:
+      quiz:
+        question: What average round trip did you see between a and c?
+        choices: [About 40 ms, About 90 ms, About 120 ms, About 240 ms]
+        answer: 2
+        explain: >
+          The a-c link is set to 120 ms in topology.yml. Each direction gets half of it, which is why a one-way
+          message from a to c takes about 60 ms.
+  - id: move-region
+    title: Move region c further away
+    body: |
+      Pretend c moved across an ocean. Change the live link without rebuilding anything:
+
+      ```
+      opsforge link a-c --rtt 200ms
+      ```
+
+      Ping again and watch the new round trip.
+    hints:
+      - "`opsforge link a-c` with no options prints the link's current conditions."
+    check:
+      probe:
+        steps:
+          - run: { cmd: "./opsforge link a-c | grep -q 'rtt=200ms'" }
+            name: link
+          - ping: { from: "${node:a}", to: "${public:c}", count: 10 }
+            name: ping
+        expect:
+          link.exit: "== 0"
+          ping.avg_ms: "> 180"
+  - id: budget
+    title: Work out the cost
+    body: |
+      Opening an HTTPS page takes several round trips before the first byte arrives: one for the TCP handshake,
+      one for TLS 1.3, and one for the request itself.
+    check:
+      quiz:
+        question: With a 200 ms round trip, roughly how long until the first byte of the page arrives?
+        choices: [About 200 ms, About 400 ms, About 600 ms, About 2 seconds]
+        answer: 2
+        explain: >
+          Three round trips of 200 ms each. This is why services keep connections open, terminate TLS close to the
+          user, and put read replicas in every region: no amount of bandwidth removes a round trip.
+teardown:
+  - run: { cmd: ./opsforge link a-c --reset }
+debrief: |
+  Latency is set by distance, not by bandwidth. Count round trips when you design anything that crosses regions.

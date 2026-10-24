@@ -44,7 +44,8 @@ _ARITH = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, 
 
 
 def step_type(step):
-    return next(iter(step))
+    """The step's type: its first key other than `name` (key order is lost when a step went through sorted JSON)."""
+    return next((k for k in step if k != "name"), "name")
 
 
 def errors(doc):

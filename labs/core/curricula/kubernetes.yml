@@ -1,0 +1,12 @@
+title: Kubernetes across regions
+summary: >
+  One K3s cluster stretched over three sites: how it sees its nodes, how it places pods, and what it does when a
+  whole region goes dark.
+position: 2
+levels:
+  - title: The cluster and its regions
+    summary: Nodes, labels and where pods land.
+    labs: [nodes-and-regions, scale-across-regions]
+  - title: Failure
+    summary: A region disappears. Watch the cluster notice, wait and recover.
+    labs: [losing-a-site]

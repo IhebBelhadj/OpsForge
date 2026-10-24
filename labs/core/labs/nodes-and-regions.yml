@@ -1,0 +1,73 @@
+title: Nodes and regions
+summary: How a cluster spread over three sites knows where each of its machines is.
+minutes: 15
+xp: 100
+layout: stretched
+needs: [k3s]
+concepts: [node, label, topology labels]
+briefing: |
+  One K3s cluster runs across all three sites: its control plane in a, a worker in b and one in c. Kubernetes has no
+  idea about geography on its own. It learns it from **labels**, key/value pairs on each node, and the scheduler
+  uses them to decide where pods go.
+steps:
+  - id: list-nodes
+    title: List the nodes and their regions
+    body: |
+      ```
+      opsforge kubectl get nodes -L topology.kubernetes.io/region,topology.kubernetes.io/zone
+      ```
+    check:
+      quiz:
+        question: Which region is ${node:c} in?
+        choices: [a, b, c]
+        answer: 2
+        explain: >
+          The lab sets topology.kubernetes.io/region when each node registers. Cloud providers set the same
+          well-known labels, so anything that works here works there.
+  - id: label
+    title: Label a node yourself
+    body: |
+      Mark c's node as an edge location:
+
+      ```
+      opsforge kubectl label node ${node:c} lab.opsforge/tier=edge
+      ```
+    hints:
+      - "Check it with `opsforge kubectl get node ${node:c} --show-labels`."
+    check:
+      probe:
+        steps:
+          - run:
+              cmd: >-
+                ./opsforge kubectl get node ${node:c} -o jsonpath='{.metadata.labels.lab\.opsforge/tier}'
+                | grep -qx edge
+            name: label
+        expect:
+          label.exit: "== 0"
+  - id: spread
+    title: See where the demo runs
+    body: |
+      ```
+      opsforge kubectl -n demo get pods -o wide
+      ```
+
+      There is one `whoami` pod per node. Look at the deployment's spec for the reason:
+
+      ```
+      opsforge kubectl -n demo get deploy whoami -o yaml | grep -A8 topologySpreadConstraints
+      ```
+    check:
+      quiz:
+        question: What keeps the demo pods one per region?
+        choices:
+          - Kubernetes always puts one pod on each node
+          - A topology spread constraint on the region label, with maxSkew 1
+          - A DaemonSet
+        answer: 1
+        explain: >
+          The constraint forbids any region from having more than one pod more than another. The scheduler only
+          applies it when placing pods, so it never moves pods that are already running.
+teardown:
+  - run: { cmd: "./opsforge kubectl label node ${node:c} lab.opsforge/tier- >/dev/null 2>&1 || true" }
+debrief: |
+  Labels are how Kubernetes knows about the world. Topology labels make "region" something the scheduler can use.

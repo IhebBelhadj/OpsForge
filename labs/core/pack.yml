@@ -1,0 +1,7 @@
+id: core
+title: OpsForge core labs
+version: 1
+author: OpsForge
+description: Cloud networking and Kubernetes on the multi-site lab, from regions and latency to losing a site.
+# Fraction of a lab's XP lost per hint opened (a pass is always worth at least half)
+hint_penalty: 0.1

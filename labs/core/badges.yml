@@ -1,0 +1,30 @@
+- id: first-route
+  title: First route set
+  description: Passed your first lab.
+  icon: lamp
+  rule: { type: labs_passed, min: 1 }
+- id: clear-signals
+  title: Clear signals
+  description: Passed three labs without opening a hint.
+  icon: signal
+  rule: { type: labs_passed, min: 3, max_hints: 0 }
+- id: cloud-networking
+  title: Line engineer
+  description: Completed every lab in Cloud networking.
+  icon: route
+  rule: { type: curriculum_complete, curriculum: cloud }
+- id: kubernetes-regions
+  title: Region controller
+  description: Completed every lab in Kubernetes across regions.
+  icon: points
+  rule: { type: curriculum_complete, curriculum: kubernetes }
+- id: quick-recovery
+  title: Back in service
+  description: Passed Losing a site in under fifteen minutes.
+  icon: bell
+  rule: { type: lab_passed, lab: losing-a-site, max_seconds: 900 }
+- id: five-hundred
+  title: Token holder
+  description: Earned 500 XP.
+  icon: token
+  rule: { type: xp, min: 500 }

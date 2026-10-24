@@ -17,13 +17,14 @@ lint-yaml:
 	yamllint .
 
 lint-python:
-	python3 -m py_compile opsforge lab/render.py lab/scenario.py
+	python3 -m py_compile opsforge lab/render.py lab/scenario.py lab/labs.py lab/labsdb.py lab/labserver.py
 
 lint-ansible:
 	@if [ -d ansible ]; then ansible-lint ansible; else echo "lint-ansible: no ansible/ yet, skipping"; fi
 
 validate:
 	./opsforge validate
+	./opsforge labs validate
 
 preflight:
 	./opsforge preflight

@@ -22,6 +22,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "lab"))
+import labs  # noqa: E402
+import labsdb  # noqa: E402
 import render  # noqa: E402
 import scenario  # noqa: E402
 
@@ -66,6 +68,11 @@ SKUPPER_NAMESPACE = "mesh"
 # `opsforge scenario`: definitions in the repo, results (JSON per run) in the controller state
 SCENARIOS = ROOT / "scenarios"
 RESULTS = STATE / "results"
+# Teaching labs (Phase 10): packs in the repo, learner progress in the controller state, the web interface's files
+LABS = ROOT / "labs"
+LABS_DB = STATE / "labs.db"
+WEB = ROOT / "web"
+LABS_PORT = 8090
 # wan-core: live link state saved by `partition`, put back by `heal`
 PRE_FAULT = "/etc/opsforge/pre-fault.json"
 
@@ -1880,6 +1887,70 @@ def cmd_provision(args):
     return subprocess.run(["ansible-playbook", "site.yml", *args.ansible_args], cwd=ANSIBLE_DIR).returncode
 
 
+def load_packs(conn=None):
+    """[(path, pack document)] of every pack under labs/, raising LabError on the first invalid one."""
+    found = []
+    for path in labs.find_packs(LABS):
+        doc = labs.load_pack(path)
+        catalog = labsdb.catalog_ids(conn, doc["pack"].get("id")) if conn else None
+        if errs := labs.errors(doc, catalog):
+            raise LabError(f"{path.relative_to(ROOT)}: " + "; ".join(errs))
+        found.append((path, doc))
+    return found
+
+
+def import_packs(conn):
+    """Imports every pack and awards badges whose rules the history now meets; prints what changed."""
+    for path, doc in load_packs(conn):
+        try:
+            summary = labsdb.import_pack(conn, doc, path.relative_to(ROOT))
+        except ValueError as e:
+            raise LabError(f"{path.relative_to(ROOT)}: {e}") from None
+        changes = {k: v for k, v in summary["labs"].items() if v and k != "unchanged"}
+        detail = "; ".join(f"{k} {', '.join(v)}" for k, v in changes.items()) or "no change"
+        print(f"pack {doc['pack']['id']}: {len(doc['labs'])} labs, {len(doc['curricula'])} curricula ({detail})")
+    if awarded := labsdb.award_badges(conn, labsdb.local_user(conn)):
+        print(f"badges awarded from history: {', '.join(b['title'] for b in awarded)}")
+
+
+def cmd_labs(args):
+    """Teaching-lab packs: validate the files, import them into the database, or list the catalog."""
+    if args.action == "validate":
+        packs = load_packs()
+        print(f"{len(packs)} pack(s) valid: " + ", ".join(f"{d['pack']['id']} ({len(d['labs'])} labs)" for _, d in packs))
+        return 0
+    conn = labsdb.connect(LABS_DB)
+    if args.action == "import":
+        import_packs(conn)
+        return 0
+    user = labsdb.local_user(conn)
+    topo = load_valid_topology()
+    for cur in labsdb.catalog(conn, user):
+        print(f"{cur['title']}")
+        for i, level in enumerate(cur["levels"], 1):
+            print(f"  level {i}: {level['title']}" + ("" if level["unlocked"] else "  (locked)"))
+            for lab in level["labs"]:
+                status = {"passed": "passed", "running": "running", "new": "locked" if lab["locked"] else "open"}
+                needs = labs.unmet_needs(lab, topo)
+                print(f"    {lab['id']:<26} {status[lab['status']]:<8} {lab['xp']:>4} XP"
+                      + ("  (updated since you passed it)" if lab["stale"] else "")
+                      + (f"  [{'; '.join(needs)} on {TOPOLOGY.name}]" if needs else ""))
+    print(f"\n{labsdb.total_xp(conn, user)} XP, "
+          f"{sum(1 for b in labsdb.badges(conn, user) if b['awarded_at'])} badge(s) ({LABS_DB.relative_to(ROOT)})")
+    return 0
+
+
+def cmd_serve(args):
+    """The teaching-lab web interface on 127.0.0.1 (lab/labserver.py); imports the packs first."""
+    import labserver
+
+    conn = labsdb.connect(LABS_DB)
+    import_packs(conn)
+    conn.close()
+    labserver.serve(sys.modules[__name__], args.port, LABS_DB, ROOT, WEB)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(prog="opsforge", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1989,6 +2060,12 @@ def main():
     p.add_argument("name", nargs="?", help="scenario (omit, or --list, to list them)")
     p.add_argument("--list", action="store_true", help="list the scenarios")
     p.set_defaults(func=cmd_scenario)
+    p = sub.add_parser("labs", help="teaching-lab packs in labs/: validate, import into the database, list progress")
+    p.add_argument("action", nargs="?", default="list", choices=("list", "import", "validate"))
+    p.set_defaults(func=cmd_labs)
+    p = sub.add_parser("serve", help="the teaching-lab web interface on 127.0.0.1 (browser terminal included)")
+    p.add_argument("--port", type=int, default=LABS_PORT, help=f"port (default {LABS_PORT})")
+    p.set_defaults(func=cmd_serve)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take
     # the unknown ones
     args, extra = parser.parse_known_args()

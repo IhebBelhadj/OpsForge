@@ -1,0 +1,65 @@
+title: Routing around failure
+summary: Kill the direct link between two regions and watch traffic find another way.
+minutes: 20
+xp: 150
+needs: [k3s, vpn]
+requires: [private-networks]
+concepts: [dynamic routing, OSPF, link cost]
+briefing: |
+  The gateways do not only have tunnels to each other: they run OSPF, a routing protocol, over them. Each tunnel has
+  a cost equal to its round-trip time, and every gateway sends traffic along the cheapest working path. When a link
+  dies, the gateways notice and route through the remaining region.
+steps:
+  - id: direct-path
+    title: Find the direct path
+    body: |
+      ```
+      opsforge ssh a-gw ip route get ${ip:${node:c}}
+      ```
+    check:
+      quiz:
+        question: Which tunnel does a's gateway use to reach c's network now?
+        choices: [wg-b, wg-c, Neither, it goes over the internet unencrypted]
+        answer: 1
+        explain: The direct a-c tunnel (cost 120) is cheaper than going through b (40 + 90 = 130).
+  - id: break-link
+    title: Break the a-c link
+    body: |
+      Drop every packet on the a-c link:
+
+      ```
+      opsforge degrade a-c --loss 100%
+      ```
+
+      Run the route lookup again every few seconds until it changes.
+    hints:
+      - "OSPF declares a neighbour dead after a few missed hellos: expect the route to change about ten seconds after
+        the link died."
+    check:
+      probe:
+        steps:
+          - run: { cmd: "./opsforge link a-c | grep -q 'loss=100%'" }
+            name: link
+          - wait_until: { host: a-gw, cmd: "ip route get ${ip:${node:c}} | grep -q wg-b", timeout: 60s }
+            name: rerouted
+        expect:
+          link.exit: "== 0"
+          rerouted.ok: "== 1"
+  - id: detour
+    title: Measure the detour
+    body: |
+      ```
+      opsforge ssh ${node:a} ping -c 10 ${ip:${node:c}}
+      ```
+    check:
+      quiz:
+        question: The detour goes a → b → c. About how long is the round trip now?
+        choices: [About 40 ms, About 90 ms, About 120 ms, About 130 ms]
+        answer: 3
+        explain: >
+          40 ms on a-b plus 90 ms on b-c. Slower than the direct link, but the regions can still talk. Run
+          `opsforge heal` to restore the link (the lab does it for you when you finish).
+teardown:
+  - heal: true
+debrief: |
+  Dynamic routing trades a little latency for staying connected. The cost of each link decides which detour wins.

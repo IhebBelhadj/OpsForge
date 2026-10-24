@@ -1,0 +1,74 @@
+title: Private networks
+summary: Private addresses, public addresses, and the tunnel that lets one region reach another's private network.
+minutes: 15
+xp: 100
+needs: [k3s, vpn]
+concepts: [VPC, private address, NAT, site-to-site VPN]
+briefing: |
+  Each site has its own private network, like a VPC: addresses such as `10.20.0.11` that mean nothing outside the
+  site. The site gateway owns one public address and translates between the two (NAT).
+
+  Between the gateways runs a WireGuard tunnel, so a machine in one site can reach another site's private addresses
+  as if they were next door, while the internet only ever sees encrypted packets between public addresses.
+steps:
+  - id: own-address
+    title: Find a node's private address
+    body: |
+      ```
+      opsforge ssh ${node:b} ip -4 -brief addr
+      ```
+
+      `eth0` is the node's interface on the site's private network. `cni0` and `flannel.1` belong to Kubernetes:
+      the pods' own network, which you meet in the Kubernetes labs.
+    check:
+      quiz:
+        question: Which of these is the private address of ${node:b}?
+        choices: ["${ip:${node:b}}", "${public:b}", "10.43.0.1", "127.0.0.1"]
+        answer: 0
+        explain: >
+          ${public:b} is b's public address and belongs to the gateway, 10.43.0.1 is a Kubernetes service address
+          and 127.0.0.1 is the node talking to itself.
+  - id: cross-site
+    title: Reach another region's private network
+    body: |
+      Ping c's node at its private address from b's node:
+
+      ```
+      opsforge ssh ${node:b} ping -c 3 ${ip:${node:c}}
+      ```
+
+      Then look at how b's gateway knows where to send it:
+
+      ```
+      opsforge ssh b-gw ip route get ${ip:${node:c}}
+      ```
+    hints:
+      - The interface after `dev` is the one the packet leaves the gateway by.
+    check:
+      quiz:
+        question: Which interface carries the packet from b's gateway towards c?
+        choices: [eth0, wg-c, wg-a, lo]
+        answer: 1
+        explain: >
+          wg-c is the WireGuard tunnel to c's gateway. On the wire between the two sites the packet is encrypted
+          and addressed from ${public:b} to ${public:c}.
+  - id: nat
+    title: See NAT from the other side
+    body: |
+      Ask c's ingress who is calling, first through the tunnel, then over the public internet:
+
+      ```
+      opsforge ssh ${node:b} curl -s http://${ip:${node:c}}/ | grep -i x-real-ip
+      opsforge ssh ${node:b} curl -s http://${public:c}/ | grep -i x-real-ip
+      ```
+    check:
+      quiz:
+        question: Over the public address, which source address does c see?
+        choices: ["${ip:${node:b}} (b's node)", "${public:b} (b's gateway)", "${public:c} (c's gateway)"]
+        answer: 1
+        explain: >
+          b's gateway rewrites the source to its public address on the way out (SNAT), so c only sees b's public
+          IP. Through the tunnel there is no translation: c sees the node's private address.
+debrief: |
+  Private networks keep machines unreachable by default; a gateway decides what leaves and what comes in, and a
+  site-to-site VPN joins private networks without exposing them.

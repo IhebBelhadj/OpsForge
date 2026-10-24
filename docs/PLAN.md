@@ -135,6 +135,8 @@ ansible/
   site.yml                # top-level playbook
   roles/ base dns pki k3s exporters monitoring ci  # routers (wan-core, gateways, WireGuard) are rendered by opsforge
 scenarios/                # fault-injection scenarios with expected outcomes
+labs/                     # teaching-lab packs: curricula, labs, badges (Phase 10)
+web/                      # `opsforge serve` interface (static HTML/CSS/JS, no build step)
 docs/PLAN.md
 ```
 
@@ -647,6 +649,51 @@ From scratch (stretched, 391 s): `verify` green at 2031 MiB anon + kernel, pool 
 requests through b (p50 187 ms), back after 0.3 s; every other scenario passes (`partition-b-writes` skipped); a
 second `provision` `changed=0`; 3660 MiB anon + kernel, pool 11.82 GiB. `verify` right after the build once saw the
 b→c `wan_icmp` probe down (the VPN still converging); it passed on the next run.
+
+### Phase 10: Teaching labs and web interface (done 2026-10-24)
+Guided exercises on the live lab: a briefing, ordered steps, and checks that read the lab's real state (the scenario
+step types). One learner at a time on this host (the lab is single), served on 127.0.0.1 only.
+- [x] **Content as packs of files** (`labs/<pack>/`: `pack.yml`, `curricula/*.yml`, `labs/<id>.yml`, `badges.yml`),
+      validated by `lab/labpack.schema.json` plus cross-references (`labs.errors`). Files are the source of truth;
+      `opsforge labs import` (and `serve` at start) upserts them into the database. A lab's content hash flags progress
+      made on an older revision ("updated since you passed it") instead of discarding it. Lab ids are global.
+- [x] **Learner state in SQLite** (`.opsforge/labs.db`, stdlib `sqlite3`; numbered migrations in `lab/migrations/`,
+      applied version in `PRAGMA user_version`): users (one local user to start), packs, curricula, levels, labs,
+      prerequisites, attempts, step results, an append-only event log, badges and awards.
+- [x] **Progression**: a level unlocks when the previous level's labs are passed, or at its `xp_required`; a lab
+      also needs its `requires`. A pass is worth the lab's `xp`, less the pack's `hint_penalty` per hint (at least
+      half); a lab's best pass counts. Badges are declarative rules (`labs_passed`, `lab_passed`, `curriculum_complete`,
+      `xp`) evaluated over every pass, so a rule added later is awarded from history.
+- [x] **Extension points**: check types (`labs.CHECKS`: `probe` = scenario steps + `expect`, `quiz`, `confirm`), badge
+      rule types (`labs.RULES`), packs (a folder), layouts (`layout`/`needs` per lab, matched against the topology).
+- [x] **`opsforge serve`**: stdlib HTTP server (no build step, no new host packages, no lab RAM): JSON API, live
+      topology state for the panel, checks run with `ScenarioRun`, and a browser terminal (xterm.js over a stdlib
+      WebSocket to a pty running a shell in the repo). Only `Host`/`Origin` 127.0.0.1/localhost are served (a page
+      on another origin can open a WebSocket to localhost).
+- [x] **Interface** (`web/`): a railway signal-box mimic panel: sites as stations, WAN links as tracks with their live
+      RTT, lamps white (as in `topology.yml`), amber (changed live) and red (partitioned). Catalog per curriculum and
+      level, lab workspace (steps | panel over terminal), badges.
+- [x] `core` pack: Cloud and Kubernetes curricula with first labs; `make check` validates the packs.
+
+**Done when:** a lab can be started, worked through in the browser terminal and passed with checks against the live
+lab; importing the packs twice changes nothing; editing a lab flags passes of the old revision; a badge rule added
+after the fact is awarded from history.
+**Met 2026-10-24 (stretched, live):** every core lab worked through on the running lab with the API the page uses,
+the learner's commands run as written: 6/6 passed, 800 XP, 6/6 badges; `verify` green afterwards and a second
+`provision` `changed=0`. Measured in Losing a site: NotReady 44-51 s after the partition, pod replaced 60 s after the
+taint, heal + teardown ~25 s. Routing around failure: OSPF reroute ~10 s, detour 130 ms. Server: 44 MiB RSS on the
+host (no lab RAM); database 170 KiB. Found and fixed on the way:
+- Lab bodies went through sorted JSON, so `{run: ..., name: x}` came back as a `name` step: `scenario.step_type`
+  now skips `name`, and bodies are stored in file order.
+- A probe on an untouched lab sat through every later `wait_until` (61 s): probes stop at the first named step whose
+  expectations fail; the rest show "not checked".
+- The demo Deployment lacked `matchLabelKeys: [pod-template-hash]` (the Phase 7 lesson), so rolling it piled two
+  pods in c and none in a: added to `demo.yaml.j2` and taught in Scale across regions, whose spread check now also
+  waits for the rollout (it passed early on the old pods' placement).
+- Losing a site left the demo and the webapp off region c (spreading acts only at scheduling), failing `verify`: its
+  teardown rolls every spread Deployment outside kube-system.
+- Lab texts corrected against what the lab prints (the `ip addr` output's flannel/cni interfaces, the scheduler's
+  default soft spreading, the reroute time).
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets

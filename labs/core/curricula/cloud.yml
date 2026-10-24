@@ -1,0 +1,12 @@
+title: Cloud networking
+summary: >
+  Regions, private networks, the links between them and what happens when one breaks: the parts of a cloud provider
+  you never see, built here from three sites and a simulated internet.
+position: 1
+levels:
+  - title: Regions and networks
+    summary: Where your machines are, and who can reach them.
+    labs: [regions-and-latency, private-networks]
+  - title: Connecting sites
+    summary: Tunnels between regions, and routing around a failed link.
+    labs: [routing-around-failure]

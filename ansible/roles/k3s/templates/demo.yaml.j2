@@ -34,6 +34,9 @@ spec:
           labelSelector:
             matchLabels:
               app: whoami
+          # Count this revision's pods only, or a rollout (labs/core losing-a-site rolls it) piles the new pods where
+          # old ones are being removed (measured: two in c, none in a)
+          matchLabelKeys: [pod-template-hash]
       containers:
         - name: whoami
           image: {{ k3s_demo_image }}
