@@ -241,10 +241,14 @@ type Shells struct {
 // NewShells serves base's shell from svc.
 func NewShells(svc *Service, base Spec) Shells { return Shells{svc: svc, base: base} }
 
-// Open starts the shell at cols × rows.
-func (s Shells) Open(cols, rows uint16) (string, error) {
+// Open starts the shell at cols × rows, in dir when it is set (a workspace: the shell gets ACADEMY_WORKDIR).
+func (s Shells) Open(cols, rows uint16, dir string) (string, error) {
 	spec := s.base
 	spec.Cols, spec.Rows = cols, rows
+	if dir != "" {
+		spec.Dir = dir
+		spec.Env = append(append([]string(nil), s.base.Env...), "ACADEMY_WORKDIR="+dir)
+	}
 	return s.svc.Open(spec)
 }
 

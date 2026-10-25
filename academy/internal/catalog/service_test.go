@@ -76,9 +76,32 @@ func TestCourseHasItsSectionsInOrder(t *testing.T) {
 	var types []string
 	for _, it := range c.Sections[0].Items {
 		types = append(types, it.ID+":"+it.Type)
+		if it.Ref != it.ID {
+			t.Errorf("item %s refers to %q", it.ID, it.Ref)
+		}
 	}
 	if strings.Join(types, " ") != "what-is-a-pod:lecture pods-check:quiz meet-the-cluster:lab first-pod:challenge" {
 		t.Fatal(types)
+	}
+}
+
+func TestContentIsTheEntryAViewLeavesOut(t *testing.T) {
+	svc := service(t)
+	ctx := context.Background()
+	ref, e, err := svc.Content(ctx, "k8s-intro", "pods-check")
+	if err != nil || ref.Type != catalog.ItemQuiz || ref.Hash != e.Hash || e.Kind != catalog.KindQuiz ||
+		!strings.Contains(string(e.Doc), `"answer"`) {
+		t.Fatalf("%+v %s %v", ref, e.Doc, err)
+	}
+	_, e, err = svc.Content(ctx, "k8s-intro", "meet-the-cluster")
+	if err != nil || e.Kind != catalog.KindLab || e.Key != "meet-the-cluster" {
+		t.Fatalf("%+v %v", e, err)
+	}
+	if _, _, err := svc.Content(ctx, "k8s-intro", "nope"); !errors.Is(err, catalog.ErrNotFound) {
+		t.Fatalf("unknown item: %v", err)
+	}
+	if e, err := svc.Entry(ctx, catalog.KindPack, "demo"); err != nil || e.Kind != catalog.KindPack {
+		t.Fatalf("pack: %+v %v", e, err)
 	}
 }
 

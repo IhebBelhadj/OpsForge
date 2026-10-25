@@ -178,24 +178,31 @@ catalog      content(kind, key, pack_id, course_id, position, title, content_has
                -- doc = the entry's bundle document; keys: ids, "<course>/<id>" for items, lectures, quizzes,
                -- challenges; other tables refer to an entry by (kind, key)
 
-progress     item_progress(user_id, item_id, status, content_hash, completed_at, last_opened_at)
-             notes(id, user_id, item_id, body, created_at, updated_at)
+history      events(id, user_id, kind, subject, data, at)                   -- append-only history
 
-quiz         quiz_attempts(id, user_id, item_id, content_hash, started_at, deadline, submitted_at,
-                           questions, answers, score, passed)
+progress     item_progress(user_id, course_id, item_id, content_hash, completed_at, last_opened_at)
+             course_completions(user_id, course_id, completed_at)           -- the first completion
+             notes(user_id, course_id, item_id, body, updated_at)           -- one note per item
 
-labsession   attempts(id, user_id, lab_id, item_id, content_hash, namespace, workspace, started_at, finished_at,
-                      status, hints_used, seconds, xp)       -- one running per user (partial unique index)
-             step_results(id, attempt_id, step_id, passed, detail, at)
+quiz         quiz_attempts(id, user_id, course_id, item_id, content_hash, started_at, deadline, questions,
+                           pass, offered, submitted_at, answers, correct, score, passed, xp)
+                           -- questions = the drawn questions with keys (an edit never changes a running attempt)
+
+labsession   attempts(id, user_id, lab_id, course_id, item_id, content_hash, namespace, workspace, status,
+                      started_at, finished_at, hints_used, seconds, xp, error)
+                      -- status setup|running|passed|abandoned|failed; one setup/running per user (partial unique)
+             step_results(id, attempt_id, step_id, passed, detail, at)      -- since the last reset
              hints_shown(attempt_id, step_id, idx, at)
+
+workspace    workspaces(id, user_id, created_at)                            -- files: .opsforge/workspaces/<id>/
 
 challenge    submissions(id, user_id, item_id, content_hash, kind (run|submit), files, verdict, results,
                          runtime_ms, created_at)
 
-rewards      events(id, user_id, kind, subject, data, at)                   -- append-only history
-             user_badges(user_id, badge_id, awarded_at)
+rewards      user_badges(user_id, badge_id, awarded_at)                     -- rules read history's events
 
-operations   operations(id, user_id, kind, status, result, created_at, finished_at)   -- 202 + SSE long ops
+operations   operations(id, user_id, kind, subject, status, result, error, created_at, finished_at)
+                      -- status running|done|failed (failed = could not finish; a failed setup is a done result)
 ```
 
 - **Import** (`contentimport`): the bundle is flattened into entries and compared with the catalogue (`Diff`):
@@ -224,13 +231,14 @@ operations   operations(id, user_id, kind, status, result, created_at, finished_
 | `POST /sessions` · `GET /me` | sign the local user in (cookie); user, CSRF token, XP, badge counts, running lab, resume item |
 | `GET /courses` · `GET /courses/{course}` | catalogue; course page with sections, items, statuses, requirement check against the lab |
 | `GET /courses/{course}/items/{item}` | the item (lecture Markdown; quiz: pass mark, limit, question count, the questions come with an attempt; lab view without probes; challenge without solution or test probes; hint counts, not texts) |
-| `POST /courses/{course}/items/{item}/complete` | complete a lecture |
+| `GET /progress` · `GET /courses/{course}/progress` | statuses (stale), completion, resume item |
+| `POST /courses/{course}/items/{item}/complete` · `POST .../visit` | complete a lecture; record the item opened (resume point) |
 | `GET/PUT /courses/{course}/items/{item}/notes` | notes |
-| `POST /courses/{course}/items/{item}/quiz-attempts` · `POST /quiz-attempts/{id}/submit` | start (draw, deadline) and submit a quiz; per-question results |
-| `POST /labs/{lab}/attempts` (202) · `POST /attempts/{id}/checks` (202) · `POST /attempts/{id}/hints` · `POST /attempts/{id}/reset` (202) · `POST /attempts/{id}/abandon` (202) | lab session |
+| `POST/GET /courses/{course}/items/{item}/quiz-attempts` · `GET /quiz-attempts/{id}` · `POST /quiz-attempts/{id}/submit` | start (draw, deadline), list, read and submit a quiz; per-question results |
+| `POST /labs/{lab}/attempts` (202) · `GET /attempts/current` · `GET /attempts/{id}` · `POST /attempts/{id}/checks` (202) · `POST /attempts/{id}/hints` · `POST /attempts/{id}/reset` (202) · `POST /attempts/{id}/abandon` (202) | lab session |
 | `POST /courses/{course}/items/{item}/runs` (202) · `POST .../submissions` (202) · `GET .../submissions` · `GET .../solution` | challenge |
-| `GET /workspaces/{ws}/tree` · `GET/PUT/DELETE /workspaces/{ws}/files/{path}` · `POST /workspaces/{ws}/moves` | editor files |
-| `POST /terminals` → `{session}` · `WS /ws/terminal/{session}` | terminal sessions |
+| `GET /workspaces/{ws}/tree` · `GET/PUT/DELETE /workspaces/{ws}/files?path=` · `POST /workspaces/{ws}/moves` | editor files (PUT with `base_sha256`: 409 when the terminal changed the file) |
+| `POST /terminals` (`workspace`: start in it) → `{session}` · `WS /ws/terminal/{session}` | terminal sessions |
 | `GET /schemas/kubernetes/{version}/{kind}.json` | JSON Schemas for monaco-yaml |
 | `GET /lab/state` · `GET /events` (SSE) | lab map; live events |
 | `GET /operations/{id}` | long operation status and result |

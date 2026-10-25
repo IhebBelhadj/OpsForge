@@ -19,7 +19,8 @@ func TestDefaultsDeriveFromTheRepositoryRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := config.Config{
-		Addr: "127.0.0.1:8090", Root: "/repo", DB: "/repo/.opsforge/academy.db", Toolchain: "/repo/opsforge",
+		Addr: "127.0.0.1:8090", Root: "/repo", DB: "/repo/.opsforge/academy.db", Workspaces: "/repo/.opsforge/workspaces",
+		Toolchain:        "/repo/opsforge",
 		ToolchainTimeout: 30 * time.Second, LabTimeout: 20 * time.Minute, ShutdownTimeout: 15 * time.Second,
 		LogLevel: slog.LevelInfo,
 	}

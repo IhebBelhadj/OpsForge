@@ -8,6 +8,24 @@ import (
 	"database/sql"
 )
 
+type Attempt struct {
+	ID          int64
+	UserID      int64
+	LabID       string
+	CourseID    sql.NullString
+	ItemID      sql.NullString
+	ContentHash string
+	Namespace   sql.NullString
+	Workspace   sql.NullString
+	Status      string
+	StartedAt   string
+	FinishedAt  sql.NullString
+	HintsUsed   int64
+	Seconds     sql.NullInt64
+	Xp          sql.NullInt64
+	Error       sql.NullString
+}
+
 type Content struct {
 	Kind        string
 	Key         string
@@ -21,9 +39,79 @@ type Content struct {
 	UpdatedAt   string
 }
 
+type CourseCompletion struct {
+	UserID      int64
+	CourseID    string
+	CompletedAt string
+}
+
+type Event struct {
+	ID      int64
+	UserID  int64
+	Kind    string
+	Subject string
+	Data    string
+	At      string
+}
+
+type HintsShown struct {
+	AttemptID int64
+	StepID    string
+	Idx       int64
+	At        string
+}
+
 type Instance struct {
 	ID        int64
 	CreatedAt string
+}
+
+type ItemProgress struct {
+	UserID       int64
+	CourseID     string
+	ItemID       string
+	ContentHash  sql.NullString
+	CompletedAt  sql.NullString
+	LastOpenedAt sql.NullString
+}
+
+type Note struct {
+	UserID    int64
+	CourseID  string
+	ItemID    string
+	Body      string
+	UpdatedAt string
+}
+
+type Operation struct {
+	ID         string
+	UserID     int64
+	Kind       string
+	Subject    string
+	Status     string
+	Result     sql.NullString
+	Error      sql.NullString
+	CreatedAt  string
+	FinishedAt sql.NullString
+}
+
+type QuizAttempt struct {
+	ID          int64
+	UserID      int64
+	CourseID    string
+	ItemID      string
+	ContentHash string
+	StartedAt   string
+	Deadline    sql.NullString
+	Questions   string
+	Pass        int64
+	Offered     int64
+	SubmittedAt sql.NullString
+	Answers     sql.NullString
+	Correct     int64
+	Score       int64
+	Passed      int64
+	Xp          int64
 }
 
 type Session struct {
@@ -34,8 +122,23 @@ type Session struct {
 	ExpiresAt string
 }
 
+type StepResult struct {
+	ID        int64
+	AttemptID int64
+	StepID    string
+	Passed    int64
+	Detail    string
+	At        string
+}
+
 type User struct {
 	ID        int64
 	Name      string
+	CreatedAt string
+}
+
+type Workspace struct {
+	ID        string
+	UserID    int64
 	CreatedAt string
 }

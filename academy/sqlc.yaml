@@ -25,3 +25,45 @@ sql:
       go:
         <<: *go
         out: internal/catalog/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/history/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/history/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/progress/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/progress/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/quiz/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/quiz/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/operations/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/operations/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/workspace/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/workspace/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/labsession/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/labsession/sqlite

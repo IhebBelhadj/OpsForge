@@ -61,6 +61,8 @@ client, nothing else.
 | `labstate` | live lab state for the mimic panel (instances, links, faults), cached and pushed | `LabController`, `EventBus` |
 | `schemas` | Kubernetes JSON Schemas for the editor, generated from the cluster's `/openapi/v3`, cached per server version | `LabController` (kubectl raw) |
 | `rewards` | XP, badge rules over the event history, awards (retroactive) | `RewardRepo`, `EventBus` |
+| `history` | the `EventBus`: appends every domain event to the `events` table, pushes it to the user's event streams, runs the in-process handlers (progress notices a completed course) | `Repo`, `Sender` (hub) |
+| `operations` | long operations (202): runs the work in the background, stores status and result, pushes each change; restart marks running ones interrupted | `Repo`, `Sender` (hub) |
 | `httpapi` | transport only: generated OpenAPI handlers → services; SSE hub; WebSocket upgrade; auth/CSRF/Host/Origin middleware; problem+json errors | services |
 
 Dependency direction: `httpapi` → services → domain; adapters implement ports; **domain imports nothing from
@@ -87,10 +89,14 @@ academy/internal/labsession/
 
 ### Domain events
 
-An in-process `EventBus` (typed events, synchronous handlers inside the same transaction where needed, async
-fan-out to SSE). Events are also appended to the `events` table (the learner's history, which badge rules read):
-`LabStarted`, `StepChecked`, `HintShown`, `LabPassed`, `QuizSubmitted`, `ChallengeAccepted`, `LectureCompleted`,
-`CourseCompleted`, `BadgeAwarded`, `ContentImported`, `LabStateChanged`, `WorkspaceChanged`.
+An in-process `EventBus` (`history.Service.Publish`): the event is appended to the `events` table (the learner's
+history, which badge rules read), pushed to the user's event streams (`platform.Hub`, non-blocking: a stream that
+falls behind is closed and replays on reconnect), then handed to the subscribed handlers in the publisher's
+goroutine. Kinds are `<thing>.<what happened>` (Phase 10's names, so migrated history reads the same):
+`lab.started`, `step.checked`, `hint.shown`, `lab.reset`, `lab.passed`, `lab.abandoned`, `lab.failed`,
+`quiz.submitted`, `lecture.completed`, `course.completed`, later `challenge.accepted`, `badge.awarded`. Completion
+is not derived from events: progress reads each module's rows through a `Source` port (a lab item added later shows
+as done when its lab was passed).
 
 ## The lab toolchain contract (Go → Python)
 
@@ -138,8 +144,10 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
   `openapi-typescript` generates `web/src/api/schema.d.ts`; `openapi-fetch` is the typed client.
 - Resources: content-model.md "API". Errors are RFC 9457 `application/problem+json` with stable `type` URIs
   (`/problems/another-lab-running`, ...), mapped from domain errors in one place.
-- **SSE** `/api/v1/events` (one stream per tab): `lab-state`, `progress`, `award`, `workspace`, `check-progress`
-  (live log lines of a running check). Replaces Phase 10's 2.5 s polling.
+- **SSE** `/api/v1/events` (one stream per tab, hand-written handler, excluded from oapi-codegen): `history` (each
+  history event, with its id: the browser's reconnect sends Last-Event-ID and the missed ones are replayed) and
+  `operation` (a long operation's new status). Later: `lab-state` (labstate), `workspace` (file watcher),
+  `check-progress`. Replaces Phase 10's 2.5 s polling.
 - **WebSocket** `/ws/terminal/{session}`: binary frames for pty output, JSON control frames (input, resize).
 - Long operations (setup, checks with `wait_until`, submissions) return `202` with an operation id; progress and
   the result arrive on SSE; `GET /api/v1/operations/{id}` for reconnects.

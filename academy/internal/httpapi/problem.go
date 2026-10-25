@@ -11,3 +11,8 @@ func writeProblem(w http.ResponseWriter, status int, kind, title, detail string)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(Problem{Type: kind, Title: title, Status: status, Detail: &detail})
 }
+
+// problem is a problem document for a handler's typed response.
+func problem(status int, kind, title, detail string) Problem {
+	return Problem{Type: kind, Title: title, Status: status, Detail: &detail}
+}

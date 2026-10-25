@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite" // database/sql driver "sqlite" (pure Go, no cgo)
+	"modernc.org/sqlite" // database/sql driver "sqlite" (pure Go, no cgo)
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 	"github.com/IhebBelhadj/opsforge/academy/migrations"
@@ -89,3 +90,9 @@ func FormatTime(t time.Time) string { return t.UTC().Format(TimeLayout) }
 
 // ParseTime reads a stored timestamp.
 func ParseTime(s string) (time.Time, error) { return time.Parse(TimeLayout, s) }
+
+// IsUniqueViolation reports whether err is a UNIQUE constraint failing (a row a unique index refuses).
+func IsUniqueViolation(err error) bool {
+	var e *sqlite.Error
+	return errors.As(err, &e) && e.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+}

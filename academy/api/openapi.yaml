@@ -152,6 +152,587 @@ paths:
               schema: { $ref: "#/components/schemas/Item" }
         "401": { $ref: "#/components/responses/NoSession" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/progress:
+    get:
+      operationId: getProgressOverview
+      summary: Where the learner stands in every course
+      description: Each live course's progress, in catalogue order (the catalogue's "Continue" cards).
+      tags: [progress]
+      responses:
+        "200":
+          description: Progress per course.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProgressOverview" }
+        "401": { $ref: "#/components/responses/NoSession" }
+  /api/v1/courses/{course}/progress:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getCourseProgress
+      summary: Where the learner stands in a course
+      description: >-
+        Every item's status in course order, the course's completion and the item to resume from. A quiz, lab or
+        challenge is completed by passing it (a lab passed in another course counts); stale marks an item whose
+        content changed since it was completed.
+      tags: [progress]
+      responses:
+        "200":
+          description: The course's progress.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourseProgress" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/courses/{course}/items/{item}/complete:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+      - { name: item, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: completeLecture
+      summary: Mark a lecture completed
+      description: >-
+        Completes a lecture on its current content (again after it was updated: no longer stale). Completing it
+        twice changes nothing. Other items are completed by passing them (409).
+      tags: [progress]
+      responses:
+        "200":
+          description: The lecture's status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemProgress" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The item is not a lecture (/problems/not-a-lecture).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/courses/{course}/items/{item}/visit:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+      - { name: item, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: visitItem
+      summary: Record that the learner opened an item
+      description: The player calls it when it shows an item; the course resumes from the item opened last.
+      tags: [progress]
+      responses:
+        "204":
+          description: Recorded.
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/courses/{course}/items/{item}/notes:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+      - { name: item, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getNote
+      summary: The learner's note on an item
+      tags: [progress]
+      responses:
+        "200":
+          description: The note (empty body and no updated_at when there is none).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: saveNote
+      summary: Replace the learner's note on an item
+      tags: [progress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteUpdate" }
+      responses:
+        "200":
+          description: The saved note.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: The note is longer than 64 KiB (/problems/note-too-long).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/courses/{course}/items/{item}/quiz-attempts:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+      - { name: item, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: startQuizAttempt
+      summary: Start an attempt at a quiz
+      description: >-
+        Draws the attempt's questions (shuffled with their choices unless the quiz says otherwise; `draw` of them for
+        a final exam) and sets its deadline when the quiz has a time limit. The questions come without their keys.
+      tags: [quiz]
+      responses:
+        "201":
+          description: The attempt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizAttempt" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The item is not a quiz (/problems/not-a-quiz).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    get:
+      operationId: listQuizAttempts
+      summary: The learner's attempts at a quiz
+      tags: [quiz]
+      responses:
+        "200":
+          description: Newest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizAttemptList" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The item is not a quiz (/problems/not-a-quiz).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/quiz-attempts/{attempt}:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      operationId: getQuizAttempt
+      summary: One of the learner's quiz attempts
+      description: Its questions; after it is submitted, its result with the keys and explanations.
+      tags: [quiz]
+      responses:
+        "200":
+          description: The attempt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizAttempt" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404":
+          description: No such attempt of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/quiz-attempts/{attempt}/submit:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      operationId: submitQuizAttempt
+      summary: Submit a quiz attempt
+      description: >-
+        Scores the answers (a question left out is wrong; a multiple-choice question is all or nothing). The result
+        reveals every question's key and explanation. The quiz's xp is earned on its first pass.
+      tags: [quiz]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuizAnswers" }
+      responses:
+        "200":
+          description: The scored attempt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuizAttempt" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such attempt of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: Already submitted (/problems/already-submitted) or past its deadline (/problems/quiz-expired).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: >-
+            An answer to a question the attempt lacks, or a choice it does not offer (/problems/invalid-answers).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/labs/{lab}/attempts:
+    parameters:
+      - { name: lab, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: startLab
+      summary: Start a lab
+      description: >-
+        Creates the attempt (its workspace seeded with the lab's files, its namespace lab-<attempt> when the lab
+        has one) and runs the lab's setup in the background (202 with the operation; its result arrives on the event
+        stream). A setup that fails is torn down and fails the attempt (the outcome's error). Refused while another
+        lab is running, the lab is busy with another operation, the lab environment is down, the lab needs another
+        layout or its required labs are not passed.
+      tags: [labs]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabStart" }
+      responses:
+        "202":
+          description: The attempt and the operation running its setup.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabStarted" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such lab (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: >-
+            Another lab is running (/problems/another-lab-running), the lab is busy (/problems/lab-busy), locked
+            (/problems/lab-locked, with missing), down (/problems/lab-down) or unavailable on this layout
+            (/problems/lab-unavailable).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503":
+          description: The lab toolchain failed (/problems/toolchain).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/attempts/current:
+    get:
+      operationId: getCurrentAttempt
+      summary: The learner's running lab
+      tags: [labs]
+      responses:
+        "200":
+          description: The attempt in setup or running, or null.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentAttempt" }
+        "401": { $ref: "#/components/responses/NoSession" }
+  /api/v1/attempts/{attempt}:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      operationId: getAttempt
+      summary: One of the learner's lab attempts
+      description: Its status and steps (passed, the hints opened so far); current_step is the one to check next.
+      tags: [labs]
+      responses:
+        "200":
+          description: The attempt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabAttempt" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404":
+          description: No such attempt of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/attempts/{attempt}/checks:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      operationId: checkStep
+      summary: Check a step
+      description: >-
+        Checks the first step not passed yet: a probe observes the lab, a quiz takes answer (a choice index), a
+        confirm passes. Passing the last step passes the attempt: the teardown runs, the links are healed and the
+        XP is earned (less the hints' cost). Runs in the background (202).
+      tags: [labs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepCheckRequest" }
+      responses:
+        "202":
+          description: Accepted; the operation runs in the background (its result is a LabOutcome).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such attempt of this learner, or no such step (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: >-
+            The attempt is not running (/problems/attempt-not-running), the step is not the next one (/problems/step-
+            order) or the lab is busy (/problems/lab-busy).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: A quiz step without an answer (/problems/answer-required).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/attempts/{attempt}/hints:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      operationId: showHint
+      summary: Open the next hint of a step
+      description: Each hint opened lowers the pass's XP once (the pack's hint penalty), never below half.
+      tags: [labs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HintRequest" }
+      responses:
+        "200":
+          description: The hint.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Hint" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such attempt of this learner, or no such step (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: >-
+            The attempt is not running (/problems/attempt-not-running) or every hint of the step is open (/problems/no-
+            more-hints).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/attempts/{attempt}/reset:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      operationId: resetLab
+      summary: Set the lab up again
+      description: Teardown, then setup; the steps start over, hints stay counted. Runs in the background (202).
+      tags: [labs]
+      responses:
+        "202":
+          description: Accepted; the operation runs in the background (its result is a LabOutcome).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such attempt of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: >-
+            The attempt is not running (/problems/attempt-not-running), the lab is busy (/problems/lab-busy) or resets
+            from a snapshot (/problems/reset-unsupported).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/attempts/{attempt}/abandon:
+    parameters:
+      - { name: attempt, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      operationId: abandonLab
+      summary: Abandon a lab
+      description: Teardown and heal; nothing is earned. Runs in the background (202).
+      tags: [labs]
+      responses:
+        "202":
+          description: Accepted; the operation runs in the background (its result is a LabOutcome).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such attempt of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: >-
+            The attempt is not running (/problems/attempt-not-running) or the lab is busy (/problems/lab-busy).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/operations/{operation}:
+    parameters:
+      - { name: operation, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getOperation
+      summary: A long operation
+      description: Its status and result, for a page that missed the event (a reload, a reconnect).
+      tags: [labs]
+      responses:
+        "200":
+          description: The operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Operation" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404":
+          description: No such operation of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/workspaces/{workspace}/tree:
+    parameters:
+      - { name: workspace, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getWorkspaceTree
+      summary: The files of a workspace
+      tags: [workspaces]
+      responses:
+        "200":
+          description: Its regular files, by path, and its size.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceTree" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404":
+          description: No such workspace of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/workspaces/{workspace}/files:
+    parameters:
+      - { name: workspace, in: path, required: true, schema: { type: string } }
+      - name: path
+        in: query
+        required: true
+        schema: { type: string }
+        description: A file path in the workspace, e.g. k8s/web.yaml
+    get:
+      operationId: readWorkspaceFile
+      summary: Read a file
+      tags: [workspaces]
+      responses:
+        "200":
+          description: The file and its version (sha256).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceFile" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404":
+          description: No such workspace of this learner, or no such file (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "415":
+          description: Not a text file (/problems/not-text).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: Not a path inside the workspace (/problems/bad-path).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    put:
+      operationId: writeWorkspaceFile
+      summary: Save a file
+      description: >-
+        Creates or replaces the file (and its folders). With base_sha256, only if the file is still that version
+        ("" = it must not exist yet): an editor never overwrites what the terminal changed (409).
+      tags: [workspaces]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspaceFileWrite" }
+      responses:
+        "200":
+          description: The saved file.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceFile" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such workspace of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: The file changed since base_sha256 (/problems/conflict).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413":
+          description: Over 1 MiB for the file or 10 MiB for the workspace (/problems/too-large).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: Not a path inside the workspace (/problems/bad-path).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    delete:
+      operationId: deleteWorkspaceFile
+      summary: Delete a file
+      tags: [workspaces]
+      responses:
+        "204":
+          description: Deleted.
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such workspace of this learner, or no such file (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: Not a path inside the workspace (/problems/bad-path).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/workspaces/{workspace}/moves:
+    parameters:
+      - { name: workspace, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: moveWorkspaceFile
+      summary: Rename a file
+      tags: [workspaces]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspaceMove" }
+      responses:
+        "204":
+          description: Moved.
+        "401": { $ref: "#/components/responses/NoSession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such workspace of this learner, or no such file (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: The target exists (/problems/exists).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: Not a path inside the workspace (/problems/bad-path).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /api/v1/terminals:
     post:
       operationId: openTerminal
@@ -179,11 +760,50 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "401": { $ref: "#/components/responses/NoSession" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such workspace of this learner (/problems/not-found).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "429":
           description: Too many terminals are open.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/events:
+    get:
+      operationId: streamEvents
+      summary: Live events for the signed-in user
+      description: >-
+        A server-sent event stream (one per page): `history` events are the learner's history as it is written
+        (lecture.completed, quiz.submitted, lab.started, step.checked, hint.shown, lab.passed, course.completed, ...;
+        each carries its id, so the browser's automatic reconnect sends Last-Event-ID and gets what it missed);
+        `operation` events are a long operation's new status (POST answers 202 with the operation, the result
+        arrives here; GET /api/v1/operations/{operation} after a reconnect). A comment line every 25 s keeps the
+        connection open. Served by a hand-written handler (internal/httpapi/events.go): excluded from oapi-codegen,
+        the contract test checks each event's data against the schema named in x-events.
+      tags: [events]
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: Replay the history after this event id first (the browser sets it when it reconnects).
+          schema: { type: integer, format: int64 }
+        - name: last_event_id
+          in: query
+          required: false
+          description: Same as Last-Event-ID, for a page that opens a new stream after a reload.
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The stream; it ends when the server shuts down or the page falls too far behind.
+          content:
+            text/event-stream:
+              schema: { type: string }
+              x-events:
+                history: { $ref: "#/components/schemas/HistoryEvent" }
+                operation: { $ref: "#/components/schemas/Operation" }
+        "401": { $ref: "#/components/responses/NoSession" }
 security:
   - session: []
 components:
@@ -250,6 +870,9 @@ components:
       properties:
         cols: { type: integer, minimum: 2, maximum: 1000, default: 80 }
         rows: { type: integer, minimum: 2, maximum: 1000, default: 24 }
+        workspace:
+          type: string
+          description: Start the shell in this workspace (a lab attempt's) instead of the repository
     TerminalSession:
       type: object
       required: [session]
@@ -447,6 +1070,323 @@ components:
         updated: { $ref: "#/components/schemas/EntryCounts" }
         retired: { $ref: "#/components/schemas/EntryCounts" }
         unchanged: { $ref: "#/components/schemas/EntryCounts" }
+    ItemStatus:
+      type: string
+      enum: [not_started, in_progress, completed]
+      description: in_progress is opened and not completed
+    ItemProgress:
+      type: object
+      required: [id, type, status, stale, completed_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        type: { $ref: "#/components/schemas/ItemType" }
+        status: { $ref: "#/components/schemas/ItemStatus" }
+        stale: { type: boolean, description: Completed on content that has changed since }
+        completed_at: { type: [string, "null"], format: date-time }
+    CourseProgress:
+      type: object
+      required: [course, items, completed, total, complete, completed_at, resume, last_opened_at]
+      additionalProperties: false
+      properties:
+        course: { type: string }
+        items:
+          type: array
+          description: In course order
+          items: { $ref: "#/components/schemas/ItemProgress" }
+        completed: { type: integer }
+        total: { type: integer }
+        complete: { type: boolean, description: Every item is completed now (stale ones count) }
+        completed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the course was first completed (kept when items are added later)
+        resume: { type: [string, "null"], description: "The item to continue with; null when complete" }
+        last_opened_at: { type: [string, "null"], format: date-time }
+    ProgressOverview:
+      type: object
+      required: [courses]
+      properties:
+        courses:
+          type: array
+          items: { $ref: "#/components/schemas/CourseProgress" }
+    Note:
+      type: object
+      required: [body, updated_at]
+      additionalProperties: false
+      properties:
+        body: { type: string, description: Markdown }
+        updated_at: { type: [string, "null"], format: date-time }
+    NoteUpdate:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, maxLength: 65536 }
+    QuizChoice:
+      type: object
+      required: [index, text]
+      additionalProperties: false
+      properties:
+        index: { type: integer, description: The choice's place in the quiz; answers name choices by it }
+        text: { type: string }
+    QuizQuestion:
+      type: object
+      required: [id, type, prompt, choices]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [single, multiple] }
+        prompt: { type: string, description: Markdown }
+        choices:
+          type: array
+          description: In the attempt's order
+          items: { $ref: "#/components/schemas/QuizChoice" }
+    QuizQuestionResult:
+      type: object
+      required: [id, correct, answer, given, explain, see]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        correct: { type: boolean }
+        answer: { type: array, items: { type: integer }, description: The key (choice indexes) }
+        given: { type: array, items: { type: integer } }
+        explain: { type: string, description: Markdown }
+        see: { type: [string, "null"], description: A lecture of the course to read again }
+    QuizResult:
+      type: object
+      required: [score, passed, correct, total, xp, questions]
+      additionalProperties: false
+      properties:
+        score: { type: integer, description: Percentage, rounded down }
+        passed: { type: boolean }
+        correct: { type: integer }
+        total: { type: integer }
+        xp: { type: integer, description: Earned by this attempt (the quiz's xp on its first pass) }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/QuizQuestionResult" }
+    QuizAttempt:
+      type: object
+      required: [id, course, item, started_at, deadline, submitted_at, pass, questions, result]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        course: { type: string }
+        item: { type: string }
+        started_at: { type: string, format: date-time }
+        deadline: { type: [string, "null"], format: date-time }
+        submitted_at: { type: [string, "null"], format: date-time }
+        pass: { type: integer, description: Percentage to reach }
+        questions:
+          type: array
+          items: { $ref: "#/components/schemas/QuizQuestion" }
+        result:
+          description: Set once the attempt is submitted
+          oneOf:
+            - { $ref: "#/components/schemas/QuizResult" }
+            - { type: "null" }
+    QuizAttemptSummary:
+      type: object
+      required: [id, started_at, submitted_at, score, passed, xp]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        started_at: { type: string, format: date-time }
+        submitted_at: { type: [string, "null"], format: date-time }
+        score: { type: [integer, "null"] }
+        passed: { type: [boolean, "null"] }
+        xp: { type: integer }
+    QuizAttemptList:
+      type: object
+      required: [attempts]
+      properties:
+        attempts:
+          type: array
+          items: { $ref: "#/components/schemas/QuizAttemptSummary" }
+    QuizAnswers:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: object
+          description: Question id → chosen choice indexes
+          additionalProperties:
+            type: array
+            items: { type: integer }
+    LabStart:
+      type: object
+      properties:
+        course: { type: string, description: The course the lab is started from }
+        item: { type: string }
+    AttemptStatus:
+      type: string
+      enum: [setup, running, passed, abandoned, failed]
+      description: setup while its setup runs; failed when the setup failed
+    LabStepState:
+      type: object
+      required: [id, passed, hints]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        passed: { type: boolean }
+        hints:
+          $ref: "#/components/schemas/Strings"
+          description: The hints opened so far (texts keep their placeholders)
+    LabAttempt:
+      type: object
+      required: [id, lab, course, item, status, started_at, finished_at, namespace, workspace, hints_used, xp, seconds,
+                 error, current_step, steps]
+      additionalProperties: false
+      properties:
+        id: { type: integer, format: int64 }
+        lab: { type: string }
+        course: { type: [string, "null"] }
+        item: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/AttemptStatus" }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+        namespace: { type: [string, "null"], description: "lab-<attempt>, the lab's ${ns}" }
+        workspace: { type: string, description: "The attempt's files (/api/v1/workspaces/{workspace})" }
+        hints_used: { type: integer }
+        xp: { type: [integer, "null"], description: Earned by the pass }
+        seconds: { type: [integer, "null"], description: From start to pass }
+        error: { type: [string, "null"], description: Why the setup failed }
+        current_step: { type: [string, "null"], description: The step to check next }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/LabStepState" }
+    CurrentAttempt:
+      type: object
+      required: [attempt]
+      properties:
+        attempt:
+          oneOf:
+            - { $ref: "#/components/schemas/LabAttempt" }
+            - { type: "null" }
+    LabStarted:
+      type: object
+      required: [attempt, operation]
+      properties:
+        attempt: { $ref: "#/components/schemas/LabAttempt" }
+        operation: { $ref: "#/components/schemas/Operation" }
+    StepCheckRequest:
+      type: object
+      required: [step]
+      properties:
+        step: { type: string }
+        answer: { type: integer, description: "A quiz step's choice index" }
+    HintRequest:
+      type: object
+      required: [step]
+      properties:
+        step: { type: string }
+    Hint:
+      type: object
+      required: [step, index, hint, hints_used]
+      additionalProperties: false
+      properties:
+        step: { type: string }
+        index: { type: integer }
+        hint: { type: string, description: Markdown; keeps its placeholders }
+        hints_used: { type: integer, description: The attempt's count after this one }
+    Expectation:
+      type: object
+      required: [metric, want, got, passed, checked]
+      additionalProperties: false
+      properties:
+        metric: { type: string }
+        want: { type: string, description: '"<op> <value>"' }
+        got: { type: [number, "null"], format: double }
+        passed: { type: boolean }
+        checked: { type: boolean, description: false when the probe stopped before measuring it }
+    LabOutcome:
+      type: object
+      required: [attempt, status, step, passed, explain, results, xp, seconds, error]
+      additionalProperties: false
+      description: >-
+        What a lab operation did. status is the attempt's after it; step, passed, explain and results belong to a
+        check; xp and seconds to a pass; error is a step that failed (the setup, a probe that could not run, the
+        teardown).
+      properties:
+        attempt: { type: integer, format: int64 }
+        status: { $ref: "#/components/schemas/AttemptStatus" }
+        step: { type: [string, "null"] }
+        passed: { type: [boolean, "null"] }
+        explain: { type: [string, "null"], description: A quiz step's explanation, once answered right }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/Expectation" }
+        xp: { type: [integer, "null"] }
+        seconds: { type: [integer, "null"] }
+        error: { type: [string, "null"] }
+    Operation:
+      type: object
+      required: [id, kind, subject, status, result, error, created_at, finished_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [lab.start, lab.check, lab.reset, lab.abandon] }
+        subject: { type: string, description: The lab id }
+        status:
+          type: string
+          enum: [running, done, failed]
+          description: done is finished (the result says how it went); failed could not finish (error)
+        result:
+          oneOf:
+            - { $ref: "#/components/schemas/LabOutcome" }
+            - { type: "null" }
+        error: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+    WorkspaceEntry:
+      type: object
+      required: [path, size]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        size: { type: integer, format: int64 }
+    WorkspaceTree:
+      type: object
+      required: [workspace, files, bytes, limit_bytes]
+      additionalProperties: false
+      properties:
+        workspace: { type: string }
+        files:
+          type: array
+          items: { $ref: "#/components/schemas/WorkspaceEntry" }
+        bytes: { type: integer, format: int64 }
+        limit_bytes: { type: integer, format: int64 }
+    WorkspaceFile:
+      type: object
+      required: [path, content, sha256]
+      additionalProperties: false
+      properties:
+        path: { type: string }
+        content: { type: string }
+        sha256: { type: string, description: The version to save against }
+    WorkspaceFileWrite:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+        base_sha256: { type: string, description: 'Save only over this version ("" = only if the file does not exist)' }
+    WorkspaceMove:
+      type: object
+      required: [from, to]
+      properties:
+        from: { type: string }
+        to: { type: string }
+    HistoryEvent:
+      type: object
+      required: [id, kind, subject, data, at]
+      additionalProperties: false
+      description: One event of the learner's history.
+      properties:
+        id: { type: integer, format: int64, description: Increasing; the stream's event id }
+        kind: { type: string, description: "<thing>.<what happened>, e.g. lab.passed" }
+        subject: { type: string, description: "What it happened to: a lab id, <course>/<item>, a course id" }
+        data: { type: object, description: The details; their keys depend on the kind }
+        at: { type: string, format: date-time }
     Problem:
       type: object
       description: RFC 9457 problem details.

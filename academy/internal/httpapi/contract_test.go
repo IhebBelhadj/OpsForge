@@ -61,10 +61,26 @@ func checkContract(t *testing.T, method, path string, rec *httptest.ResponseReco
 		resp = doc["components"].(map[string]any)["responses"].(map[string]any)[strings.TrimPrefix(ref,
 			"#/components/responses/")].(map[string]any)
 	}
+	if resp["content"] == nil { // 204: nothing to validate but that there is nothing
+		if rec.Body.Len() != 0 {
+			t.Fatalf("%s %s %s: a body where the spec has none: %q", method, path, status, rec.Body)
+		}
+		coveredMu.Lock()
+		covered[method+" "+path+" "+status] = true
+		coveredMu.Unlock()
+		return
+	}
 	media := strings.Split(rec.Header().Get("Content-Type"), ";")[0]
 	content, _ := resp["content"].(map[string]any)[media].(map[string]any)
 	if content == nil {
 		t.Fatalf("%s %s %s: content type %q is not documented", method, path, status, media)
+	}
+	if media == "text/event-stream" {
+		checkEvents(t, compiler, content, rec.Body.String())
+		coveredMu.Lock()
+		covered[method+" "+path+" "+status] = true
+		coveredMu.Unlock()
+		return
 	}
 	ref := content["schema"].(map[string]any)["$ref"].(string)
 	schema, err := compiler.Compile("openapi.json" + ref)
@@ -81,6 +97,57 @@ func checkContract(t *testing.T, method, path string, rec *httptest.ResponseReco
 	coveredMu.Lock()
 	covered[method+" "+path+" "+status] = true
 	coveredMu.Unlock()
+}
+
+// checkEvents validates each server-sent event's data against the schema its type names in the media type's
+// x-events (an undocumented type fails).
+func checkEvents(t *testing.T, compiler *jsonschema.Compiler, content map[string]any, stream string) {
+	t.Helper()
+	types, _ := content["x-events"].(map[string]any)
+	for _, e := range parseEvents(stream) {
+		def, ok := types[e.event].(map[string]any)
+		if !ok {
+			t.Fatalf("event type %q is not in x-events", e.event)
+		}
+		schema, err := compiler.Compile("openapi.json" + def["$ref"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := jsonschema.UnmarshalJSON(strings.NewReader(e.data))
+		if err != nil {
+			t.Fatalf("event %s: data is not JSON: %v", e.event, err)
+		}
+		if err := schema.Validate(body); err != nil {
+			t.Fatalf("event %s: data does not match %s: %v", e.event, def["$ref"], err)
+		}
+	}
+}
+
+// sseEvent is one server-sent event (comments and retry lines left out).
+type sseEvent struct {
+	id, event, data string
+}
+
+func parseEvents(stream string) []sseEvent {
+	var out []sseEvent
+	for _, block := range strings.Split(stream, "\n\n") {
+		var e sseEvent
+		for _, line := range strings.Split(block, "\n") {
+			k, v, _ := strings.Cut(line, ": ")
+			switch k {
+			case "id":
+				e.id = v
+			case "event":
+				e.event = v
+			case "data":
+				e.data = v
+			}
+		}
+		if e.event != "" {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // TestMain fails the package when a response documented in openapi.yaml is produced by no test (only for a full

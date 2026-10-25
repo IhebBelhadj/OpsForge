@@ -163,6 +163,419 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the learner stands in every course
+         * @description Each live course's progress, in catalogue order (the catalogue's "Continue" cards).
+         */
+        get: operations["getProgressOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where the learner stands in a course
+         * @description Every item's status in course order, the course's completion and the item to resume from. A quiz, lab or challenge is completed by passing it (a lab passed in another course counts); stale marks an item whose content changed since it was completed.
+         */
+        get: operations["getCourseProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}/items/{item}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a lecture completed
+         * @description Completes a lecture on its current content (again after it was updated: no longer stale). Completing it twice changes nothing. Other items are completed by passing them (409).
+         */
+        post: operations["completeLecture"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}/items/{item}/visit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that the learner opened an item
+         * @description The player calls it when it shows an item; the course resumes from the item opened last.
+         */
+        post: operations["visitItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}/items/{item}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        /** The learner's note on an item */
+        get: operations["getNote"];
+        /** Replace the learner's note on an item */
+        put: operations["saveNote"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}/items/{item}/quiz-attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        /** The learner's attempts at a quiz */
+        get: operations["listQuizAttempts"];
+        put?: never;
+        /**
+         * Start an attempt at a quiz
+         * @description Draws the attempt's questions (shuffled with their choices unless the quiz says otherwise; `draw` of them for a final exam) and sets its deadline when the quiz has a time limit. The questions come without their keys.
+         */
+        post: operations["startQuizAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quiz-attempts/{attempt}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * One of the learner's quiz attempts
+         * @description Its questions; after it is submitted, its result with the keys and explanations.
+         */
+        get: operations["getQuizAttempt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quiz-attempts/{attempt}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a quiz attempt
+         * @description Scores the answers (a question left out is wrong; a multiple-choice question is all or nothing). The result reveals every question's key and explanation. The quiz's xp is earned on its first pass.
+         */
+        post: operations["submitQuizAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/labs/{lab}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lab: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a lab
+         * @description Creates the attempt (its workspace seeded with the lab's files, its namespace lab-<attempt> when the lab has one) and runs the lab's setup in the background (202 with the operation; its result arrives on the event stream). A setup that fails is torn down and fails the attempt (the outcome's error). Refused while another lab is running, the lab is busy with another operation, the lab environment is down, the lab needs another layout or its required labs are not passed.
+         */
+        post: operations["startLab"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The learner's running lab */
+        get: operations["getCurrentAttempt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{attempt}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * One of the learner's lab attempts
+         * @description Its status and steps (passed, the hints opened so far); current_step is the one to check next.
+         */
+        get: operations["getAttempt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{attempt}/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a step
+         * @description Checks the first step not passed yet: a probe observes the lab, a quiz takes answer (a choice index), a confirm passes. Passing the last step passes the attempt: the teardown runs, the links are healed and the XP is earned (less the hints' cost). Runs in the background (202).
+         */
+        post: operations["checkStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{attempt}/hints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open the next hint of a step
+         * @description Each hint opened lowers the pass's XP once (the pack's hint penalty), never below half.
+         */
+        post: operations["showHint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{attempt}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the lab up again
+         * @description Teardown, then setup; the steps start over, hints stay counted. Runs in the background (202).
+         */
+        post: operations["resetLab"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{attempt}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon a lab
+         * @description Teardown and heal; nothing is earned. Runs in the background (202).
+         */
+        post: operations["abandonLab"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operations/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A long operation
+         * @description Its status and result, for a page that missed the event (a reload, a reconnect).
+         */
+        get: operations["getOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        /** The files of a workspace */
+        get: operations["getWorkspaceTree"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace}/files": {
+        parameters: {
+            query: {
+                /** @description A file path in the workspace, e.g. k8s/web.yaml */
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        /** Read a file */
+        get: operations["readWorkspaceFile"];
+        /**
+         * Save a file
+         * @description Creates or replaces the file (and its folders). With base_sha256, only if the file is still that version ("" = it must not exist yet): an editor never overwrites what the terminal changed (409).
+         */
+        put: operations["writeWorkspaceFile"];
+        post?: never;
+        /** Delete a file */
+        delete: operations["deleteWorkspaceFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace}/moves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename a file */
+        post: operations["moveWorkspaceFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/terminals": {
         parameters: {
             query?: never;
@@ -177,6 +590,26 @@ export interface paths {
          * @description Starts an interactive shell on a pty and returns its session id; the client then connects a WebSocket to /ws/terminal/{session} (binary frames out, JSON frames in, see internal/httpapi/terminal.go). A session survives 60 s without a client and replays its last 64 KiB of output on reconnect.
          */
         post: operations["openTerminal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live events for the signed-in user
+         * @description A server-sent event stream (one per page): `history` events are the learner's history as it is written (lecture.completed, quiz.submitted, lab.started, step.checked, hint.shown, lab.passed, course.completed, ...; each carries its id, so the browser's automatic reconnect sends Last-Event-ID and gets what it missed); `operation` events are a long operation's new status (POST answers 202 with the operation, the result arrives here; GET /api/v1/operations/{operation} after a reconnect). A comment line every 25 s keeps the connection open. Served by a hand-written handler (internal/httpapi/events.go): excluded from oapi-codegen, the contract test checks each event's data against the schema named in x-events.
+         */
+        get: operations["streamEvents"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -220,6 +653,8 @@ export interface components {
             cols: number;
             /** @default 24 */
             rows: number;
+            /** @description Start the shell in this workspace (a lab attempt's) instead of the repository */
+            workspace?: string;
         };
         TerminalSession: {
             /** @description Opaque session id for /ws/terminal/{session} */
@@ -386,6 +821,273 @@ export interface components {
             updated: components["schemas"]["EntryCounts"];
             retired: components["schemas"]["EntryCounts"];
             unchanged: components["schemas"]["EntryCounts"];
+        };
+        /**
+         * @description in_progress is opened and not completed
+         * @enum {string}
+         */
+        ItemStatus: "not_started" | "in_progress" | "completed";
+        ItemProgress: {
+            id: string;
+            type: components["schemas"]["ItemType"];
+            status: components["schemas"]["ItemStatus"];
+            /** @description Completed on content that has changed since */
+            stale: boolean;
+            /** Format: date-time */
+            completed_at: string | null;
+        };
+        CourseProgress: {
+            course: string;
+            /** @description In course order */
+            items: components["schemas"]["ItemProgress"][];
+            completed: number;
+            total: number;
+            /** @description Every item is completed now (stale ones count) */
+            complete: boolean;
+            /**
+             * Format: date-time
+             * @description When the course was first completed (kept when items are added later)
+             */
+            completed_at: string | null;
+            /** @description The item to continue with; null when complete */
+            resume: string | null;
+            /** Format: date-time */
+            last_opened_at: string | null;
+        };
+        ProgressOverview: {
+            courses: components["schemas"]["CourseProgress"][];
+        };
+        Note: {
+            /** @description Markdown */
+            body: string;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
+        NoteUpdate: {
+            body: string;
+        };
+        QuizChoice: {
+            /** @description The choice's place in the quiz; answers name choices by it */
+            index: number;
+            text: string;
+        };
+        QuizQuestion: {
+            id: string;
+            /** @enum {string} */
+            type: "single" | "multiple";
+            /** @description Markdown */
+            prompt: string;
+            /** @description In the attempt's order */
+            choices: components["schemas"]["QuizChoice"][];
+        };
+        QuizQuestionResult: {
+            id: string;
+            correct: boolean;
+            /** @description The key (choice indexes) */
+            answer: number[];
+            given: number[];
+            /** @description Markdown */
+            explain: string;
+            /** @description A lecture of the course to read again */
+            see: string | null;
+        };
+        QuizResult: {
+            /** @description Percentage */
+            score: number;
+            passed: boolean;
+            correct: number;
+            total: number;
+            /** @description Earned by this attempt (the quiz's xp on its first pass) */
+            xp: number;
+            questions: components["schemas"]["QuizQuestionResult"][];
+        };
+        QuizAttempt: {
+            /** Format: int64 */
+            id: number;
+            course: string;
+            item: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            deadline: string | null;
+            /** Format: date-time */
+            submitted_at: string | null;
+            /** @description Percentage to reach */
+            pass: number;
+            questions: components["schemas"]["QuizQuestion"][];
+            /** @description Set once the attempt is submitted */
+            result: components["schemas"]["QuizResult"] | null;
+        };
+        QuizAttemptSummary: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            submitted_at: string | null;
+            score: number | null;
+            passed: boolean | null;
+            xp: number;
+        };
+        QuizAttemptList: {
+            attempts: components["schemas"]["QuizAttemptSummary"][];
+        };
+        QuizAnswers: {
+            /** @description Question id → chosen choice indexes */
+            answers: {
+                [key: string]: number[];
+            };
+        };
+        LabStart: {
+            /** @description The course the lab is started from */
+            course?: string;
+            item?: string;
+        };
+        /**
+         * @description setup while its setup runs; failed when the setup failed
+         * @enum {string}
+         */
+        AttemptStatus: "setup" | "running" | "passed" | "abandoned" | "failed";
+        LabStepState: {
+            id: string;
+            passed: boolean;
+            /** @description The hints opened so far (texts keep their placeholders) */
+            hints: components["schemas"]["Strings"];
+        };
+        LabAttempt: {
+            /** Format: int64 */
+            id: number;
+            lab: string;
+            course: string | null;
+            item: string | null;
+            status: components["schemas"]["AttemptStatus"];
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+            /** @description lab-<attempt>, the lab's ${ns} */
+            namespace: string | null;
+            /** @description The attempt's files (/api/v1/workspaces/{workspace}) */
+            workspace: string;
+            hints_used: number;
+            /** @description Earned by the pass */
+            xp: number | null;
+            /** @description From start to pass */
+            seconds: number | null;
+            /** @description Why the setup failed */
+            error: string | null;
+            /** @description The step to check next */
+            current_step: string | null;
+            steps: components["schemas"]["LabStepState"][];
+        };
+        CurrentAttempt: {
+            attempt: components["schemas"]["LabAttempt"] | null;
+        };
+        LabStarted: {
+            attempt: components["schemas"]["LabAttempt"];
+            operation: components["schemas"]["Operation"];
+        };
+        StepCheckRequest: {
+            step: string;
+            /** @description A quiz step's choice index */
+            answer?: number;
+        };
+        HintRequest: {
+            step: string;
+        };
+        Hint: {
+            step: string;
+            index: number;
+            /** @description Markdown; keeps its placeholders */
+            hint: string;
+            /** @description The attempt's count after this one */
+            hints_used: number;
+        };
+        Expectation: {
+            metric: string;
+            /** @description "<op> <value>" */
+            want: string;
+            /** Format: double */
+            got: number | null;
+            passed: boolean;
+            /** @description false when the probe stopped before measuring it */
+            checked: boolean;
+        };
+        /** @description What a lab operation did. status is the attempt's after it; step, passed, explain and results belong to a check; xp and seconds to a pass; error is a step that failed (the setup, a probe that could not run, the teardown). */
+        LabOutcome: {
+            /** Format: int64 */
+            attempt: number;
+            status: components["schemas"]["AttemptStatus"];
+            step: string | null;
+            passed: boolean | null;
+            /** @description A quiz step's explanation */
+            explain: string | null;
+            results: components["schemas"]["Expectation"][];
+            xp: number | null;
+            seconds: number | null;
+            error: string | null;
+        };
+        Operation: {
+            id: string;
+            /** @enum {string} */
+            kind: "lab.start" | "lab.check" | "lab.reset" | "lab.abandon";
+            /** @description The lab id */
+            subject: string;
+            /**
+             * @description done is finished (the result says how it went); failed could not finish (error)
+             * @enum {string}
+             */
+            status: "running" | "done" | "failed";
+            result: components["schemas"]["LabOutcome"] | null;
+            error: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+        };
+        WorkspaceEntry: {
+            path: string;
+            /** Format: int64 */
+            size: number;
+        };
+        WorkspaceTree: {
+            workspace: string;
+            files: components["schemas"]["WorkspaceEntry"][];
+            /** Format: int64 */
+            bytes: number;
+            /** Format: int64 */
+            limit_bytes: number;
+        };
+        WorkspaceFile: {
+            path: string;
+            content: string;
+            /** @description The version to save against */
+            sha256: string;
+        };
+        WorkspaceFileWrite: {
+            content: string;
+            /** @description Save only over this version ("" = only if the file does not exist) */
+            base_sha256?: string;
+        };
+        WorkspaceMove: {
+            from: string;
+            to: string;
+        };
+        /** @description One event of the learner's history. */
+        HistoryEvent: {
+            /**
+             * Format: int64
+             * @description Increasing; the stream's event id
+             */
+            id: number;
+            /** @description <thing>.<what happened>, e.g. lab.passed */
+            kind: string;
+            /** @description What it happened to: a lab id, <course>/<item>, a course id */
+            subject: string;
+            /** @description The details; their keys depend on the kind */
+            data: Record<string, never>;
+            /** Format: date-time */
+            at: string;
         };
         /** @description RFC 9457 problem details. */
         Problem: {
@@ -642,6 +1344,903 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getProgressOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Progress per course. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressOverview"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+        };
+    };
+    getCourseProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course's progress. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseProgress"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    completeLecture: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lecture's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemProgress"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The item is not a lecture (/problems/not-a-lecture). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    visitItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The note (empty body and no updated_at when there is none). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Note"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description The saved note. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Note"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The note is longer than 64 KiB (/problems/note-too-long). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listQuizAttempts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizAttemptList"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            404: components["responses"]["NotFound"];
+            /** @description The item is not a quiz (/problems/not-a-quiz). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizAttempt"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The item is not a quiz (/problems/not-a-quiz). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizAttempt"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            /** @description No such attempt of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    submitQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizAnswers"];
+            };
+        };
+        responses: {
+            /** @description The scored attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizAttempt"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such attempt of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Already submitted (/problems/already-submitted) or past its deadline (/problems/quiz-expired). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An answer to a question the attempt lacks, or a choice it does not offer (/problems/invalid-answers). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startLab: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lab: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LabStart"];
+            };
+        };
+        responses: {
+            /** @description The attempt and the operation running its setup. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabStarted"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such lab (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another lab is running (/problems/another-lab-running), the lab is busy (/problems/lab-busy), locked (/problems/lab-locked, with missing), down (/problems/lab-down) or unavailable on this layout (/problems/lab-unavailable). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The lab toolchain failed (/problems/toolchain). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCurrentAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt in setup or running, or null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentAttempt"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+        };
+    };
+    getAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabAttempt"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            /** @description No such attempt of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    checkStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted; the operation runs in the background (its result is a LabOutcome). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such attempt of this learner, or no such step (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The attempt is not running (/problems/attempt-not-running), the step is not the next one (/problems/step- order) or the lab is busy (/problems/lab-busy). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A quiz step without an answer (/problems/answer-required). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    showHint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HintRequest"];
+            };
+        };
+        responses: {
+            /** @description The hint. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hint"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such attempt of this learner, or no such step (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The attempt is not running (/problems/attempt-not-running) or every hint of the step is open (/problems/no- more-hints). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resetLab: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted; the operation runs in the background (its result is a LabOutcome). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such attempt of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The attempt is not running (/problems/attempt-not-running), the lab is busy (/problems/lab-busy) or resets from a snapshot (/problems/reset-unsupported). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    abandonLab: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted; the operation runs in the background (its result is a LabOutcome). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such attempt of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The attempt is not running (/problems/attempt-not-running) or the lab is busy (/problems/lab-busy). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            /** @description No such operation of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getWorkspaceTree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Its regular files, by path, and its size. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceTree"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            /** @description No such workspace of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readWorkspaceFile: {
+        parameters: {
+            query: {
+                /** @description A file path in the workspace, e.g. k8s/web.yaml */
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file and its version (sha256). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            /** @description No such workspace of this learner, or no such file (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a text file (/problems/not-text). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a path inside the workspace (/problems/bad-path). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    writeWorkspaceFile: {
+        parameters: {
+            query: {
+                /** @description A file path in the workspace, e.g. k8s/web.yaml */
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceFileWrite"];
+            };
+        };
+        responses: {
+            /** @description The saved file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such workspace of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The file changed since base_sha256 (/problems/conflict). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Over 1 MiB for the file or 10 MiB for the workspace (/problems/too-large). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a path inside the workspace (/problems/bad-path). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteWorkspaceFile: {
+        parameters: {
+            query: {
+                /** @description A file path in the workspace, e.g. k8s/web.yaml */
+                path: string;
+            };
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such workspace of this learner, or no such file (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a path inside the workspace (/problems/bad-path). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    moveWorkspaceFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceMove"];
+            };
+        };
+        responses: {
+            /** @description Moved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["NoSession"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such workspace of this learner, or no such file (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The target exists (/problems/exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a path inside the workspace (/problems/bad-path). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     openTerminal: {
         parameters: {
             query?: never;
@@ -675,6 +2274,15 @@ export interface operations {
             };
             401: components["responses"]["NoSession"];
             403: components["responses"]["Forbidden"];
+            /** @description No such workspace of this learner (/problems/not-found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Too many terminals are open. */
             429: {
                 headers: {
@@ -684,6 +2292,33 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    streamEvents: {
+        parameters: {
+            query?: {
+                /** @description Same as Last-Event-ID, for a page that opens a new stream after a reload. */
+                last_event_id?: number;
+            };
+            header?: {
+                /** @description Replay the history after this event id first (the browser sets it when it reconnects). */
+                "Last-Event-ID"?: number;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stream; it ends when the server shuts down or the page falls too far behind. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            401: components["responses"]["NoSession"];
         };
     };
 }

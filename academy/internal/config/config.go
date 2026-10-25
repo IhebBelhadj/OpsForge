@@ -18,6 +18,7 @@ type Config struct {
 	Addr             string        // HTTP listen address; loopback only (the terminal is a shell)
 	Root             string        // the OpsForge repository (packs, ./opsforge, .opsforge/)
 	DB               string        // SQLite database
+	Workspaces       string        // the learners' workspaces (one folder per lab attempt)
 	Toolchain        string        // the opsforge CLI the platform calls (docs/courses/architecture.md)
 	ToolchainTimeout time.Duration // default limit for one toolchain call
 	LabTimeout       time.Duration // limit for a call that runs steps on the lab (setup, a check, teardown)
@@ -38,6 +39,8 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	root := fs.String("root", or("ACADEMY_ROOT", "."), "OpsForge repository root (ACADEMY_ROOT)")
 	addr := fs.String("addr", or("ACADEMY_ADDR", "127.0.0.1:8090"), "listen address, loopback only (ACADEMY_ADDR)")
 	db := fs.String("db", getenv("ACADEMY_DB"), "SQLite database (ACADEMY_DB, default <root>/.opsforge/academy.db)")
+	workspaces := fs.String("workspaces", getenv("ACADEMY_WORKSPACES"),
+		"workspaces folder (ACADEMY_WORKSPACES, default <root>/.opsforge/workspaces)")
 	toolchain := fs.String("toolchain", getenv("ACADEMY_TOOLCHAIN"), "opsforge CLI (default <root>/opsforge)")
 	toolchainTimeout := fs.Duration("toolchain-timeout", 30*time.Second, "limit for one toolchain call")
 	labTimeout := fs.Duration("lab-timeout", 20*time.Minute, "limit for a toolchain call running steps on the lab")
@@ -55,11 +58,14 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("root: %w", err)
 	}
 	cfg := Config{
-		Addr: *addr, Root: absRoot, DB: *db, Toolchain: *toolchain,
+		Addr: *addr, Root: absRoot, DB: *db, Workspaces: *workspaces, Toolchain: *toolchain,
 		ToolchainTimeout: *toolchainTimeout, LabTimeout: *labTimeout, ShutdownTimeout: *shutdownTimeout,
 	}
 	if cfg.DB == "" {
 		cfg.DB = filepath.Join(absRoot, ".opsforge", "academy.db")
+	}
+	if cfg.Workspaces == "" {
+		cfg.Workspaces = filepath.Join(absRoot, ".opsforge", "workspaces")
 	}
 	if cfg.Toolchain == "" {
 		cfg.Toolchain = filepath.Join(absRoot, "opsforge")
@@ -79,8 +85,8 @@ func (c Config) validate() error {
 		return fmt.Errorf("addr %q: must be a loopback address (127.0.0.1 or localhost)", c.Addr)
 	}
 	var errs []error
-	if !filepath.IsAbs(c.DB) || !filepath.IsAbs(c.Toolchain) {
-		errs = append(errs, errors.New("db and toolchain must be absolute paths"))
+	if !filepath.IsAbs(c.DB) || !filepath.IsAbs(c.Toolchain) || !filepath.IsAbs(c.Workspaces) {
+		errs = append(errs, errors.New("db, workspaces and toolchain must be absolute paths"))
 	}
 	if c.ToolchainTimeout <= 0 {
 		errs = append(errs, errors.New("toolchain-timeout must be positive"))

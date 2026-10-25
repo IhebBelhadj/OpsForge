@@ -41,52 +41,71 @@ func (s *Service) Course(ctx context.Context, id string) (Course, error) {
 
 // Item is one live item of a live course with its content, or ErrNotFound.
 func (s *Service) Item(ctx context.Context, course, id string) (Item, error) {
-	if _, err := s.r.Live(ctx, KindCourse, course); err != nil {
-		return Item{}, err
-	}
-	e, err := s.r.Live(ctx, KindItem, course+"/"+id)
-	if err != nil {
-		return Item{}, err
-	}
-	d, err := decodeItem(e)
+	d, e, c, err := s.item(ctx, course, id)
 	if err != nil {
 		return Item{}, err
 	}
 	it := Item{Course: course, ID: d.ID, Type: d.Type, Title: d.Title, Minutes: d.Minutes, Section: d.Section,
 		Hash: e.Hash}
-	// The item's content was imported with it: a missing one is a broken catalogue, not a 404.
-	content := func(kind Kind, key string) (Entry, error) {
-		c, err := s.r.Live(ctx, kind, key)
-		if err != nil {
-			return c, fmt.Errorf("item %s: its %s %s: %w", e.Key, kind, key, err)
-		}
-		return c, nil
-	}
 	switch d.Type {
 	case ItemLecture:
-		c, err := content(KindLecture, course+"/"+d.Ref)
-		if err == nil {
-			it.Lecture, err = LectureView(c)
-		}
-		return it, err
+		it.Lecture, err = LectureView(c)
 	case ItemQuiz:
-		c, err := content(KindQuiz, course+"/"+d.Ref)
-		if err == nil {
-			it.Quiz, err = QuizView(c)
-		}
-		return it, err
+		it.Quiz, err = QuizView(c)
 	case ItemChallenge:
-		c, err := content(KindChallenge, course+"/"+d.Ref)
-		if err == nil {
-			it.Challenge, err = ChallengeView(c)
-		}
-		return it, err
+		it.Challenge, err = ChallengeView(c)
 	case ItemLab:
-		c, err := content(KindLab, d.Ref)
-		if err == nil {
-			it.Lab, err = LabView(c)
-		}
-		return it, err
+		it.Lab, err = LabView(c)
 	}
-	return Item{}, fmt.Errorf("item %s: unknown type %q", e.Key, d.Type)
+	return it, err
+}
+
+// Content is a live item of a live course and the entry holding its content as imported: the quiz with its keys,
+// the lab with its setup and checks. For the modules that grade the item; the transport serves Item.
+func (s *Service) Content(ctx context.Context, course, id string) (ItemRef, Entry, error) {
+	d, e, c, err := s.item(ctx, course, id)
+	if err != nil {
+		return ItemRef{}, Entry{}, err
+	}
+	return ItemRef{ID: d.ID, Type: d.Type, Ref: d.Ref, Title: d.Title, Minutes: d.Minutes, Hash: e.Hash}, c, nil
+}
+
+// Entry is one live entry as imported (a lab, a pack), or ErrNotFound; like Content, not for the transport.
+func (s *Service) Entry(ctx context.Context, kind Kind, key string) (Entry, error) {
+	return s.r.Live(ctx, kind, key)
+}
+
+// item reads a live item entry of a live course and its content entry.
+func (s *Service) item(ctx context.Context, course, id string) (itemDoc, Entry, Entry, error) {
+	if _, err := s.r.Live(ctx, KindCourse, course); err != nil {
+		return itemDoc{}, Entry{}, Entry{}, err
+	}
+	e, err := s.r.Live(ctx, KindItem, course+"/"+id)
+	if err != nil {
+		return itemDoc{}, Entry{}, Entry{}, err
+	}
+	d, err := decodeItem(e)
+	if err != nil {
+		return d, e, Entry{}, err
+	}
+	var kind Kind
+	key := course + "/" + d.Ref
+	switch d.Type {
+	case ItemLecture:
+		kind = KindLecture
+	case ItemQuiz:
+		kind = KindQuiz
+	case ItemChallenge:
+		kind = KindChallenge
+	case ItemLab:
+		kind, key = KindLab, d.Ref
+	default:
+		return d, e, Entry{}, fmt.Errorf("item %s: unknown type %q", e.Key, d.Type)
+	}
+	// The item's content was imported with it: a missing one is a broken catalogue, not a 404
+	c, err := s.r.Live(ctx, kind, key)
+	if err != nil {
+		return d, e, c, fmt.Errorf("item %s: its %s %s: %w", e.Key, kind, key, err)
+	}
+	return d, e, c, nil
 }

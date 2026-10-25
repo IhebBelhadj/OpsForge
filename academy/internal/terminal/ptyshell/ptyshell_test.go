@@ -116,3 +116,21 @@ func TestBashSpecRunsTheLabShell(t *testing.T) {
 	}
 	until(t, pty, "opsforge kubectl get nodes\r\n")
 }
+
+func TestBashStartsInTheWorkspaceItIsGiven(t *testing.T) {
+	root, ws := t.TempDir(), filepath.Join(t.TempDir(), "lab 1")
+	if err := os.Mkdir(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := ptyshell.Bash(root, filepath.Join(root, ".opsforge"), 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.Dir, spec.Env = ws, []string{"ACADEMY_WORKDIR=" + ws}
+	pty, err := ptyshell.Spawner{}.Spawn(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pty.Close() }()
+	until(t, pty, "Lab terminal in "+ws)
+}

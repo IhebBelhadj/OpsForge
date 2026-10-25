@@ -100,11 +100,12 @@ type Section struct {
 	Items   []ItemRef
 }
 
-// ItemRef is an item as its course lists it.
+// ItemRef is an item as its course lists it. Ref names its lecture, quiz or challenge in the course, or its lab in
+// the pack (a lab passed in one course completes it in every course).
 type ItemRef struct {
-	ID, Type, Title string
-	Minutes         int
-	Hash            string
+	ID, Type, Ref, Title string
+	Minutes              int
+	Hash                 string
 }
 
 // Item types.
@@ -196,9 +197,9 @@ func CourseView(e Entry) (Course, error) {
 			Needs   []string
 			Minutes int
 			Items   []struct {
-				ID, Type, Title string
-				Minutes         int
-				ContentHash     string `json:"content_hash"`
+				ID, Type, Ref, Title string
+				Minutes              int
+				ContentHash          string `json:"content_hash"`
 			}
 		}
 	}
@@ -212,8 +213,8 @@ func CourseView(e Entry) (Course, error) {
 	for _, s := range doc.Sections {
 		sec := Section{Title: s.Title, Layout: s.Layout, Needs: s.Needs, Minutes: s.Minutes}
 		for _, it := range s.Items {
-			sec.Items = append(sec.Items, ItemRef{ID: it.ID, Type: it.Type, Title: it.Title, Minutes: it.Minutes,
-				Hash: it.ContentHash})
+			sec.Items = append(sec.Items, ItemRef{ID: it.ID, Type: it.Type, Ref: it.Ref, Title: it.Title,
+				Minutes: it.Minutes, Hash: it.ContentHash})
 			c.Counts.add(it.Type)
 		}
 		c.Items += len(sec.Items)

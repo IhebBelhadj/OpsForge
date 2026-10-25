@@ -29,14 +29,21 @@ type ReadinessCheck struct {
 
 // Deps is what the transport needs, injected by cmd/academy.
 type Deps struct {
-	Build     platform.Build
-	Readiness []ReadinessCheck
-	Web       fs.FS
-	Log       *slog.Logger
-	Terminals Terminals
-	Identity  Identity
-	Importer  Importer
-	Catalog   Catalog
+	Build      platform.Build
+	Readiness  []ReadinessCheck
+	Web        fs.FS
+	Log        *slog.Logger
+	Terminals  Terminals
+	Identity   Identity
+	Importer   Importer
+	Catalog    Catalog
+	History    History
+	Streams    Streams
+	Progress   Progress
+	Quizzes    Quizzes
+	Labs       Labs
+	Operations Operations
+	Workspaces Workspaces
 }
 
 type server struct {
@@ -48,13 +55,15 @@ var _ StrictServerInterface = (*server)(nil)
 // NewHandler is the whole HTTP surface: the API, then the web app for every other path.
 func NewHandler(deps Deps) http.Handler {
 	mux := http.NewServeMux()
-	HandlerWithOptions(NewStrictHandler(&server{deps: deps}, nil), StdHTTPServerOptions{
+	srv := &server{deps: deps}
+	HandlerWithOptions(NewStrictHandler(srv, nil), StdHTTPServerOptions{
 		BaseRouter: mux,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeProblem(w, http.StatusBadRequest, "/problems/bad-request", "Bad request", err.Error())
 		},
 	})
-	mux.HandleFunc("GET /ws/terminal/{session}", (&server{deps: deps}).terminalSocket)
+	mux.HandleFunc("GET /ws/terminal/{session}", srv.terminalSocket)
+	mux.HandleFunc("GET /api/v1/events", srv.streamEvents)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "/problems/not-found", "Not found", r.URL.Path+" is not an API resource")
 	})
