@@ -1,4 +1,4 @@
-// Package contentimport mirrors the compiled packs (`opsforge academy compile`, api/bundle.schema.json) into the
+// Package contentimport mirrors the compiled packs (`opsforge api compile`, api/bundle.schema.json) into the
 // catalogue: the bundle is flattened into entries, compared with the catalogue, and only what changed is written.
 // The same packs twice change nothing, not even a timestamp; removed content is retired, never deleted.
 package contentimport

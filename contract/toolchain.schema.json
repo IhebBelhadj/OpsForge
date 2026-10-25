@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://opsforge.lab/academy/toolchain.schema.json",
-  "title": "OpsForge Academy lab toolchain documents (contract 1)",
-  "description": "Inputs (stdin) and outputs (stdout) of `opsforge academy run|probe|heal --json` (docs/courses/architecture.md, \"The lab toolchain contract\"). Steps are scenario steps (lab/scenario.py), validated when the pack is compiled; their placeholders are resolved by the toolchain, `${ns}` with the document's namespace.",
+  "$id": "https://opsforge.lab/contract/toolchain.schema.json",
+  "title": "OpsForge lab toolchain documents (contract 1)",
+  "description": "Inputs (stdin) and outputs (stdout) of `opsforge api run|probe|heal` (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
   "$defs": {
     "namespace": {
       "description": "A namespace the platform owns: lab-<attempt> for labs, ch-<attempt> for challenge submissions. Created before setup, deleted after teardown.",
@@ -28,7 +28,6 @@
     "runOutput": {
       "type": "object",
       "required": ["contract", "metrics", "log", "error"],
-      "additionalProperties": false,
       "properties": {
         "contract": { "const": 1 },
         "metrics": { "$ref": "#/$defs/metrics" },
@@ -56,7 +55,6 @@
     "probeOutput": {
       "type": "object",
       "required": ["contract", "passed", "results", "log", "error"],
-      "additionalProperties": false,
       "properties": {
         "contract": { "const": 1 },
         "passed": { "type": "boolean" },
@@ -66,7 +64,6 @@
           "items": {
             "type": "object",
             "required": ["metric", "want", "got", "passed", "checked"],
-            "additionalProperties": false,
             "properties": {
               "metric": { "type": "string" },
               "want": { "type": "string" },
@@ -83,10 +80,18 @@
     "healOutput": {
       "type": "object",
       "required": ["contract", "healed"],
-      "additionalProperties": false,
       "properties": {
         "contract": { "const": 1 },
         "healed": { "description": "false when there was no fault to heal", "type": "boolean" }
+      }
+    },
+    "versionOutput": {
+      "type": "object",
+      "required": ["contract", "minor", "opsforge"],
+      "properties": {
+        "contract": { "const": 1 },
+        "minor": { "description": "Additive revisions of this major: a caller gates what it sends on it", "type": "integer", "minimum": 0 },
+        "opsforge": { "description": "The OpsForge release (semver)", "type": "string" }
       }
     }
   }

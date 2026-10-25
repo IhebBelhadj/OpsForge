@@ -1,6 +1,7 @@
-"""OpsForge Academy toolchain (Phase 11, docs/courses/): `opsforge academy compile` (lab/academy.py) and the JSON
-contract commands. The golden bundle and state documents in academy/testdata/ are shared with the Go tests, so a
-contract change fails both sides. Regenerate them with OPSFORGE_UPDATE_GOLDEN=1 and review the diff. No Incus needed."""
+"""OpsForge's machine interface (contract/README.md): `opsforge api` and the course compiler it still hosts
+(lab/academy.py, until Academy compiles packs itself). The contract's golden documents (contract/golden/) are what
+OpsForge publishes and Academy tests against; the golden bundle (academy/testdata/) feeds Academy's import tests.
+Regenerate them with OPSFORGE_UPDATE_GOLDEN=1 and review the diff. No Incus needed."""
 
 import json
 import os
@@ -17,14 +18,16 @@ import labs
 from conftest import ROOT, cli
 
 TESTDATA = ROOT / "academy" / "testdata"
+CONTRACT = ROOT / "contract"
 DEMO = TESTDATA / "packs" / "demo"
 BUNDLE_SCHEMA = json.loads((ROOT / "academy" / "api" / "bundle.schema.json").read_text())
 EPOCH = "2026-10-24T00:00:00Z"
 
 
 def golden(name, doc):
-    """Compares `doc` with academy/testdata/<name>, rewriting the file under OPSFORGE_UPDATE_GOLDEN=1."""
-    path = TESTDATA / name
+    """Compares `doc` with contract/golden/<name> (academy/testdata/ for the bundle), rewriting the file under
+    OPSFORGE_UPDATE_GOLDEN=1."""
+    path = (TESTDATA if name.startswith("bundle.") else CONTRACT / "golden") / name
     text = json.dumps(doc, indent=2, sort_keys=True) + "\n"
     if os.environ.get("OPSFORGE_UPDATE_GOLDEN"):
         path.write_text(text)
@@ -212,7 +215,7 @@ def test_sections_may_use_labs_of_other_packs(pack):
 
 
 def run_cli(*args, env=None, input=""):
-    return subprocess.run([str(ROOT / "opsforge"), "academy", *args], capture_output=True, text=True,
+    return subprocess.run([str(ROOT / "opsforge"), "api", *args], capture_output=True, text=True,
                           env={**os.environ, "SOURCE_DATE_EPOCH": "1792800000", **(env or {})}, cwd=ROOT, input=input)
 
 
@@ -240,11 +243,12 @@ def test_cli_problem_document_on_stderr(tmp_path):
 
 def test_cli_version():
     out = run_cli("version", "--json")
-    assert json.loads(out.stdout) == {"contract": academy.CONTRACT}
-    golden("version.json", json.loads(out.stdout))
+    doc = contract_doc("versionOutput", json.loads(out.stdout))
+    assert doc == {"contract": academy.CONTRACT, "minor": academy.CONTRACT_MINOR, "opsforge": cli.VERSION}
+    golden("version.json", doc)
 
 
-# State: the documents academy/testdata/state.*.json, from a fake Incus
+# State: the documents contract/golden/state.*.json, from a fake Incus
 
 
 def fake_lab(monkeypatch, *, running, live=None, pre_fault=None):
@@ -261,7 +265,7 @@ def fake_lab(monkeypatch, *, running, live=None, pre_fault=None):
 
 def test_state_lab_down(monkeypatch):
     fake_lab(monkeypatch, running=False)
-    state = cli.academy_state()
+    state = cli.api_state()
     assert state["contract"] == academy.CONTRACT and state["up"] is False
     assert {n["status"] for n in state["nodes"]} == {"Missing"}
     golden("state.down.json", state)
@@ -271,7 +275,7 @@ def test_state_lab_up_with_a_partition(monkeypatch):
     topo = cli.load_topology()
     live = {name: ({**link, "loss": "100%"} if "c" in name.split("-") else link) for name, link in topo["links"].items()}
     fake_lab(monkeypatch, running=True, live=live, pre_fault={"links": topo["links"]})
-    state = cli.academy_state()
+    state = cli.api_state()
     assert state["up"] is True and state["fault"] is True and state["error"] is None
     assert {k: v["condition"] for k, v in state["links"].items()} == {"a-b": "ok", "a-c": "cut", "b-c": "cut"}
     golden("state.up.json", state)
@@ -279,12 +283,22 @@ def test_state_lab_up_with_a_partition(monkeypatch):
 
 # run, probe, heal: scenario steps on the lab. Host `run` steps need no Incus, so these run the real step runner.
 
-TOOLCHAIN_SCHEMA = json.loads((ROOT / "academy" / "api" / "toolchain.schema.json").read_text())
+TOOLCHAIN_SCHEMA = json.loads((CONTRACT / "toolchain.schema.json").read_text())
+
+
+def strict(node):
+    """The schema with every object closed: readers ignore unknown output fields, but OpsForge prints none."""
+    if isinstance(node, dict):
+        out = {k: strict(v) for k, v in node.items()}
+        if out.get("type") == "object" and "properties" in out:
+            out.setdefault("additionalProperties", False)
+        return out
+    return [strict(v) for v in node] if isinstance(node, list) else node
 
 
 def contract_doc(kind, doc):
-    """`doc` checked against the toolchain schema's $defs/<kind>."""
-    jsonschema.validate(doc, {**TOOLCHAIN_SCHEMA, "$ref": f"#/$defs/{kind}"})
+    """`doc` checked against the toolchain schema's $defs/<kind>, closed (an undocumented output field fails)."""
+    jsonschema.validate(doc, {**strict(TOOLCHAIN_SCHEMA), "$ref": f"#/$defs/{kind}"})
     return doc
 
 
@@ -323,7 +337,7 @@ def test_input_errors(kind, doc, message):
 
 
 def test_run_reports_metrics_and_log():
-    doc = contract_doc("runOutput", cli.academy_run(
+    doc = contract_doc("runOutput", cli.api_run(
         {"contract": 1, "phase": "setup", "steps": [echo("x", 42), {"run": {"cmd": "true"}}]}))
     assert doc["error"] is None and doc["metrics"]["x.value"] == 42 and doc["metrics"]["x.exit"] == 0
     assert doc["log"][0].endswith("s  run cmd=echo 42  -> x")
@@ -331,20 +345,20 @@ def test_run_reports_metrics_and_log():
 
 
 def test_run_stops_at_a_failing_step():
-    doc = contract_doc("runOutput", cli.academy_run(
+    doc = contract_doc("runOutput", cli.api_run(
         {"contract": 1, "phase": "setup", "steps": [{"run": {"cmd": "echo ${node:zz}"}}, echo("never", 1)]}))
     assert "no K3s node in site 'zz'" in doc["error"] and doc["metrics"] == {}
 
 
 def test_probe_passes():
-    doc = contract_doc("probeOutput", cli.academy_probe(
+    doc = contract_doc("probeOutput", cli.api_probe(
         {"contract": 1, "steps": [echo("a", 1), echo("b", 2)], "expect": {"a.value": "== 1", "b.value": [">= 2", "<= 2"]}}))
     assert doc["passed"] is True and [r["passed"] for r in doc["results"]] == [True, True, True]
     golden("probe.passed.json", timeless(doc))
 
 
 def test_probe_stops_at_the_first_failing_named_step():
-    doc = contract_doc("probeOutput", cli.academy_probe(
+    doc = contract_doc("probeOutput", cli.api_probe(
         {"contract": 1, "steps": [echo("a", 1), echo("b", 2)], "expect": {"a.value": "== 0", "b.value": "== 2"}}))
     assert doc["passed"] is False
     assert [(r["metric"], r["got"], r["passed"], r["checked"]) for r in doc["results"]] == [
@@ -367,8 +381,8 @@ def kube(monkeypatch):
 
 def test_setup_creates_the_namespace_first_and_teardown_deletes_it_last(kube):
     marker = {"run": {"host": "a-gw", "cmd": "step -n ${ns}"}}
-    assert cli.academy_run({"contract": 1, "phase": "setup", "steps": [marker], "namespace": "lab-7"})["error"] is None
-    assert cli.academy_run({"contract": 1, "phase": "teardown", "steps": [marker], "namespace": "lab-7"})["error"] is None
+    assert cli.api_run({"contract": 1, "phase": "setup", "steps": [marker], "namespace": "lab-7"})["error"] is None
+    assert cli.api_run({"contract": 1, "phase": "teardown", "steps": [marker], "namespace": "lab-7"})["error"] is None
     cmds = [c for _, c in kube]
     assert "create namespace lab-7" in cmds[0] and "step -n lab-7" in cmds[1]
     assert "step -n lab-7" in cmds[2] and "delete namespace lab-7" in cmds[3] and len(cmds) == 4
@@ -376,16 +390,16 @@ def test_setup_creates_the_namespace_first_and_teardown_deletes_it_last(kube):
 
 
 def test_teardown_deletes_the_namespace_even_after_a_failing_step(kube):
-    doc = cli.academy_run({"contract": 1, "phase": "teardown", "steps": [{"run": {"cmd": "echo ${node:zz}"}}],
+    doc = cli.api_run({"contract": 1, "phase": "teardown", "steps": [{"run": {"cmd": "echo ${node:zz}"}}],
                            "namespace": "lab-7"})
     assert "zz" in doc["error"] and "delete namespace lab-7" in kube[-1][1]
 
 
 def test_heal(monkeypatch):
     monkeypatch.setattr(cli, "heal_links", lambda: True)
-    golden("heal.json", contract_doc("healOutput", cli.academy_heal()))
+    golden("heal.json", contract_doc("healOutput", cli.api_heal()))
     monkeypatch.setattr(cli, "heal_links", lambda: False)
-    assert cli.academy_heal()["healed"] is False
+    assert cli.api_heal()["healed"] is False
 
 
 def test_cli_probe_reads_its_input_on_stdin():

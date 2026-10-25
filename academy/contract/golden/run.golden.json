@@ -1,0 +1,14 @@
+{
+  "contract": 1,
+  "error": null,
+  "log": [
+    "  0.0s  run cmd=echo 42  -> x",
+    "  0.0s      exit=0, seconds=0, value=42",
+    "  0.0s  run cmd=true"
+  ],
+  "metrics": {
+    "x.exit": 0,
+    "x.seconds": 0.0,
+    "x.value": 42.0
+  }
+}

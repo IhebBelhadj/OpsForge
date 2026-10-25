@@ -142,7 +142,7 @@ def substitute(text, topo):
 def placeholders(topo):
     """Every placeholder `substitute` resolves in `topo`, with its value: ${public:<site>}, ${ip:<host>} (nodes and
     gateways), and ${node|server|cluster:<site>} for sites with a K3s node. A nested ${ip:${node:a}} resolves the
-    inner one first, as `substitute` does. The Academy shows lab texts with these (opsforge academy state)."""
+    inner one first, as `substitute` does. The Academy shows lab texts with these (opsforge api state)."""
     keys = [f"${{public:{site}}}" for site in topo["sites"]]
     keys += [f"${{ip:{host}}}" for host in [*topo["nodes"], *(f"{site}-gw" for site in topo["sites"])]]
     keys += [f"${{{kind}:{site}}}" for site in topo["sites"] for kind in ("node", "server", "cluster")

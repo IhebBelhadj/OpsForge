@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opsforge.lab/contract/toolchain.schema.json",
+  "title": "OpsForge lab toolchain documents (contract 1)",
+  "description": "Inputs (stdin) and outputs (stdout) of `opsforge api run|probe|heal` (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
+  "$defs": {
+    "namespace": {
+      "description": "A namespace the platform owns: lab-<attempt> for labs, ch-<attempt> for challenge submissions. Created before setup, deleted after teardown.",
+      "type": "string",
+      "pattern": "^(lab|ch)-[a-z0-9]{1,24}$"
+    },
+    "steps": { "type": "array", "items": { "type": "object", "minProperties": 1 } },
+    "log": { "description": "Human-readable lines, each starting with the seconds since the run began.", "type": "array", "items": { "type": "string" } },
+    "error": { "description": "Why the run stopped early (a failing step, a missing node); null when every step ran.", "type": ["string", "null"] },
+    "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
+    "condition": { "description": "<op> <value>, e.g. \">= base.p50_ms * 2\" (lab/scenario.py)", "type": "string", "pattern": "^\\s*(<=|>=|==|!=|<|>)" },
+    "runInput": {
+      "type": "object",
+      "required": ["contract", "phase", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "contract": { "const": 1 },
+        "phase": { "enum": ["setup", "teardown"] },
+        "steps": { "$ref": "#/$defs/steps" },
+        "namespace": { "$ref": "#/$defs/namespace" }
+      }
+    },
+    "runOutput": {
+      "type": "object",
+      "required": ["contract", "metrics", "log", "error"],
+      "properties": {
+        "contract": { "const": 1 },
+        "metrics": { "$ref": "#/$defs/metrics" },
+        "log": { "$ref": "#/$defs/log" },
+        "error": { "$ref": "#/$defs/error" }
+      }
+    },
+    "probeInput": {
+      "type": "object",
+      "required": ["contract", "steps", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "contract": { "const": 1 },
+        "steps": { "$ref": "#/$defs/steps" },
+        "expect": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "oneOf": [{ "$ref": "#/$defs/condition" }, { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } }]
+          }
+        },
+        "namespace": { "$ref": "#/$defs/namespace" }
+      }
+    },
+    "probeOutput": {
+      "type": "object",
+      "required": ["contract", "passed", "results", "log", "error"],
+      "properties": {
+        "contract": { "const": 1 },
+        "passed": { "type": "boolean" },
+        "results": {
+          "description": "One per expectation, in `expect` order. checked is false for a step the probe never reached (it stops at the first failing named step).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "want", "got", "passed", "checked"],
+            "properties": {
+              "metric": { "type": "string" },
+              "want": { "type": "string" },
+              "got": { "type": ["number", "null"] },
+              "passed": { "type": "boolean" },
+              "checked": { "type": "boolean" }
+            }
+          }
+        },
+        "log": { "$ref": "#/$defs/log" },
+        "error": { "$ref": "#/$defs/error" }
+      }
+    },
+    "healOutput": {
+      "type": "object",
+      "required": ["contract", "healed"],
+      "properties": {
+        "contract": { "const": 1 },
+        "healed": { "description": "false when there was no fault to heal", "type": "boolean" }
+      }
+    },
+    "versionOutput": {
+      "type": "object",
+      "required": ["contract", "minor", "opsforge"],
+      "properties": {
+        "contract": { "const": 1 },
+        "minor": { "description": "Additive revisions of this major: a caller gates what it sends on it", "type": "integer", "minimum": 0 },
+        "opsforge": { "description": "The OpsForge release (semver)", "type": "string" }
+      }
+    }
+  }
+}

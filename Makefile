@@ -4,9 +4,10 @@ SHELLCHECK := $(shell shellcheck --version >/dev/null 2>&1 && echo shellcheck ||
 	echo docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0)
 
 .PHONY: check test lint-shell lint-yaml lint-python lint-ansible validate preflight smoke up down provision verify host-setup \
-	academy academy-test academy-lint web-deps web-build web-check gen gen-check e2e
+	academy academy-test academy-lint web-deps web-build web-check gen gen-check e2e contract-check contract-update
 
-check: lint-shell lint-yaml lint-python lint-ansible validate test academy-lint academy-test web-check gen-check
+check: lint-shell lint-yaml lint-python lint-ansible validate test contract-check academy-lint academy-test web-check \
+	gen-check
 
 test:
 	python3 -m pytest -q tests
@@ -26,7 +27,20 @@ lint-ansible:
 validate:
 	./opsforge validate
 	./opsforge labs validate
-	./opsforge academy compile
+	./opsforge api compile
+
+# Academy's pinned copy of the toolchain contract (academy/contract) must be OpsForge's (contract/) while both live in
+# this repository; after the split, contract-update copies a release instead.
+CONTRACT_FILES = toolchain.schema.json README.md golden
+
+contract-check:
+	@for f in $(CONTRACT_FILES); do diff -r contract/$$f academy/contract/$$f >/dev/null || { \
+		echo "academy/contract/$$f differs from contract/$$f: make contract-update"; exit 1; }; done
+
+contract-update:
+	for f in $(CONTRACT_FILES); do rm -rf academy/contract/$$f && cp -r contract/$$f academy/contract/; done
+	printf 'opsforge %s (contract %s)\n' "$$(./opsforge api version --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["opsforge"])')" \
+		"$$(./opsforge api version | sed 's/.*contract //')" > academy/contract/PINNED
 
 preflight:
 	./opsforge preflight

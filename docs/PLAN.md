@@ -760,22 +760,57 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
   boundary. Why not before: the rest of M1 still changes the contract, and both sides change in one commit until it
   is frozen. Until the split, keep coupling from growing: lab-side features only through `--json` commands (Go never
   reads `.opsforge/` or `topology.yml` itself), content stays out of `lab/` code.
-  Steps:
-  - Freeze contract v1 once the six-lab acceptance run passes.
-  - Rename the toolchain commands to a neutral name (`opsforge academy …` → e.g. `opsforge exec … --json`), keeping
-    the generic primitives (`run`/`probe`/`heal`, setup/teardown, `lab-*`/`ch-*` namespaces, `state`) in OpsForge.
-  - Content to Academy: `labs/`, `courses/`, the course compiler (`lab/academy.py`, `lab/course.schema.json`, the
-    pack logic of `lab/labs.py` it needs); decide whether it stays Python (a tool in the Academy repo) or is ported
-    to Go.
-  - Academy config: split `Root` into the OpsForge install (toolchain path, state dir) and the content root.
-  - Phase 10 leftovers (`lab/labserver.py`, `lab/labsdb.py`, `lab/web/`, `opsforge labs`/`serve`) deleted first, so
-    neither repo inherits them; `migrate-legacy` runs before that.
-  - Contract tests across repos: OpsForge publishes the schemas and golden documents with each tag; Academy pins an
-    OpsForge version and checks against it (the e2e fake toolchain stays in Academy).
-  - Move `academy/`, `web/`, content and `docs/courses/` with `git filter-repo` (history kept); split CI, Makefile,
-    README and CLAUDE.md; tag OpsForge `v1.0`.
-  - **Done when:** each repo's `make check` and CI are green on its own; Academy against a tagged OpsForge passes
-    the six-lab run on the live lab; OpsForge clones and runs with no Go/Node toolchain.
+  Decided 2026-10-25: the new repo is `opsforge-academy` (github.dev.com/IhebBelhadj/opsforge-academy, Go module
+  `github.com/IhebBelhadj/opsforge-academy`); the course compiler is **ported to Go** (Academy is one language, the
+  bundle becomes in-process data); the toolchain commands become `opsforge api <cmd>`.
+  Steps, in this repo first (each leaves `make check` green):
+  1. **Contract v1 for two repos** (done 2026-10-25, see "Versioning" below): `opsforge academy …` → `opsforge api
+     …` (`--json` kept: without it the commands print for humans); OpsForge owns `contract/` (`toolchain.schema.json`
+     with open outputs, `golden/*.json` written by its pytest, `README.md` with the rules and a table of minors);
+     `api version` reports `{contract, minor, opsforge}` (`VERSION` in `opsforge`, `1.0.0-dev` until tagged); Academy
+     keeps a pinned copy (`academy/contract/` + `PINNED`, `make contract-update`; `make contract-check` fails while it
+     differs), reads outputs leniently and fails `/readyz` naming the minimum OpsForge when the minor is too old
+     (`opsforgecli.MinMinor`/`MinRelease`).
+  2. **Compiler to Go**: `lab/academy.py` + `lab/course.schema.json` + the pack logic of `lab/labs.py` it uses (pack
+     loading, validation, content hashes, badge-rule validation) become `internal/compiler` (golden bundle and the
+     invalid-pack cases ported as Go tests; content hashes byte-identical so passes stay fresh). Content
+     import calls it in-process; `compile` leaves the contract. Lab checks still name scenario step types, so the
+     step validation stays in OpsForge: the compiler checks steps through `opsforge api validate-steps` (contract
+     minor 1) or accepts them and lets `run`/`probe` refuse them (decide during the port).
+  3. **Phase 10 removed** (`lab/labserver.py`, `lab/labsdb.py`, `lab/web/`, `lab/migrations/`, `opsforge labs` and
+     `serve`); Academy's `migrate-legacy` stays until M2 (it reads the file, not the code).
+  4. **Academy config split**: `--opsforge` (the OpsForge checkout: CLI, `.opsforge/` state) and `--content` (packs);
+     `--root` goes.
+  5. **Move** `academy/`, `web/`, `labs/` (content), `docs/courses/` with `git filter-repo` (history kept) into the new
+     repo; split CI, Makefile, README, CLAUDE.md; CHANGELOG.md in both; tag OpsForge `v1.0.0`, Academy `v0.1.0`.
+  - **Done when:** each repo's `make check` and CI are green on its own; Academy against tagged OpsForge `v1.0.0`
+    passes the six-lab run on the live lab; OpsForge clones and runs with no Go/Node toolchain.
+
+  **Versioning after the split.**
+  - *Toolchain contract* (the one boundary between the repos): `contract: <major>` in every document, `minor` and the
+    OpsForge release in `api version`. Additive (new command, optional input, output field) = minor; removed,
+    renamed or changed meaning = major. Academy reads outputs leniently (its schema copy allows unknown fields; OpsForge's
+    own tests stay strict), sends a new optional input only when OpsForge's minor has it, and `/readyz` names the
+    minimum OpsForge when it is too old; another major is refused. Breaking changes are free until OpsForge `v1.0.0`.
+    Academy updates its pinned contract with `make contract-update V=x.y.z`; a nightly CI job runs its contract tests
+    against OpsForge `main`.
+  - *HTTP API*: major in the path (`/api/v1`), OpenAPI `info.version` = the Academy release; additive only within v1,
+    a break is `/api/v2` next to v1 for one release. The web app ships inside the binary; a tab left open across an
+    upgrade sees the server's version header differ from its build and reloads.
+  - *Content*: the bundle is internal once the compiler is in Academy; `pack.yml` gets `format: 1` and the compiler
+    refuses a newer major.
+  - *Database*: goose, forward-only, per repo. *Releases*: semver tags + CHANGELOG.md per repo; OpsForge from
+    `v1.0.0`, Academy `v0.x` until M2's parity, then `v1.0.0`; Academy's README states the OpsForge range it supports.
+
+- [ ] **Later: OpsForge as a network API (remote lab).** The CLI contract assumes Academy and the lab share a machine
+  (Academy spawns `./opsforge` and opens the learner's shell locally). To run them on separate machines, OpsForge
+  gets a small API service (`opsforge api serve`: the same JSON documents over HTTP, loopback by default, token or mTLS
+  when exposed) and Academy a second `LabController` adapter (HTTP client) next to `opsforgecli`. Keep this possible
+  now: documents stay transport-neutral (no file paths, no assumptions about the caller's filesystem: manifests and
+  files travel as content), and every lab call goes through `LabController`. What a remote lab also needs: the
+  terminal (today a local pty; then a shell on the lab host over the API's WebSocket or SSH), workspaces (files live
+  with Academy; `apply` sends their content), and the readiness/version check over the network. To be designed when
+  a second machine is in sight (decided 2026-10-25: CLI for now).
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets

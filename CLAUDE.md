@@ -6,7 +6,7 @@ structural changes; it has the phases, acceptance criteria and design decisions.
 
 **Now: Phase 11, OpsForge Academy** (plan in `docs/courses/`, read its README and `implementation.md` first: Go
 platform `academy/`, React + Vite `web/`, Python CLI as lab toolchain; tests first). **M0 foundations done**
-(2026-10-24): binary serving the empty shell + health endpoints, toolchain contract (`opsforge academy`), CI jobs.
+(2026-10-24): binary serving the empty shell + health endpoints, toolchain contract (`opsforge api`), CI jobs.
 **Spike S6 done** (Go pty terminal, parity with Phase 10). **M1 done** (2026-10-25): identity, catalog,
 contentimport, history (event bus + SSE), progress, quiz, operations, workspace, labsession, rewards, labstate,
 `academy migrate-legacy`; the six labs passed through the API on the live lab (docs/PLAN.md). **Next: split into two
@@ -172,14 +172,20 @@ reboot-survival check).
   rolls every spread Deployment outside kube-system). Spread workloads need `matchLabelKeys: [pod-template-hash]`
   (the demo has it since Phase 10). Probes stop at the first failing named step, so order cheap preconditions first.
   Check every lab text against the live output before shipping it (the walkthrough found five wrong claims).
-- Academy (Phase 11): the Go platform never touches Incus/K3s; everything lab-side goes through `opsforge academy
-  <cmd> --json` (`lab/academy.py`, `cmd_academy`): one JSON document on stdout with `contract: 1`, a problem document
-  (`{contract, type: /problems/<slug>, title, detail}`) on stderr + exit 1 otherwise. Bump `academy.CONTRACT` and
-  `opsforgecli.Contract` together. The golden documents `academy/testdata/{bundle.golden,state.*,version}.json` are
-  written by pytest (`OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/test_academy.py`, review the diff) and read by
-  the Go tests: change both sides in one commit. Labs without `files` keep Phase 10's content hash (passes stay fresh).
+- Academy (Phase 11): the Go platform never touches Incus/K3s; everything lab-side goes through OpsForge's machine
+  interface `opsforge api <cmd> --json` (`cmd_api`; the contract and its versioning rules: `contract/README.md`): one
+  JSON document on stdout with `contract: 1`, a problem document (`{contract, type: /problems/<slug>, title, detail}`)
+  on stderr + exit 1 otherwise. OpsForge owns `contract/` (schema, `golden/` written by pytest:
+  `OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/test_academy.py`, review the diff); Academy reads its pinned copy
+  `academy/contract/` (`make contract-update` copies it, `contract-check` in `make check` fails while they differ).
+  Additive change = bump `academy.CONTRACT_MINOR` + a row in contract/README.md's table (Academy raises
+  `opsforgecli.MinMinor`/`MinRelease` only when it starts using the addition); breaking = major (`CONTRACT` and
+  `opsforgecli.Contract`). Inputs are strict, outputs open (Academy ignores unknown fields; OpsForge's tests check its
+  outputs against the closed schema). `api version` = `{contract, minor, opsforge}` (`VERSION` in `opsforge`).
+  `academy/testdata/bundle.golden.json` stays Academy's (compile leaves the contract when the compiler moves to Go).
+  Labs without `files` keep Phase 10's content hash (passes stay fresh).
   `run`/`probe`/`heal` (`lab_run`, `lab_probe`, also used by Phase 10's `LabDriver`) read their input on stdin, checked
-  against `academy/api/toolchain.schema.json` (the Go adapter checks the outputs); a failing step is the result's
+  against `contract/toolchain.schema.json` (the Go adapter checks the outputs); a failing step is the result's
   `error`, a bad call a problem. A `namespace` must be `lab-*`/`ch-*` (setup creates it on every cluster, labelled
   `app.kubernetes.io/managed-by=opsforge-academy`; teardown always deletes it). The documents are Go types in the pure
   package `internal/lab`, so module ports and the `opsforgecli` adapter share them; lab calls use `LabTimeout`

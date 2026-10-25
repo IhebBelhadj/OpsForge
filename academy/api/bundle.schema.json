@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opsforge.lab/academy/bundle.schema.json",
   "title": "OpsForge Academy content bundle (contract 1)",
-  "description": "Output of `opsforge academy compile`, input of `academy import` (docs/courses/content-model.md). Texts keep their placeholders raw. A bundle with errors is never imported.",
+  "description": "Output of `opsforge api compile`, input of `academy import` (docs/courses/content-model.md). Texts keep their placeholders raw. A bundle with errors is never imported.",
   "type": "object",
   "required": ["contract", "compiled_at", "packs", "errors"],
   "additionalProperties": false,

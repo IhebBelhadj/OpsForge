@@ -21,6 +21,8 @@ import jsonschema
 import yaml
 
 ROOT = Path(__file__).resolve().parent
+# The OpsForge release (semver), reported by `opsforge api version`
+VERSION = "1.0.0-dev"
 sys.path.insert(0, str(ROOT / "lab"))
 import academy  # noqa: E402
 import labs  # noqa: E402
@@ -1986,15 +1988,15 @@ def lab_state():
 
 
 class Problem(Exception):
-    """A failed `opsforge academy` command: printed as a problem document (RFC 9457 fields) on stderr."""
+    """A failed `opsforge api` command: printed as a problem document (RFC 9457 fields) on stderr."""
 
     def __init__(self, slug, title, detail):
         super().__init__(detail)
         self.doc = {"contract": academy.CONTRACT, "type": f"/problems/{slug}", "title": title, "detail": detail}
 
 
-def academy_state():
-    """`opsforge academy state`: lab_state() as a contract document."""
+def api_state():
+    """`opsforge api state`: lab_state() as a contract document."""
     return {"contract": academy.CONTRACT, **lab_state()}
 
 
@@ -2077,7 +2079,7 @@ def lab_probe(arg, namespace=None):
             "error": error}
 
 
-def academy_input(kind):
+def api_input(kind):
     """The command's input document from stdin, checked against toolchain.schema.json."""
     try:
         doc = json.load(sys.stdin)
@@ -2091,23 +2093,23 @@ def academy_input(kind):
     return doc
 
 
-def academy_run(doc):
-    """`opsforge academy run`: a lab's setup or teardown steps."""
+def api_run(doc):
+    """`opsforge api run`: a lab's setup or teardown steps."""
     metrics, lines, error = lab_run(doc["steps"], doc["phase"], namespace=doc.get("namespace"))
     return {"contract": academy.CONTRACT, "metrics": metrics, "log": lines, "error": error}
 
 
-def academy_probe(doc):
-    """`opsforge academy probe`: a probe check (passed, one result per expectation)."""
+def api_probe(doc):
+    """`opsforge api probe`: a probe check (passed, one result per expectation)."""
     return {"contract": academy.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"))}
 
 
-def academy_heal():
-    """`opsforge academy heal`: every link back to its state from before the first fault."""
+def api_heal():
+    """`opsforge api heal`: every link back to its state from before the first fault."""
     return {"contract": academy.CONTRACT, "healed": heal_links()}
 
 
-def academy_compile(paths):
+def api_compile(paths):
     for path in paths:
         if not (path / "pack.yml").is_file():
             raise Problem("not-a-pack", "Not a pack", f"{path}: no pack.yml (a pack is a folder like labs/core)")
@@ -2117,22 +2119,22 @@ def academy_compile(paths):
     return academy.compile_bundle(paths, ROOT, time.strftime("%Y-%m-%dT%H:%M:%SZ", stamp))
 
 
-def cmd_academy(args):
-    """The JSON contract the Academy platform (academy/, Go) calls: one document on stdout, exit 0; a problem
-    document on stderr and exit 1 otherwise (docs/courses/architecture.md, "The lab toolchain contract")."""
+def cmd_api(args):
+    """OpsForge's machine interface (contract/README.md), which OpsForge Academy calls: one document on stdout, exit
+    0; a problem document on stderr and exit 1 otherwise."""
     try:
         if args.action == "compile":
-            doc = academy_compile([p.resolve() for p in args.packs] or labs.find_packs(LABS))
+            doc = api_compile([p.resolve() for p in args.packs] or labs.find_packs(LABS))
         elif args.action == "state":
-            doc = academy_state()
+            doc = api_state()
         elif args.action == "run":
-            doc = academy_run(academy_input("runInput"))
+            doc = api_run(api_input("runInput"))
         elif args.action == "probe":
-            doc = academy_probe(academy_input("probeInput"))
+            doc = api_probe(api_input("probeInput"))
         elif args.action == "heal":
-            doc = academy_heal()
+            doc = api_heal()
         else:
-            doc = {"contract": academy.CONTRACT}
+            doc = {"contract": academy.CONTRACT, "minor": academy.CONTRACT_MINOR, "opsforge": VERSION}
     except Problem as e:
         problem = e.doc
     except LabError as e:
@@ -2140,7 +2142,7 @@ def cmd_academy(args):
     else:
         problem = None
     if problem:
-        print(json.dumps(problem) if args.json else f"opsforge academy {args.action}: {problem['detail']}",
+        print(json.dumps(problem) if args.json else f"opsforge api {args.action}: {problem['detail']}",
               file=sys.stderr)
         return 1
     if args.json:
@@ -2169,7 +2171,7 @@ def cmd_academy(args):
         print(f"{doc['topology']} ({doc['layout']}): lab {'up' if doc['up'] else 'down'}"
               + (", fault active" if doc["fault"] else "") + (f" ({doc['error']})" if doc["error"] else ""))
         return 0
-    print(f"contract {doc['contract']}")
+    print(f"opsforge {doc['opsforge']}, contract {doc['contract']}.{doc['minor']}")
     return 0
 
 
@@ -2299,13 +2301,13 @@ def main():
     p = sub.add_parser("serve", help="the teaching-lab web interface on 127.0.0.1 (browser terminal included)")
     p.add_argument("--port", type=int, default=LABS_PORT, help=f"port (default {LABS_PORT})")
     p.set_defaults(func=cmd_serve)
-    p = sub.add_parser("academy", help="the Academy platform's lab toolchain: compile course packs, lab state, run "
-                       "and probe steps (JSON)")
+    p = sub.add_parser("api", help="the machine interface (contract/README.md): lab state, run and probe steps, heal, "
+                       "version; compile course packs (until Academy compiles them)")
     p.add_argument("action", choices=("compile", "state", "run", "probe", "heal", "version"),
                    help="run and probe read their input document on stdin")
     p.add_argument("packs", nargs="*", type=Path, help="compile: pack folders (default: every pack in labs/)")
     p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
-    p.set_defaults(func=cmd_academy)
+    p.set_defaults(func=cmd_api)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take
     # the unknown ones
     args, extra = parser.parse_known_args()

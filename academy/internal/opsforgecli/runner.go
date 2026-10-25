@@ -1,6 +1,7 @@
-// Package opsforgecli is the adapter to the lab toolchain: `opsforge academy <command> --json`, one JSON document
-// on stdin and one on stdout, a problem document on stderr when it fails (docs/courses/architecture.md, "The lab
-// toolchain contract"). Every document carries `contract`; a different major version is refused.
+// Package opsforgecli is the adapter to the lab toolchain: `opsforge api <command> --json`, one JSON document on
+// stdin and one on stdout, a problem document on stderr when it fails (academy/contract/README.md, OpsForge's
+// contract as pinned). Every document carries `contract`, the major version: another one is refused. `api version`
+// also reports the minor: below MinMinor, the toolchain lacks something this platform uses.
 package opsforgecli
 
 import (
@@ -17,6 +18,30 @@ import (
 // Contract is the major version of the toolchain contract this platform speaks.
 const Contract = 1
 
+// MinMinor is the oldest minor version of the contract this platform works with; MinRelease the OpsForge release
+// that introduced it (named when the toolchain is too old). Raise both when the platform starts using an addition.
+const (
+	MinMinor   = 0
+	MinRelease = "1.0.0"
+)
+
+// Version is what `api version` reports.
+type Version struct {
+	Contract int    `json:"contract"`
+	Minor    int    `json:"minor"`
+	OpsForge string `json:"opsforge"`
+}
+
+// TooOldError is a toolchain of this major whose minor lacks what the platform uses.
+type TooOldError struct {
+	Got Version
+}
+
+func (e *TooOldError) Error() string {
+	return fmt.Sprintf("opsforge %s speaks contract %d.%d; academy needs %d.%d (opsforge %s or later)", e.Got.OpsForge,
+		e.Got.Contract, e.Got.Minor, Contract, MinMinor, MinRelease)
+}
+
 // Problem is a failure the toolchain described (RFC 9457 fields).
 type Problem struct {
 	Type   string `json:"type"`
@@ -32,8 +57,8 @@ type ContractError struct {
 }
 
 func (e *ContractError) Error() string {
-	return fmt.Sprintf("toolchain speaks contract %d, academy speaks %d (update both from the same commit)", e.Got,
-		Contract)
+	return fmt.Sprintf("toolchain speaks contract %d, academy speaks %d (install an opsforge release of contract %d)",
+		e.Got, Contract, Contract)
 }
 
 // Runner calls the CLI at Path from the repository Root. Timeout bounds a call, LabTimeout one that runs steps on
@@ -50,7 +75,7 @@ func New(path, root string, timeout, labTimeout time.Duration) *Runner {
 	return &Runner{Path: path, Root: root, Timeout: timeout, LabTimeout: labTimeout}
 }
 
-// Call executes `academy <command> --json` with `in` (nil: no input) as stdin and decodes stdout into out.
+// Call executes `api <command> --json` with `in` (nil: no input) as stdin and decodes stdout into out.
 func (r *Runner) Call(ctx context.Context, command string, in, out any) error {
 	return r.call(ctx, r.Timeout, command, in, out)
 }
@@ -59,7 +84,7 @@ func (r *Runner) call(ctx context.Context, timeout time.Duration, command string
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// The CLI path is configuration and the command one of the contract's: no learner input reaches argv
-	cmd := exec.CommandContext(ctx, r.Path, "academy", command, "--json") //nolint:gosec // see above
+	cmd := exec.CommandContext(ctx, r.Path, "api", command, "--json") //nolint:gosec // see above
 	cmd.Dir = r.Root
 	cmd.WaitDelay = time.Second // a child that keeps the pipes open must not outlive the timeout
 	if in != nil {
@@ -110,10 +135,22 @@ func decode(command string, stdout []byte, out any) error {
 	return nil
 }
 
-// Ready reports whether the toolchain runs and speaks this contract (readyz).
+// Version is the toolchain's contract version and release.
+func (r *Runner) Version(ctx context.Context) (Version, error) {
+	var v Version
+	return v, r.Call(ctx, "version", nil, &v)
+}
+
+// Ready reports whether the toolchain runs and speaks this contract at MinMinor or later (readyz).
 func (r *Runner) Ready(ctx context.Context) error {
-	var v struct{}
-	return r.Call(ctx, "version", nil, &v)
+	v, err := r.Version(ctx)
+	if err != nil {
+		return err
+	}
+	if v.Minor < MinMinor {
+		return &TooOldError{Got: v}
+	}
+	return nil
 }
 
 // ErrInvalidBundle wraps a bundle that does not match bundle.schema.json.

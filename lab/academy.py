@@ -1,6 +1,6 @@
 """OpsForge Academy content toolchain (docs/PLAN.md Phase 11, docs/courses/content-model.md): compiles packs into
 the bundle that the Go platform imports (academy/api/bundle.schema.json, contract 1). Pure functions over the pack
-folders; the `opsforge academy` commands print the results as JSON.
+folders; the `opsforge api` commands print the results as JSON.
 
 A pack is Phase 10's folder (pack.yml, labs/, badges.yml, curricula/ until M2) plus `courses/<id>/`: course.yml
 (sections of items), lectures/<id>.md (YAML front matter + Markdown), quizzes/<id>.yml and
@@ -19,11 +19,13 @@ import yaml
 import labs
 import scenario
 
-# Major version of the JSON contract between `academy` (Go) and `opsforge academy` (docs/courses/architecture.md)
+# The toolchain contract `opsforge api` speaks (contract/README.md): the major in every document, the minor (additive
+# revisions) in `api version`
 CONTRACT = 1
+CONTRACT_MINOR = 0
 COURSE_SCHEMA = Path(__file__).resolve().parent / "course.schema.json"
-# Inputs and outputs of `run`, `probe` and `heal` (shared with the Go side)
-TOOLCHAIN_SCHEMA = Path(__file__).resolve().parents[1] / "academy" / "api" / "toolchain.schema.json"
+# Inputs and outputs of `run`, `probe` and `heal` (OpsForge publishes it; callers keep a copy)
+TOOLCHAIN_SCHEMA = Path(__file__).resolve().parents[1] / "contract" / "toolchain.schema.json"
 ITEM_TYPES = ("lecture", "quiz", "lab", "challenge")
 QUIZ_PASS = 70
 QUIZ_XP = 20

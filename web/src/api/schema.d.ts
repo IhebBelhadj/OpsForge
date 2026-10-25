@@ -89,7 +89,7 @@ export interface paths {
         put?: never;
         /**
          * Re-import the packs
-         * @description Compiles the repository's packs (`opsforge academy compile`) and brings the catalogue to them; also done at start. Importing unchanged packs changes nothing (changed is false). Removed content is retired, never deleted. A bundle with errors is not imported (422, the errors listed).
+         * @description Compiles the repository's packs (`opsforge api compile`) and brings the catalogue to them; also done at start. Importing unchanged packs changes nothing (changed is false). Removed content is retired, never deleted. A bundle with errors is not imported (422, the errors listed).
          */
         post: operations["importContent"];
         delete?: never;
@@ -518,7 +518,7 @@ export interface paths {
         };
         /**
          * The lab now
-         * @description Instances, WAN links (live against topology.yml) and whether a fault is in place, as the toolchain reports them (`opsforge academy state`), at most a few seconds old. A lab that is down is a 200 with up false.
+         * @description Instances, WAN links (live against topology.yml) and whether a fault is in place, as the toolchain reports them (`opsforge api state`), at most a few seconds old. A lab that is down is a 200 with up false.
          */
         get: operations["getLabState"];
         put?: never;

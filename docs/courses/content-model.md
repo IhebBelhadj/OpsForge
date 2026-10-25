@@ -7,7 +7,7 @@ state, importing the same content twice changes nothing, edited content flags pr
 ## Flow
 
 ```
-labs/<pack>/  ──(author edits)──▶  opsforge academy compile  ──▶  bundle (JSON, contract 1)  ──▶  academy import
+labs/<pack>/  ──(author edits)──▶  opsforge api compile      ──▶  bundle (JSON, contract 1)  ──▶  academy import
    YAML + Markdown                  Python: schema + cross-ref       validated against              Go: idempotent upsert,
                                      checks, content hashes          bundle.schema.json             retire, report
 ```
@@ -150,7 +150,7 @@ Phase 10's format, plus:
 
 ## Compiled bundle
 
-One JSON document (`academy/api/bundle.schema.json`), produced by `opsforge academy compile`:
+One JSON document (`academy/api/bundle.schema.json`), produced by `opsforge api compile`:
 
 ```
 { contract: 1, compiled_at, packs: [{ id, title, version, hint_penalty, content_hash,

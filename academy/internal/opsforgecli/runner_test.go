@@ -47,6 +47,8 @@ func fake(mode string, args []string) int {
 		_, _ = os.Stdout.Write(data)
 	case "contract2":
 		fmt.Println(`{"contract": 2}`)
+	case "old-minor":
+		fmt.Println(`{"contract": 1, "minor": -1, "opsforge": "0.9.0"}`)
 	case "problem":
 		fmt.Fprintln(os.Stderr, `{"contract": 1, "type": "/problems/lab-error", "title": "Lab error", "detail": "lab is down"}`)
 		return 1
@@ -61,10 +63,15 @@ func fake(mode string, args []string) int {
 	return 0
 }
 
-// fixture makes the fake print academy/testdata/<name> (one of the documents shared with the Python tests).
+// fixture makes the fake print one of the pinned contract's golden documents (academy/contract/golden/<name>), or
+// a document of Academy's own testdata (bundle.*).
 func fixture(t *testing.T, name string) {
 	t.Helper()
-	path, err := filepath.Abs(filepath.Join("..", "..", "testdata", name))
+	dir := filepath.Join("..", "..", "contract", "golden")
+	if strings.HasPrefix(name, "bundle.") {
+		dir = filepath.Join("..", "..", "testdata")
+	}
+	path, err := filepath.Abs(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +95,7 @@ func TestCallPassesTheCommandStdinAndWorkingDirectory(t *testing.T) {
 	if err := r.Call(context.Background(), "probe", map[string]any{"steps": []any{}}, &out); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(out.Args, " ") != "academy probe --json" || out.Cwd != r.Root || out.Stdin != `{"steps":[]}` {
+	if strings.Join(out.Args, " ") != "api probe --json" || out.Cwd != r.Root || out.Stdin != `{"steps":[]}` {
 		t.Fatalf("got %+v (root %s)", out, r.Root)
 	}
 }
@@ -133,6 +140,38 @@ func TestReadyChecksTheContractVersion(t *testing.T) {
 	}
 	if err := runner(t, "contract2").Ready(context.Background()); err == nil {
 		t.Fatal("Ready with contract 2: want an error")
+	}
+	var old *opsforgecli.TooOldError
+	err := runner(t, "old-minor").Ready(context.Background())
+	if !errors.As(err, &old) || !strings.Contains(err.Error(), "opsforge 0.9.0") ||
+		!strings.Contains(err.Error(), "opsforge "+opsforgecli.MinRelease+" or later") {
+		t.Fatalf("an older minor: %v", err)
+	}
+	fixture(t, "version.json")
+	if v, err := runner(t, "fixture").Version(context.Background()); err != nil || v.Contract != 1 || v.OpsForge == "" {
+		t.Fatalf("Version = %+v, %v", v, err)
+	}
+}
+
+// Outputs are open (academy/contract/README.md): a newer OpsForge of the same major may add fields.
+func TestOutputsMayGainFields(t *testing.T) {
+	dir := t.TempDir()
+	for name, doc := range map[string]string{
+		"heal.json":  `{"contract": 1, "healed": true, "links": ["a-c"]}`,
+		"probe.json": `{"contract": 1, "passed": true, "results": [{"metric": "x.ok", "want": "== 1", "got": 1, "passed": true, "checked": true, "seconds": 2}], "log": [], "error": null, "took": 3}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(doc), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("OPSFORGE_FIXTURE", filepath.Join(dir, "heal.json"))
+	if healed, err := runner(t, "fixture").Heal(context.Background()); err != nil || !healed {
+		t.Fatalf("heal: %v %v", healed, err)
+	}
+	t.Setenv("OPSFORGE_FIXTURE", filepath.Join(dir, "probe.json"))
+	res, err := runner(t, "fixture").Probe(context.Background(), lab.ProbeRequest{Steps: []json.RawMessage{}})
+	if err != nil || !res.Passed {
+		t.Fatalf("probe: %+v %v", res, err)
 	}
 }
 
@@ -220,7 +259,7 @@ func TestRunSendsTheContractDocumentAndDecodesTheResult(t *testing.T) {
 	}
 	args, stdin := recorded()
 	want := `{"contract":1,"phase":"setup","steps":[{"name":"x","run":{"cmd":"echo 42"}}],"namespace":"lab-7"}`
-	if args != "academy run --json" || stdin != want {
+	if args != "api run --json" || stdin != want {
 		t.Fatalf("argv %q, stdin %s", args, stdin)
 	}
 }

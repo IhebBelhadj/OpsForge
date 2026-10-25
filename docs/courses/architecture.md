@@ -12,11 +12,11 @@
                 │        │                                                                  │
                 │        ├── SQLite  .opsforge/academy.db   (learner state + imported content)│
                 │        ├── files   .opsforge/workspaces/<attempt>/  (editor + terminal)    │
-                │        └── exec    ./opsforge academy <cmd> --json  (lab toolchain, Python) │
+                │        └── exec    ./opsforge api <cmd> --json  (lab toolchain, Python) │
                 │                          │                                                │
                 │                          └── incus / ssh / kubectl → the lab (wan-core, gateways, K3s) │
                 └──────────────────────────────────────────────────────────────────────────┘
- author ── edits labs/<pack>/ ── `opsforge academy compile` → bundle.json ── imported by academy
+ author ── edits labs/<pack>/ ── `opsforge api compile` → bundle.json ── imported by academy
 ```
 
 Two programs, one boundary:
@@ -51,7 +51,7 @@ client, nothing else.
 |---|---|---|
 | `identity` | users, local session (cookie), CSRF token; one local user now | `UserRepo`, `Clock` |
 | `catalog` | courses, sections, items, lectures, quizzes, challenges, labs **as imported**; content queries; retired content | `ContentRepo` |
-| `contentimport` | runs `opsforge academy compile`, validates the bundle against its JSON Schema, upserts idempotently, reports changes | `Toolchain`, `ContentRepo`, `EventBus` |
+| `contentimport` | runs `opsforge api compile`, validates the bundle against its JSON Schema, upserts idempotently, reports changes | `Toolchain`, `ContentRepo`, `EventBus` |
 | `progress` | item status, course progress, resume point, stale revisions, notes | `ProgressRepo`, `catalog.Service`, `EventBus` |
 | `quiz` | quiz attempts: draw/shuffle, timing, server-side scoring, explanations | `QuizRepo`, `catalog.Service`, `Random`, `Clock`, `EventBus` |
 | `labsession` | lab attempts: start (setup), check (probe), hint, reset, finish/abandon (teardown + heal); one running lab; busy lock | `AttemptRepo`, `LabController`, `Workspace`, `catalog.Service`, `EventBus`, `Clock` |
@@ -100,8 +100,11 @@ as done when its lab was passed).
 
 ## The lab toolchain contract (Go → Python)
 
-`opsforge academy <command> --json`, one JSON document on stdin, one on stdout, exit 0 on success, a problem
-document on stderr otherwise. Versioned by `contract: 1` in every document; `academy` refuses a different major.
+`opsforge api <command> --json`, one JSON document on stdin, one on stdout, exit 0 on success, a problem document on
+stderr otherwise. OpsForge owns it (`contract/README.md`: schema, golden documents, versioning rules); Academy pins a
+copy (`academy/contract/`). Versioned by `contract: 1` (the major) in every document and the minor in `api version`:
+Academy refuses another major and, at `/readyz`, a minor below what it uses; it ignores output fields it does not
+know. The rows below past `heal` are planned additions (minor bumps).
 
 | Command | In | Out |
 |---|---|---|
@@ -114,7 +117,7 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
 | `openapi` | `{cluster}` | the cluster's OpenAPI v3 documents (for `schemas`) |
 | `snapshot-restore` | `{name}` | `{ok, seconds}` (Reset lab for `reset: snapshot` labs) |
 
-- Inputs and outputs of `run`, `probe` and `heal` are `$defs` of `academy/api/toolchain.schema.json`: the CLI checks
+- Inputs and outputs of `run`, `probe` and `heal` are `$defs` of `contract/toolchain.schema.json`: the CLI checks
   its input against them, the Go adapter its output. A step that cannot run is `error` in the result (the check
   failed), not a problem document (the call failed).
 - The Go side wraps it in **`LabController`** (port) with one adapter `opsforgecli` (spawns the CLI with a context

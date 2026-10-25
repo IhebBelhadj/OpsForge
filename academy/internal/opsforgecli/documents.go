@@ -10,16 +10,17 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/IhebBelhadj/opsforge/academy/api"
+	"github.com/IhebBelhadj/opsforge/academy/contract"
 	"github.com/IhebBelhadj/opsforge/academy/internal/lab"
 )
 
-// State runs `academy state`.
+// State runs `api state`.
 func (r *Runner) State(ctx context.Context) (lab.State, error) {
 	var s lab.State
 	return s, r.Call(ctx, "state", nil, &s)
 }
 
-// Compile runs `academy compile` over the repository's packs and returns the bundle, checked against
+// Compile runs `api compile` over the repository's packs and returns the bundle, checked against
 // bundle.schema.json (the importer decodes it).
 func (r *Runner) Compile(ctx context.Context) (json.RawMessage, error) {
 	var raw json.RawMessage
@@ -32,7 +33,7 @@ func (r *Runner) Compile(ctx context.Context) (json.RawMessage, error) {
 	return raw, nil
 }
 
-// Run runs a lab's setup or teardown steps (`academy run`).
+// Run runs a lab's setup or teardown steps (`api run`).
 func (r *Runner) Run(ctx context.Context, req lab.RunRequest) (lab.RunResult, error) {
 	var res lab.RunResult
 	return res, r.lab(ctx, "run", struct {
@@ -41,7 +42,7 @@ func (r *Runner) Run(ctx context.Context, req lab.RunRequest) (lab.RunResult, er
 	}{Contract, req}, "runOutput", &res)
 }
 
-// Probe runs a probe check (`academy probe`).
+// Probe runs a probe check (`api probe`).
 func (r *Runner) Probe(ctx context.Context, req lab.ProbeRequest) (lab.ProbeResult, error) {
 	var res lab.ProbeResult
 	return res, r.lab(ctx, "probe", struct {
@@ -50,7 +51,7 @@ func (r *Runner) Probe(ctx context.Context, req lab.ProbeRequest) (lab.ProbeResu
 	}{Contract, req}, "probeOutput", &res)
 }
 
-// Heal puts every link back to its state from before the first fault (`academy heal`); false: there was none.
+// Heal puts every link back to its state from before the first fault (`api heal`); false: there was none.
 func (r *Runner) Heal(ctx context.Context) (bool, error) {
 	var res struct {
 		Healed bool `json:"healed"`
@@ -91,7 +92,7 @@ var schemas = sync.OnceValue(func() *jsonschema.Compiler {
 	c := jsonschema.NewCompiler()
 	for name, data := range map[string][]byte{
 		"bundle.schema.json":    api.BundleSchema,
-		"toolchain.schema.json": api.ToolchainSchema,
+		"toolchain.schema.json": contract.ToolchainSchema,
 	} {
 		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
 		if err != nil {
