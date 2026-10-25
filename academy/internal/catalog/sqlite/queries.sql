@@ -13,3 +13,11 @@ UPDATE content SET retired = 1, updated_at = ? WHERE kind = ? AND key = ?;
 
 -- name: ContentUpdatedAt :one
 SELECT updated_at FROM content WHERE kind = ? AND key = ?;
+
+-- name: LiveContent :one
+SELECT kind, key, pack_id, course_id, position, title, content_hash, doc, retired FROM content
+WHERE kind = ? AND key = ? AND retired = 0;
+
+-- name: LiveContentOfKind :many
+SELECT kind, key, pack_id, course_id, position, title, content_hash, doc, retired FROM content
+WHERE kind = ? AND retired = 0 ORDER BY pack_id, position, key;

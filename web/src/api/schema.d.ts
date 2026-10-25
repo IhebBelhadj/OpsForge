@@ -98,6 +98,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The catalogue
+         * @description The live courses (retired ones are left out), by pack then position.
+         */
+        get: operations["listCourses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A course page
+         * @description The course with its sections and their items in order.
+         */
+        get: operations["getCourse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course}/items/{item}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One item of a course
+         * @description The item with the content of its type: a lecture's Markdown, what a quiz attempt will be (its questions come with the attempt), a lab's texts and steps, a challenge's statement and starting files. What is earned never appears: quiz keys and explanations, reference solutions, how checks and tests run, hint texts. Texts keep their placeholders (${node:<site>}, ${ns}, ...).
+         */
+        get: operations["getItem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/terminals": {
         parameters: {
             query?: never;
@@ -160,6 +225,148 @@ export interface components {
             /** @description Opaque session id for /ws/terminal/{session} */
             session: string;
         };
+        Strings: string[];
+        /**
+         * @description The lab layout it needs; null for any
+         * @enum {string|null}
+         */
+        Layout: "stretched" | "multi-cluster" | null;
+        CourseSummary: {
+            id: string;
+            pack: string;
+            title: string;
+            subtitle: string;
+            /** @enum {string} */
+            level: "beginner" | "intermediate" | "advanced";
+            minutes: number;
+            /** @description Lab features it needs (vpn, k3s, ...) */
+            needs: components["schemas"]["Strings"];
+            /** @description Courses to complete first */
+            requires: components["schemas"]["Strings"];
+            layout: components["schemas"]["Layout"];
+            /** @description The badge completing it awards */
+            badge: string | null;
+            /** @description Items in all its sections */
+            items: number;
+        };
+        CourseList: {
+            courses: components["schemas"]["CourseSummary"][];
+        };
+        Course: components["schemas"]["CourseSummary"] & {
+            /** @description Markdown */
+            description: string;
+            outcomes: components["schemas"]["Strings"];
+            requirements: components["schemas"]["Strings"];
+            content_hash: string;
+            sections: components["schemas"]["Section"][];
+        };
+        Section: {
+            title: string;
+            layout: components["schemas"]["Layout"];
+            needs: components["schemas"]["Strings"];
+            minutes: number;
+            items: components["schemas"]["ItemRef"][];
+        };
+        /** @enum {string} */
+        ItemType: "lecture" | "quiz" | "lab" | "challenge";
+        ItemRef: {
+            id: string;
+            type: components["schemas"]["ItemType"];
+            title: string;
+            minutes: number;
+            content_hash: string;
+        };
+        /** @description Exactly one of lecture, quiz, lab and challenge is set, the one its type names. */
+        Item: {
+            course: string;
+            id: string;
+            type: components["schemas"]["ItemType"];
+            title: string;
+            minutes: number;
+            /** @description Index of its section in the course */
+            section: number;
+            content_hash: string;
+            lecture?: components["schemas"]["Lecture"];
+            quiz?: components["schemas"]["QuizInfo"];
+            lab?: components["schemas"]["LabView"];
+            challenge?: components["schemas"]["ChallengeView"];
+        };
+        Lecture: {
+            markdown: string;
+            resources: components["schemas"]["Resource"][];
+        };
+        Resource: {
+            title: string;
+            /** @description A link the lecture recommends */
+            url: string;
+        };
+        QuizInfo: {
+            /** @description Percentage of the questions to get right */
+            pass: number;
+            xp: number;
+            time_limit_s: number | null;
+            /** @description Questions per attempt */
+            questions: number;
+        };
+        ChallengeView: {
+            /** @enum {string} */
+            difficulty: "easy" | "medium" | "hard";
+            xp: number;
+            needs: components["schemas"]["Strings"];
+            /** @description Markdown */
+            statement: string;
+            /** @description The files the learner writes */
+            files: components["schemas"]["Strings"];
+            /** @description Starting content per file */
+            starter: {
+                [key: string]: string;
+            };
+            time_limit_s: number;
+            /** @description The test cases' names */
+            tests: components["schemas"]["Strings"];
+            /** @description How many hints there are */
+            hints: number;
+        };
+        LabView: {
+            id: string;
+            summary: string;
+            xp: number;
+            needs: components["schemas"]["Strings"];
+            /** @description Labs to pass first */
+            requires: components["schemas"]["Strings"];
+            layout: components["schemas"]["Layout"];
+            /** @description Markdown */
+            briefing: string;
+            /** @description Markdown */
+            debrief: string;
+            concepts: components["schemas"]["Strings"];
+            /** @description Changes outside its namespace */
+            cluster_changes: components["schemas"]["Strings"];
+            /** @description The lab gets its own namespace (${ns}) */
+            namespace: boolean;
+            /** @description Files copied into the workspace */
+            files: components["schemas"]["Strings"];
+            steps: components["schemas"]["LabStep"][];
+        };
+        LabStep: {
+            id: string;
+            title: string;
+            /** @description Markdown */
+            body: string;
+            /** @description A workspace file the step opens */
+            open?: string;
+            check: components["schemas"]["StepCheck"];
+            /** @description How many hints there are */
+            hints: number;
+        };
+        /** @description How the step is passed: probe (the platform observes the lab), confirm (the learner says so; label on the button) or quiz (question and choices; the answer stays on the server). */
+        StepCheck: {
+            /** @enum {string} */
+            type: "probe" | "confirm" | "quiz";
+            label?: string;
+            question?: string;
+            choices?: components["schemas"]["Strings"];
+        };
         /** @description Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out. */
         EntryCounts: {
             [key: string]: number;
@@ -200,6 +407,15 @@ export interface components {
         };
         /** @description A change from another site's page (Origin, Sec-Fetch-Site) or without the session's CSRF token. */
         Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description No such entry in the catalogue, or it was retired (removed from the packs). */
+        NotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -346,6 +562,76 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listCourses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The courses. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseList"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+        };
+    };
+    getCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The course. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Course"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course: string;
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The item. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Item"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            404: components["responses"]["NotFound"];
         };
     };
     openTerminal: {

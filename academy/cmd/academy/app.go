@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/IhebBelhadj/opsforge/academy/internal/catalog"
 	catalogsqlite "github.com/IhebBelhadj/opsforge/academy/internal/catalog/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
 	"github.com/IhebBelhadj/opsforge/academy/internal/contentimport"
@@ -119,15 +120,22 @@ func provideIdentity(store *sqlite.Store, clock platform.Clock) *identity.Servic
 	return identity.NewService(identitysqlite.NewRepo(store.DB), clock)
 }
 
-func provideImporter(toolchain *opsforgecli.Runner, store *sqlite.Store, clock platform.Clock) *contentimport.Service {
-	return contentimport.NewService(toolchain, catalogsqlite.NewRepo(store.DB), clock)
+func provideCatalogRepo(store *sqlite.Store) *catalogsqlite.Repo {
+	return catalogsqlite.NewRepo(store.DB)
 }
 
+func provideImporter(toolchain *opsforgecli.Runner, repo *catalogsqlite.Repo, clock platform.Clock) *contentimport.Service {
+	return contentimport.NewService(toolchain, repo, clock)
+}
+
+func provideCatalog(repo *catalogsqlite.Repo) *catalog.Service { return catalog.NewService(repo) }
+
 func provideHandler(build platform.Build, checks []httpapi.ReadinessCheck, shells terminal.Shells,
-	ids *identity.Service, importer *contentimport.Service, log *slog.Logger) http.Handler {
+	ids *identity.Service, importer *contentimport.Service, courses *catalog.Service,
+	log *slog.Logger) http.Handler {
 	return httpapi.NewHandler(httpapi.Deps{
 		Build: build, Readiness: checks, Web: web.FS(), Log: log, Terminals: shells, Identity: ids,
-		Importer: importer,
+		Importer: importer, Catalog: courses,
 	})
 }
 

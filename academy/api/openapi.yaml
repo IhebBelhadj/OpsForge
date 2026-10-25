@@ -102,6 +102,56 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/courses:
+    get:
+      operationId: listCourses
+      summary: The catalogue
+      description: The live courses (retired ones are left out), by pack then position.
+      tags: [content]
+      responses:
+        "200":
+          description: The courses.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourseList" }
+        "401": { $ref: "#/components/responses/NoSession" }
+  /api/v1/courses/{course}:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getCourse
+      summary: A course page
+      description: The course with its sections and their items in order.
+      tags: [content]
+      responses:
+        "200":
+          description: The course.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/courses/{course}/items/{item}:
+    parameters:
+      - { name: course, in: path, required: true, schema: { type: string } }
+      - { name: item, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getItem
+      summary: One item of a course
+      description: >-
+        The item with the content of its type: a lecture's Markdown, what a quiz attempt will be (its questions come
+        with the attempt), a lab's texts and steps, a challenge's statement and starting files. What is earned never
+        appears: quiz keys and explanations, reference solutions, how checks and tests run, hint texts. Texts keep
+        their placeholders (${node:<site>}, ${ns}, ...).
+      tags: [content]
+      responses:
+        "200":
+          description: The item.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/terminals:
     post:
       operationId: openTerminal
@@ -156,6 +206,11 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: No such entry in the catalogue, or it was retired (removed from the packs).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
   schemas:
     User:
       type: object
@@ -200,6 +255,172 @@ components:
       required: [session]
       properties:
         session: { type: string, description: "Opaque session id for /ws/terminal/{session}" }
+    Strings:
+      type: array
+      items: { type: string }
+    Layout:
+      type: [string, "null"]
+      enum: [stretched, multi-cluster, null]
+      description: The lab layout it needs; null for any
+    CourseSummary:
+      type: object
+      required: [id, pack, title, subtitle, level, minutes, needs, requires, layout, badge, items]
+      properties:
+        id: { type: string }
+        pack: { type: string }
+        title: { type: string }
+        subtitle: { type: string }
+        level: { type: string, enum: [beginner, intermediate, advanced] }
+        minutes: { type: integer }
+        needs: { $ref: "#/components/schemas/Strings", description: "Lab features it needs (vpn, k3s, ...)" }
+        requires: { $ref: "#/components/schemas/Strings", description: Courses to complete first }
+        layout: { $ref: "#/components/schemas/Layout" }
+        badge: { type: [string, "null"], description: The badge completing it awards }
+        items: { type: integer, description: Items in all its sections }
+    CourseList:
+      type: object
+      required: [courses]
+      properties:
+        courses:
+          type: array
+          items: { $ref: "#/components/schemas/CourseSummary" }
+    Course:
+      allOf:
+        - { $ref: "#/components/schemas/CourseSummary" }
+        - type: object
+          required: [description, outcomes, requirements, content_hash, sections]
+          properties:
+            description: { type: string, description: Markdown }
+            outcomes: { $ref: "#/components/schemas/Strings" }
+            requirements: { $ref: "#/components/schemas/Strings" }
+            content_hash: { type: string }
+            sections:
+              type: array
+              items: { $ref: "#/components/schemas/Section" }
+    Section:
+      type: object
+      required: [title, layout, needs, minutes, items]
+      properties:
+        title: { type: string }
+        layout: { $ref: "#/components/schemas/Layout" }
+        needs: { $ref: "#/components/schemas/Strings" }
+        minutes: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ItemRef" }
+    ItemType:
+      type: string
+      enum: [lecture, quiz, lab, challenge]
+    ItemRef:
+      type: object
+      required: [id, type, title, minutes, content_hash]
+      properties:
+        id: { type: string }
+        type: { $ref: "#/components/schemas/ItemType" }
+        title: { type: string }
+        minutes: { type: integer }
+        content_hash: { type: string }
+    Item:
+      type: object
+      description: Exactly one of lecture, quiz, lab and challenge is set, the one its type names.
+      required: [course, id, type, title, minutes, section, content_hash]
+      properties:
+        course: { type: string }
+        id: { type: string }
+        type: { $ref: "#/components/schemas/ItemType" }
+        title: { type: string }
+        minutes: { type: integer }
+        section: { type: integer, description: Index of its section in the course }
+        content_hash: { type: string }
+        lecture: { $ref: "#/components/schemas/Lecture" }
+        quiz: { $ref: "#/components/schemas/QuizInfo" }
+        lab: { $ref: "#/components/schemas/LabView" }
+        challenge: { $ref: "#/components/schemas/ChallengeView" }
+      additionalProperties: false
+    Lecture:
+      type: object
+      required: [markdown, resources]
+      properties:
+        markdown: { type: string }
+        resources:
+          type: array
+          items: { $ref: "#/components/schemas/Resource" }
+    Resource:
+      type: object
+      required: [title, url]
+      properties:
+        title: { type: string }
+        url: { type: string, description: A link the lecture recommends }
+    QuizInfo:
+      type: object
+      required: [pass, xp, time_limit_s, questions]
+      additionalProperties: false
+      properties:
+        pass: { type: integer, description: Percentage of the questions to get right }
+        xp: { type: integer }
+        time_limit_s: { type: [integer, "null"] }
+        questions: { type: integer, description: Questions per attempt }
+    ChallengeView:
+      type: object
+      required: [difficulty, xp, needs, statement, files, starter, time_limit_s, tests, hints]
+      additionalProperties: false
+      properties:
+        difficulty: { type: string, enum: [easy, medium, hard] }
+        xp: { type: integer }
+        needs: { $ref: "#/components/schemas/Strings" }
+        statement: { type: string, description: Markdown }
+        files: { $ref: "#/components/schemas/Strings", description: The files the learner writes }
+        starter:
+          type: object
+          description: Starting content per file
+          additionalProperties: { type: string }
+        time_limit_s: { type: integer }
+        tests: { $ref: "#/components/schemas/Strings", description: The test cases' names }
+        hints: { type: integer, description: How many hints there are }
+    LabView:
+      type: object
+      required: [id, summary, xp, needs, requires, layout, briefing, debrief, concepts, cluster_changes, namespace,
+                 files, steps]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        summary: { type: string }
+        xp: { type: integer }
+        needs: { $ref: "#/components/schemas/Strings" }
+        requires: { $ref: "#/components/schemas/Strings", description: Labs to pass first }
+        layout: { $ref: "#/components/schemas/Layout" }
+        briefing: { type: string, description: Markdown }
+        debrief: { type: string, description: Markdown }
+        concepts: { $ref: "#/components/schemas/Strings" }
+        cluster_changes: { $ref: "#/components/schemas/Strings", description: Changes outside its namespace }
+        namespace: { type: boolean, description: "The lab gets its own namespace (${ns})" }
+        files: { $ref: "#/components/schemas/Strings", description: Files copied into the workspace }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/LabStep" }
+    LabStep:
+      type: object
+      required: [id, title, body, check, hints]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        title: { type: string }
+        body: { type: string, description: Markdown }
+        open: { type: string, description: A workspace file the step opens }
+        check: { $ref: "#/components/schemas/StepCheck" }
+        hints: { type: integer, description: How many hints there are }
+    StepCheck:
+      type: object
+      required: [type]
+      additionalProperties: false
+      description: >-
+        How the step is passed: probe (the platform observes the lab), confirm (the learner says so; label on the
+        button) or quiz (question and choices; the answer stays on the server).
+      properties:
+        type: { type: string, enum: [probe, confirm, quiz] }
+        label: { type: string }
+        question: { type: string }
+        choices: { $ref: "#/components/schemas/Strings" }
     EntryCounts:
       type: object
       description: >-

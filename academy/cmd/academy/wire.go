@@ -23,7 +23,9 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		provideTerminals,
 		provideShells,
 		provideIdentity,
+		provideCatalogRepo,
 		provideImporter,
+		provideCatalog,
 		provideHandler,
 		newApp,
 	)

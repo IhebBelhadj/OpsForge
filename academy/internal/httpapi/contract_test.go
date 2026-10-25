@@ -101,6 +101,9 @@ func uncovered() []string {
 	var missing []string
 	for path, item := range doc["paths"].(map[string]any) {
 		for method, op := range item.(map[string]any) {
+			if method == "parameters" { // shared by the path's operations
+				continue
+			}
 			for status := range op.(map[string]any)["responses"].(map[string]any) {
 				if key := strings.ToUpper(method) + " " + path + " " + status; !covered[key] {
 					missing = append(missing, key)

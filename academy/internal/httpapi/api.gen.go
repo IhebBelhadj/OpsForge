@@ -17,6 +17,69 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ChallengeViewDifficulty.
+const (
+	Easy   ChallengeViewDifficulty = "easy"
+	Hard   ChallengeViewDifficulty = "hard"
+	Medium ChallengeViewDifficulty = "medium"
+)
+
+// Valid indicates whether the value is a known member of the ChallengeViewDifficulty enum.
+func (e ChallengeViewDifficulty) Valid() bool {
+	switch e {
+	case Easy:
+		return true
+	case Hard:
+		return true
+	case Medium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CourseLevel.
+const (
+	CourseLevelAdvanced     CourseLevel = "advanced"
+	CourseLevelBeginner     CourseLevel = "beginner"
+	CourseLevelIntermediate CourseLevel = "intermediate"
+)
+
+// Valid indicates whether the value is a known member of the CourseLevel enum.
+func (e CourseLevel) Valid() bool {
+	switch e {
+	case CourseLevelAdvanced:
+		return true
+	case CourseLevelBeginner:
+		return true
+	case CourseLevelIntermediate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CourseSummaryLevel.
+const (
+	CourseSummaryLevelAdvanced     CourseSummaryLevel = "advanced"
+	CourseSummaryLevelBeginner     CourseSummaryLevel = "beginner"
+	CourseSummaryLevelIntermediate CourseSummaryLevel = "intermediate"
+)
+
+// Valid indicates whether the value is a known member of the CourseSummaryLevel enum.
+func (e CourseSummaryLevel) Valid() bool {
+	switch e {
+	case CourseSummaryLevelAdvanced:
+		return true
+	case CourseSummaryLevelBeginner:
+		return true
+	case CourseSummaryLevelIntermediate:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok HealthStatus = "ok"
@@ -26,6 +89,51 @@ const (
 func (e HealthStatus) Valid() bool {
 	switch e {
 	case Ok:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ItemType.
+const (
+	ItemTypeChallenge ItemType = "challenge"
+	ItemTypeLab       ItemType = "lab"
+	ItemTypeLecture   ItemType = "lecture"
+	ItemTypeQuiz      ItemType = "quiz"
+)
+
+// Valid indicates whether the value is a known member of the ItemType enum.
+func (e ItemType) Valid() bool {
+	switch e {
+	case ItemTypeChallenge:
+		return true
+	case ItemTypeLab:
+		return true
+	case ItemTypeLecture:
+		return true
+	case ItemTypeQuiz:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Layout.
+const (
+	LessThannil  Layout = "<nil>"
+	MultiCluster Layout = "multi-cluster"
+	Stretched    Layout = "stretched"
+)
+
+// Valid indicates whether the value is a known member of the Layout enum.
+func (e Layout) Valid() bool {
+	switch e {
+	case LessThannil:
+		return true
+	case MultiCluster:
+		return true
+	case Stretched:
 		return true
 	default:
 		return false
@@ -50,6 +158,53 @@ func (e ReadinessStatus) Valid() bool {
 	}
 }
 
+// Defines values for StepCheckType.
+const (
+	StepCheckTypeConfirm StepCheckType = "confirm"
+	StepCheckTypeProbe   StepCheckType = "probe"
+	StepCheckTypeQuiz    StepCheckType = "quiz"
+)
+
+// Valid indicates whether the value is a known member of the StepCheckType enum.
+func (e StepCheckType) Valid() bool {
+	switch e {
+	case StepCheckTypeConfirm:
+		return true
+	case StepCheckTypeProbe:
+		return true
+	case StepCheckTypeQuiz:
+		return true
+	default:
+		return false
+	}
+}
+
+// ChallengeView defines model for ChallengeView.
+type ChallengeView struct {
+	Difficulty ChallengeViewDifficulty `json:"difficulty"`
+
+	// Files The files the learner writes
+	Files Strings `json:"files"`
+
+	// Hints How many hints there are
+	Hints int     `json:"hints"`
+	Needs Strings `json:"needs"`
+
+	// Starter Starting content per file
+	Starter map[string]string `json:"starter"`
+
+	// Statement Markdown
+	Statement string `json:"statement"`
+
+	// Tests The test cases' names
+	Tests      Strings `json:"tests"`
+	TimeLimitS int     `json:"time_limit_s"`
+	Xp         int     `json:"xp"`
+}
+
+// ChallengeViewDifficulty defines model for ChallengeView.Difficulty.
+type ChallengeViewDifficulty string
+
 // Check defines model for Check.
 type Check struct {
 	// Detail Why the check failed
@@ -59,6 +214,72 @@ type Check struct {
 	Name string `json:"name"`
 	Ok   bool   `json:"ok"`
 }
+
+// Course defines model for Course.
+type Course struct {
+	// Badge The badge completing it awards
+	Badge       *string `json:"badge"`
+	ContentHash string  `json:"content_hash"`
+
+	// Description Markdown
+	Description string `json:"description"`
+	Id          string `json:"id"`
+
+	// Items Items in all its sections
+	Items int `json:"items"`
+
+	// Layout The lab layout it needs; null for any
+	Layout  *Layout     `json:"layout"`
+	Level   CourseLevel `json:"level"`
+	Minutes int         `json:"minutes"`
+
+	// Needs Lab features it needs (vpn, k3s, ...)
+	Needs        Strings `json:"needs"`
+	Outcomes     Strings `json:"outcomes"`
+	Pack         string  `json:"pack"`
+	Requirements Strings `json:"requirements"`
+
+	// Requires Courses to complete first
+	Requires Strings   `json:"requires"`
+	Sections []Section `json:"sections"`
+	Subtitle string    `json:"subtitle"`
+	Title    string    `json:"title"`
+}
+
+// CourseLevel defines model for Course.Level.
+type CourseLevel string
+
+// CourseList defines model for CourseList.
+type CourseList struct {
+	Courses []CourseSummary `json:"courses"`
+}
+
+// CourseSummary defines model for CourseSummary.
+type CourseSummary struct {
+	// Badge The badge completing it awards
+	Badge *string `json:"badge"`
+	Id    string  `json:"id"`
+
+	// Items Items in all its sections
+	Items int `json:"items"`
+
+	// Layout The lab layout it needs; null for any
+	Layout  *Layout            `json:"layout"`
+	Level   CourseSummaryLevel `json:"level"`
+	Minutes int                `json:"minutes"`
+
+	// Needs Lab features it needs (vpn, k3s, ...)
+	Needs Strings `json:"needs"`
+	Pack  string  `json:"pack"`
+
+	// Requires Courses to complete first
+	Requires Strings `json:"requires"`
+	Subtitle string  `json:"subtitle"`
+	Title    string  `json:"title"`
+}
+
+// CourseSummaryLevel defines model for CourseSummary.Level.
+type CourseSummaryLevel string
 
 // EntryCounts Entries per kind (pack, course, item, lecture, quiz, challenge, lab, badge); kinds with none are left out.
 type EntryCounts map[string]int
@@ -92,6 +313,91 @@ type ImportReport struct {
 	Updated EntryCounts `json:"updated"`
 }
 
+// Item Exactly one of lecture, quiz, lab and challenge is set, the one its type names.
+type Item struct {
+	Challenge   *ChallengeView `json:"challenge,omitempty"`
+	ContentHash string         `json:"content_hash"`
+	Course      string         `json:"course"`
+	Id          string         `json:"id"`
+	Lab         *LabView       `json:"lab,omitempty"`
+	Lecture     *Lecture       `json:"lecture,omitempty"`
+	Minutes     int            `json:"minutes"`
+	Quiz        *QuizInfo      `json:"quiz,omitempty"`
+
+	// Section Index of its section in the course
+	Section int      `json:"section"`
+	Title   string   `json:"title"`
+	Type    ItemType `json:"type"`
+}
+
+// ItemRef defines model for ItemRef.
+type ItemRef struct {
+	ContentHash string   `json:"content_hash"`
+	Id          string   `json:"id"`
+	Minutes     int      `json:"minutes"`
+	Title       string   `json:"title"`
+	Type        ItemType `json:"type"`
+}
+
+// ItemType defines model for ItemType.
+type ItemType string
+
+// LabStep defines model for LabStep.
+type LabStep struct {
+	// Body Markdown
+	Body string `json:"body"`
+
+	// Check How the step is passed: probe (the platform observes the lab), confirm (the learner says so; label on the button) or quiz (question and choices; the answer stays on the server).
+	Check StepCheck `json:"check"`
+
+	// Hints How many hints there are
+	Hints int    `json:"hints"`
+	Id    string `json:"id"`
+
+	// Open A workspace file the step opens
+	Open  *string `json:"open,omitempty"`
+	Title string  `json:"title"`
+}
+
+// LabView defines model for LabView.
+type LabView struct {
+	// Briefing Markdown
+	Briefing string `json:"briefing"`
+
+	// ClusterChanges Changes outside its namespace
+	ClusterChanges Strings `json:"cluster_changes"`
+	Concepts       Strings `json:"concepts"`
+
+	// Debrief Markdown
+	Debrief string `json:"debrief"`
+
+	// Files Files copied into the workspace
+	Files Strings `json:"files"`
+	Id    string  `json:"id"`
+
+	// Layout The lab layout it needs; null for any
+	Layout *Layout `json:"layout"`
+
+	// Namespace The lab gets its own namespace (${ns})
+	Namespace bool    `json:"namespace"`
+	Needs     Strings `json:"needs"`
+
+	// Requires Labs to pass first
+	Requires Strings   `json:"requires"`
+	Steps    []LabStep `json:"steps"`
+	Summary  string    `json:"summary"`
+	Xp       int       `json:"xp"`
+}
+
+// Layout The lab layout it needs; null for any
+type Layout string
+
+// Lecture defines model for Lecture.
+type Lecture struct {
+	Markdown  string     `json:"markdown"`
+	Resources []Resource `json:"resources"`
+}
+
 // Me defines model for Me.
 type Me struct {
 	// Csrf Send as X-CSRF-Token on every change
@@ -119,6 +425,17 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// QuizInfo defines model for QuizInfo.
+type QuizInfo struct {
+	// Pass Percentage of the questions to get right
+	Pass int `json:"pass"`
+
+	// Questions Questions per attempt
+	Questions  int  `json:"questions"`
+	TimeLimitS *int `json:"time_limit_s"`
+	Xp         int  `json:"xp"`
+}
+
 // Readiness defines model for Readiness.
 type Readiness struct {
 	Checks []Check         `json:"checks"`
@@ -127,6 +444,39 @@ type Readiness struct {
 
 // ReadinessStatus defines model for Readiness.Status.
 type ReadinessStatus string
+
+// Resource defines model for Resource.
+type Resource struct {
+	Title string `json:"title"`
+
+	// Url A link the lecture recommends
+	Url string `json:"url"`
+}
+
+// Section defines model for Section.
+type Section struct {
+	Items []ItemRef `json:"items"`
+
+	// Layout The lab layout it needs; null for any
+	Layout  *Layout `json:"layout"`
+	Minutes int     `json:"minutes"`
+	Needs   Strings `json:"needs"`
+	Title   string  `json:"title"`
+}
+
+// StepCheck How the step is passed: probe (the platform observes the lab), confirm (the learner says so; label on the button) or quiz (question and choices; the answer stays on the server).
+type StepCheck struct {
+	Choices  *Strings      `json:"choices,omitempty"`
+	Label    *string       `json:"label,omitempty"`
+	Question *string       `json:"question,omitempty"`
+	Type     StepCheckType `json:"type"`
+}
+
+// StepCheckType defines model for StepCheck.Type.
+type StepCheckType string
+
+// Strings defines model for Strings.
+type Strings = []string
 
 // TerminalSession defines model for TerminalSession.
 type TerminalSession struct {
@@ -152,6 +502,9 @@ type Forbidden = Problem
 // NoSession RFC 9457 problem details.
 type NoSession = Problem
 
+// NotFound RFC 9457 problem details.
+type NotFound = Problem
+
 // OpenTerminalJSONRequestBody defines body for OpenTerminal for application/json ContentType.
 type OpenTerminalJSONRequestBody = TerminalSize
 
@@ -160,6 +513,15 @@ type ServerInterface interface {
 	// ImportContent Re-import the packs
 	// (POST /api/v1/admin/import)
 	ImportContent(w http.ResponseWriter, r *http.Request)
+	// ListCourses The catalogue
+	// (GET /api/v1/courses)
+	ListCourses(w http.ResponseWriter, r *http.Request)
+	// GetCourse A course page
+	// (GET /api/v1/courses/{course})
+	GetCourse(w http.ResponseWriter, r *http.Request, course string)
+	// GetItem One item of a course
+	// (GET /api/v1/courses/{course}/items/{item})
+	GetItem(w http.ResponseWriter, r *http.Request, course string, item string)
 	// GetMe Who is signed in
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -191,6 +553,81 @@ func (siw *ServerInterfaceWrapper) ImportContent(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ImportContent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCourses operation middleware
+func (siw *ServerInterfaceWrapper) ListCourses(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCourses(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCourse operation middleware
+func (siw *ServerInterfaceWrapper) GetCourse(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "course" -------------
+	var course string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "course", r.PathValue("course"), &course, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "course", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCourse(w, r, course)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetItem operation middleware
+func (siw *ServerInterfaceWrapper) GetItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "course" -------------
+	var course string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "course", r.PathValue("course"), &course, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "course", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "item" -------------
+	var item string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "item", r.PathValue("item"), &item, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetItem(w, r, course, item)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -395,6 +832,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sessions", wrapper.OpenSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/admin/import", wrapper.ImportContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/courses", wrapper.ListCourses)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/courses/{course}", wrapper.GetCourse)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/courses/{course}/items/{item}", wrapper.GetItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/terminals", wrapper.OpenTerminal)
 
 	return m
@@ -403,6 +843,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 type ForbiddenApplicationProblemPlusJSONResponse Problem
 
 type NoSessionApplicationProblemPlusJSONResponse Problem
+
+type NotFoundApplicationProblemPlusJSONResponse Problem
 
 type ImportContentRequestObject struct {
 }
@@ -481,6 +923,152 @@ func (response ImportContent503ApplicationProblemPlusJSONResponse) VisitImportCo
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCoursesRequestObject struct {
+}
+
+type ListCoursesResponseObject interface {
+	VisitListCoursesResponse(w http.ResponseWriter) error
+}
+
+type ListCourses200JSONResponse CourseList
+
+func (response ListCourses200JSONResponse) VisitListCoursesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCourses401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response ListCourses401ApplicationProblemPlusJSONResponse) VisitListCoursesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCourseRequestObject struct {
+	Course string `json:"course"`
+}
+
+type GetCourseResponseObject interface {
+	VisitGetCourseResponse(w http.ResponseWriter) error
+}
+
+type GetCourse200JSONResponse Course
+
+func (response GetCourse200JSONResponse) VisitGetCourseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCourse401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response GetCourse401ApplicationProblemPlusJSONResponse) VisitGetCourseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCourse404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetCourse404ApplicationProblemPlusJSONResponse) VisitGetCourseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetItemRequestObject struct {
+	Course string `json:"course"`
+	Item   string `json:"item"`
+}
+
+type GetItemResponseObject interface {
+	VisitGetItemResponse(w http.ResponseWriter) error
+}
+
+type GetItem200JSONResponse Item
+
+func (response GetItem200JSONResponse) VisitGetItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetItem401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response GetItem401ApplicationProblemPlusJSONResponse) VisitGetItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetItem404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetItem404ApplicationProblemPlusJSONResponse) VisitGetItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -712,6 +1300,15 @@ type StrictServerInterface interface {
 	// ImportContent Re-import the packs
 	// (POST /api/v1/admin/import)
 	ImportContent(ctx context.Context, request ImportContentRequestObject) (ImportContentResponseObject, error)
+	// ListCourses The catalogue
+	// (GET /api/v1/courses)
+	ListCourses(ctx context.Context, request ListCoursesRequestObject) (ListCoursesResponseObject, error)
+	// GetCourse A course page
+	// (GET /api/v1/courses/{course})
+	GetCourse(ctx context.Context, request GetCourseRequestObject) (GetCourseResponseObject, error)
+	// GetItem One item of a course
+	// (GET /api/v1/courses/{course}/items/{item})
+	GetItem(ctx context.Context, request GetItemRequestObject) (GetItemResponseObject, error)
 	// GetMe Who is signed in
 	// (GET /api/v1/me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -785,6 +1382,83 @@ func (sh *strictHandler) ImportContent(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ImportContentResponseObject); ok {
 		if err := validResponse.VisitImportContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCourses operation middleware
+func (sh *strictHandler) ListCourses(w http.ResponseWriter, r *http.Request) {
+	var request ListCoursesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCourses(ctx, request.(ListCoursesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCourses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCoursesResponseObject); ok {
+		if err := validResponse.VisitListCoursesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCourse operation middleware
+func (sh *strictHandler) GetCourse(w http.ResponseWriter, r *http.Request, course string) {
+	var request GetCourseRequestObject
+
+	request.Course = course
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCourse(ctx, request.(GetCourseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCourse")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCourseResponseObject); ok {
+		if err := validResponse.VisitGetCourseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetItem operation middleware
+func (sh *strictHandler) GetItem(w http.ResponseWriter, r *http.Request, course string, item string) {
+	var request GetItemRequestObject
+
+	request.Course = course
+	request.Item = item
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetItem(ctx, request.(GetItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetItemResponseObject); ok {
+		if err := validResponse.VisitGetItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

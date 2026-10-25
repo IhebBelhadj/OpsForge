@@ -36,6 +36,7 @@ type Deps struct {
 	Terminals Terminals
 	Identity  Identity
 	Importer  Importer
+	Catalog   Catalog
 }
 
 type server struct {

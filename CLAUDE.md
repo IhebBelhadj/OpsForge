@@ -197,7 +197,13 @@ reboot-survival check).
   bundle document in `doc`. `contentimport.Entries` flattens a bundle, `Diff` compares (`Entry.Same`: document,
   position, parents), only changes are written (same packs = no write at all, timestamps kept); missing entries are
   retired, never deleted. Imported at start (a failure is logged, the last catalogue served) and by `POST
-  /api/v1/admin/import` (422 `/problems/invalid-packs` with `errors`, 503 `/problems/toolchain` for `ErrCompile`).
+  /api/v1/admin/import` (422 `/problems/invalid-packs` with `errors`, 503 `/problems/toolchain` for `ErrCompile`). Reads
+  (`catalog.Service`: `GET /courses`, `/courses/{course}`, `/courses/{course}/items/{item}`, 404 `/problems/not-found`
+  for unknown or retired) decode documents into view types (`CourseView`, `LabView`, ...) that have no field for what
+  is earned: quiz keys/explanations (a quiz item gives only pass, xp, limit, question count; questions come with an
+  attempt), solutions, check/test probes, hint texts (counts only). New content fields reach the API only by being
+  added to a view; the API's view schemas are `additionalProperties: false`. Texts keep their placeholders until
+  `labstate` resolves them.
 - Academy terminals (`internal/terminal`): sessions outlive their socket for `Linger` (60 s) and replay the last 64 KiB;
   the newest socket takes a session over. Wire format = Phase 10's (binary out; `{t:"i",d}` / `{t:"r",cols,rows}` in);
   close codes 1000 exited, 4000 replaced, 4001 slow, 1001 shutdown (`httpapi.StatusReplaced/StatusSlow`). Every

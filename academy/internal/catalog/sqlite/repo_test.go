@@ -3,7 +3,9 @@ package sqlite_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,5 +75,41 @@ func TestApplyIsAllOrNothing(t *testing.T) {
 	}
 	if got, _ := r.Entries(ctx); len(got) != 0 {
 		t.Fatalf("half an import was kept: %+v", got)
+	}
+}
+
+func TestLiveLeavesRetiredOut(t *testing.T) {
+	r := repo(t)
+	ctx := context.Background()
+	course := func(pack, key string, pos int) catalog.Entry {
+		return catalog.Entry{Kind: catalog.KindCourse, Key: key, PackID: pack, Position: pos, Title: key, Hash: "h",
+			Doc: json.RawMessage(`{}`)}
+	}
+	gone := course("a", "gone", 0)
+	entries := []catalog.Entry{course("b", "b1", 0), course("a", "a2", 2), gone, course("a", "a1", 1)}
+	if err := r.Apply(ctx, entries, nil, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Apply(ctx, nil, []catalog.Entry{gone}, t0); err != nil {
+		t.Fatal(err)
+	}
+	list, err := r.LiveList(ctx, catalog.KindCourse)
+	var keys []string
+	for _, e := range list {
+		keys = append(keys, e.Key)
+	}
+	if err != nil || strings.Join(keys, " ") != "a1 a2 b1" {
+		t.Fatalf("%v, %v", keys, err)
+	}
+	if e, err := r.Live(ctx, catalog.KindCourse, "a2"); err != nil || !e.Same(entries[1]) {
+		t.Fatalf("%+v, %v", e, err)
+	}
+	for _, key := range []string{"gone", "nope"} {
+		if _, err := r.Live(ctx, catalog.KindCourse, key); !errors.Is(err, catalog.ErrNotFound) {
+			t.Fatalf("%s: %v", key, err)
+		}
+	}
+	if list, _ := r.LiveList(ctx, catalog.KindLab); len(list) != 0 {
+		t.Fatalf("labs %+v", list)
 	}
 }

@@ -75,6 +75,95 @@ func (q *Queries) ContentUpdatedAt(ctx context.Context, arg ContentUpdatedAtPara
 	return updated_at, err
 }
 
+const liveContent = `-- name: LiveContent :one
+SELECT kind, key, pack_id, course_id, position, title, content_hash, doc, retired FROM content
+WHERE kind = ? AND key = ? AND retired = 0
+`
+
+type LiveContentParams struct {
+	Kind string
+	Key  string
+}
+
+type LiveContentRow struct {
+	Kind        string
+	Key         string
+	PackID      string
+	CourseID    sql.NullString
+	Position    int64
+	Title       string
+	ContentHash string
+	Doc         string
+	Retired     int64
+}
+
+func (q *Queries) LiveContent(ctx context.Context, arg LiveContentParams) (LiveContentRow, error) {
+	row := q.db.QueryRowContext(ctx, liveContent, arg.Kind, arg.Key)
+	var i LiveContentRow
+	err := row.Scan(
+		&i.Kind,
+		&i.Key,
+		&i.PackID,
+		&i.CourseID,
+		&i.Position,
+		&i.Title,
+		&i.ContentHash,
+		&i.Doc,
+		&i.Retired,
+	)
+	return i, err
+}
+
+const liveContentOfKind = `-- name: LiveContentOfKind :many
+SELECT kind, key, pack_id, course_id, position, title, content_hash, doc, retired FROM content
+WHERE kind = ? AND retired = 0 ORDER BY pack_id, position, key
+`
+
+type LiveContentOfKindRow struct {
+	Kind        string
+	Key         string
+	PackID      string
+	CourseID    sql.NullString
+	Position    int64
+	Title       string
+	ContentHash string
+	Doc         string
+	Retired     int64
+}
+
+func (q *Queries) LiveContentOfKind(ctx context.Context, kind string) ([]LiveContentOfKindRow, error) {
+	rows, err := q.db.QueryContext(ctx, liveContentOfKind, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LiveContentOfKindRow
+	for rows.Next() {
+		var i LiveContentOfKindRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.Key,
+			&i.PackID,
+			&i.CourseID,
+			&i.Position,
+			&i.Title,
+			&i.ContentHash,
+			&i.Doc,
+			&i.Retired,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const retireContent = `-- name: RetireContent :exec
 UPDATE content SET retired = 1, updated_at = ? WHERE kind = ? AND key = ?
 `

@@ -223,7 +223,7 @@ operations   operations(id, user_id, kind, status, result, created_at, finished_
 |---|---|
 | `POST /sessions` · `GET /me` | sign the local user in (cookie); user, CSRF token, XP, badge counts, running lab, resume item |
 | `GET /courses` · `GET /courses/{course}` | catalogue; course page with sections, items, statuses, requirement check against the lab |
-| `GET /courses/{course}/items/{item}` | the item (lecture Markdown, quiz without keys, lab view, challenge without solution) |
+| `GET /courses/{course}/items/{item}` | the item (lecture Markdown; quiz: pass mark, limit, question count, the questions come with an attempt; lab view without probes; challenge without solution or test probes; hint counts, not texts) |
 | `POST /courses/{course}/items/{item}/complete` | complete a lecture |
 | `GET/PUT /courses/{course}/items/{item}/notes` | notes |
 | `POST /courses/{course}/items/{item}/quiz-attempts` · `POST /quiz-attempts/{id}/submit` | start (draw, deadline) and submit a quiz; per-question results |

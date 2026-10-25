@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite"
 )
 
-// Repo stores catalogue entries; it is contentimport's Store.
+// Repo stores catalogue entries; it is contentimport's Store and the catalogue's Reader.
 type Repo struct {
 	db *sql.DB
 	q  *Queries
@@ -29,13 +30,42 @@ func (r *Repo) Entries(ctx context.Context) ([]catalog.Entry, error) {
 	}
 	out := make([]catalog.Entry, len(rows))
 	for i, row := range rows {
-		out[i] = catalog.Entry{
-			Kind: catalog.Kind(row.Kind), Key: row.Key, PackID: row.PackID, CourseID: row.CourseID.String,
-			Position: int(row.Position), Title: row.Title, Hash: row.ContentHash, Doc: json.RawMessage(row.Doc),
-			Retired: row.Retired == 1,
-		}
+		out[i] = toEntry(row)
 	}
 	return out, nil
+}
+
+// Live returns one entry unless it is retired (catalog.ErrNotFound).
+func (r *Repo) Live(ctx context.Context, kind catalog.Kind, key string) (catalog.Entry, error) {
+	row, err := r.q.LiveContent(ctx, LiveContentParams{Kind: string(kind), Key: key})
+	if errors.Is(err, sql.ErrNoRows) {
+		return catalog.Entry{}, catalog.ErrNotFound
+	}
+	if err != nil {
+		return catalog.Entry{}, err
+	}
+	return toEntry(AllContentRow(row)), nil
+}
+
+// LiveList returns the entries of a kind that are not retired, by pack then position.
+func (r *Repo) LiveList(ctx context.Context, kind catalog.Kind) ([]catalog.Entry, error) {
+	rows, err := r.q.LiveContentOfKind(ctx, string(kind))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]catalog.Entry, len(rows))
+	for i, row := range rows {
+		out[i] = toEntry(AllContentRow(row))
+	}
+	return out, nil
+}
+
+func toEntry(row AllContentRow) catalog.Entry {
+	return catalog.Entry{
+		Kind: catalog.Kind(row.Kind), Key: row.Key, PackID: row.PackID, CourseID: row.CourseID.String,
+		Position: int(row.Position), Title: row.Title, Hash: row.ContentHash, Doc: json.RawMessage(row.Doc),
+		Retired: row.Retired == 1,
+	}
 }
 
 // Apply writes upsert (un-retiring them) and retires retire, at `at`, in one transaction.
