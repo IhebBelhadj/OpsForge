@@ -113,9 +113,18 @@ func (s *server) GetItem(ctx context.Context, req GetItemRequestObject) (GetItem
 	}
 	out := GetItem200JSONResponse{Course: it.Course, Id: it.ID, Type: ItemType(it.Type), Title: it.Title,
 		Minutes: it.Minutes, Section: it.Section, ContentHash: it.Hash}
+	namespace := ""
+	if it.Lab != nil && s.deps.Labs != nil { // the learner's running attempt at this lab fills in its "${ns}"
+		if user, err := userID(ctx); err == nil {
+			if cur, ok, err := s.deps.Labs.Current(ctx, user); err == nil && ok && cur.Lab == it.Lab.ID {
+				namespace = cur.Namespace
+			}
+		}
+	}
+	resolve := s.resolver(ctx, namespace)
 	switch {
 	case it.Lecture != nil:
-		l := &Lecture{Markdown: it.Lecture.Markdown, Resources: make([]Resource, len(it.Lecture.Resources))}
+		l := &Lecture{Markdown: resolve(it.Lecture.Markdown), Resources: make([]Resource, len(it.Lecture.Resources))}
 		for i, r := range it.Lecture.Resources {
 			l.Resources[i] = Resource{Title: r.Title, Url: r.URL}
 		}
@@ -130,29 +139,34 @@ func (s *server) GetItem(ctx context.Context, req GetItemRequestObject) (GetItem
 			starter = map[string]string{}
 		}
 		out.Challenge = &ChallengeView{Difficulty: ChallengeViewDifficulty(c.Difficulty), Xp: c.XP,
-			Needs: strs(c.Needs), Statement: c.Statement, Files: strs(c.Files), Starter: starter,
+			Needs: strs(c.Needs), Statement: resolve(c.Statement), Files: strs(c.Files), Starter: starter,
 			TimeLimitS: c.TimeLimitS, Tests: strs(c.Tests), Hints: c.Hints}
 	case it.Lab != nil:
-		out.Lab = labView(it.Lab)
+		out.Lab = labView(it.Lab, resolve)
 	}
 	return out, nil
 }
 
-func labView(l *catalog.Lab) *LabView {
-	v := &LabView{Id: l.ID, Summary: l.Summary, Xp: l.XP, Needs: strs(l.Needs), Requires: strs(l.Requires),
-		Layout: layout(l.Layout), Briefing: l.Briefing, Debrief: l.Debrief, Concepts: strs(l.Concepts),
+// labView is a lab for the page; resolve resolves the placeholders of its texts.
+func labView(l *catalog.Lab, resolve func(string) string) *LabView {
+	v := &LabView{Id: l.ID, Summary: resolve(l.Summary), Xp: l.XP, Needs: strs(l.Needs), Requires: strs(l.Requires),
+		Layout: layout(l.Layout), Briefing: resolve(l.Briefing), Debrief: resolve(l.Debrief), Concepts: strs(l.Concepts),
 		ClusterChanges: strs(l.ClusterChanges), Namespace: l.Namespace, Files: strs(l.Files),
 		Steps: make([]LabStep, len(l.Steps))}
 	for i, st := range l.Steps {
 		check := StepCheck{Type: StepCheckType(st.Check.Type)}
 		switch st.Check.Type {
 		case "confirm":
-			check.Label = &st.Check.Label
+			label := resolve(st.Check.Label)
+			check.Label = &label
 		case "quiz":
-			choices := strs(st.Check.Choices)
-			check.Question, check.Choices = &st.Check.Question, &choices
+			question, choices := resolve(st.Check.Question), make(Strings, len(st.Check.Choices))
+			for j, c := range st.Check.Choices {
+				choices[j] = resolve(c)
+			}
+			check.Question, check.Choices = &question, &choices
 		}
-		step := LabStep{Id: st.ID, Title: st.Title, Body: st.Body, Check: check, Hints: st.Hints}
+		step := LabStep{Id: st.ID, Title: resolve(st.Title), Body: resolve(st.Body), Check: check, Hints: st.Hints}
 		if st.Open != "" {
 			step.Open = &st.Open
 		}

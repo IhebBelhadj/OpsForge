@@ -61,6 +61,12 @@ Each milestone ends with: its acceptance criteria met, `make check` + CI green, 
   badge added later is awarded from history (the Phase 10 acceptance, re-proved on the new stack); contract tests
   cover every endpoint.
 
+### Repository split (between M1 and M2)
+Academy moves to its own repository once M1's acceptance run passes and the contract is frozen at v1; the steps
+and acceptance are in [PLAN.md](../PLAN.md) (Phase 11, "Split into two repositories"). From M2 on, paths in this plan
+(`academy/`, `web/`, `labs/`, `lab/academy.py`) refer to the Academy repository; OpsForge keeps only the lab
+toolchain behind the contract.
+
 ### M2: Player and parity (frontend), Phase 10 server removed
 - Screens: catalogue, course page, player shell with curriculum sidebar, lecture view, quiz view and results, lab
   view (Killercoda layout, terminal tab, lab map with Animated Beam), badges, command palette, settings.

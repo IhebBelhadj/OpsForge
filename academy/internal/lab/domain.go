@@ -15,6 +15,9 @@ type State struct {
 	Links    map[string]Link `json:"links"`
 	Nodes    []Node          `json:"nodes"`
 	Fault    bool            `json:"fault"`
+	// Placeholders are the values of the lab-text placeholders in the running topology (scenario.placeholders):
+	// "${node:a}" → "a-cp1", "${ip:a-cp1}" → "10.10.0.11", ...
+	Placeholders map[string]string `json:"placeholders"`
 }
 
 // Site is one region: its public address and VPC.

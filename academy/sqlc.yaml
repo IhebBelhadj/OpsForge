@@ -67,3 +67,17 @@ sql:
       go:
         <<: *go
         out: internal/labsession/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/rewards/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/rewards/sqlite
+  - engine: sqlite
+    schema: migrations
+    queries: internal/legacy/sqlite/queries.sql
+    gen:
+      go:
+        <<: *go
+        out: internal/legacy/sqlite

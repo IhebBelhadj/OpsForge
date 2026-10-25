@@ -165,6 +165,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ProgressOverview" }
         "401": { $ref: "#/components/responses/NoSession" }
+  /api/v1/badges:
+    get:
+      operationId: getRewards
+      summary: The learner's XP and badges
+      description: >-
+        XP (the best pass of each lab plus the best attempt of each quiz) and every live badge with when it was
+        awarded (null: not yet), plus retired badges the learner was awarded, in pack order.
+      tags: [rewards]
+      responses:
+        "200":
+          description: XP and badges.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rewards" }
+        "401": { $ref: "#/components/responses/NoSession" }
   /api/v1/courses/{course}/progress:
     parameters:
       - { name: course, in: path, required: true, schema: { type: string } }
@@ -566,6 +581,26 @@ paths:
         "409":
           description: >-
             The attempt is not running (/problems/attempt-not-running) or the lab is busy (/problems/lab-busy).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /api/v1/lab/state:
+    get:
+      operationId: getLabState
+      summary: The lab now
+      description: >-
+        Instances, WAN links (live against topology.yml) and whether a fault is in place, as the toolchain reports
+        them (`opsforge academy state`), at most a few seconds old. A lab that is down is a 200 with up false.
+      tags: [lab]
+      responses:
+        "200":
+          description: The lab's state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabState" }
+        "401": { $ref: "#/components/responses/NoSession" }
+        "503":
+          description: The toolchain failed (not installed, crashed, or speaks another contract).
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -1376,6 +1411,87 @@ components:
       properties:
         from: { type: string }
         to: { type: string }
+    LinkConditions:
+      type: object
+      required: [rtt]
+      additionalProperties: false
+      properties:
+        rtt: { type: string }
+        jitter: { type: string }
+        loss: { type: string }
+        rate: { type: string }
+        mtu: { type: integer }
+    LabLink:
+      type: object
+      required: [live, desired, condition]
+      additionalProperties: false
+      properties:
+        live: { $ref: "#/components/schemas/LinkConditions" }
+        desired: { $ref: "#/components/schemas/LinkConditions" }
+        condition:
+          type: string
+          enum: [ok, changed, cut]
+          description: "cut: 100 % loss; changed: live differs from desired"
+    LabNode:
+      type: object
+      required: [name, site, role, status]
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        site: { type: string }
+        role: { type: string }
+        status: { type: string, description: "Incus status (Running, Stopped, ...) or Missing" }
+    LabSite:
+      type: object
+      required: [public_ip, vpc]
+      additionalProperties: false
+      properties:
+        public_ip: { type: string }
+        vpc: { type: string }
+    LabState:
+      type: object
+      required: [up, error, topology, layout, sites, links, nodes, fault]
+      additionalProperties: false
+      properties:
+        up: { type: boolean, description: wan-core is running }
+        error: { type: [string, "null"], description: What could not be read }
+        topology: { type: string, description: The topology file }
+        layout: { $ref: "#/components/schemas/Layout" }
+        sites:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/LabSite" }
+        links:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/LabLink" }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/LabNode" }
+        fault: { type: boolean, description: A fault is in place (heal undoes it) }
+    Badge:
+      type: object
+      required: [id, pack, title, description, icon, courses, retired, awarded_at]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        pack: { type: string }
+        title: { type: string }
+        description: { type: string }
+        icon: { type: [string, "null"] }
+        courses:
+          type: array
+          items: { type: string }
+          description: The courses that award it on completion
+        retired: { type: boolean, description: Removed from its pack; shown only when awarded }
+        awarded_at: { type: [string, "null"], format: date-time }
+    Rewards:
+      type: object
+      required: [xp, badges]
+      additionalProperties: false
+      properties:
+        xp: { type: integer, minimum: 0 }
+        badges:
+          type: array
+          items: { $ref: "#/components/schemas/Badge" }
     HistoryEvent:
       type: object
       required: [id, kind, subject, data, at]

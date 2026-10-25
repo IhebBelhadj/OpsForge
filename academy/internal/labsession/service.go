@@ -376,7 +376,7 @@ func (s *Service) Hint(ctx context.Context, user, id int64, stepID string) (Hint
 	if a, err = s.repo.Attempt(ctx, a.ID); err != nil {
 		return HintShown{}, err
 	}
-	return HintShown{Step: stepID, Index: idx, Text: step.Hints[idx], HintsUsed: a.HintsUsed}, nil
+	return HintShown{Namespace: a.Namespace, Step: stepID, Index: idx, Text: step.Hints[idx], HintsUsed: a.HintsUsed}, nil
 }
 
 // Reset tears a running attempt's lab down and sets it up again; its steps start over (hints stay counted).

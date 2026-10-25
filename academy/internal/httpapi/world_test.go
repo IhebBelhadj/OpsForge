@@ -21,6 +21,7 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/lab"
 	"github.com/IhebBelhadj/opsforge/academy/internal/labsession"
 	labsqlite "github.com/IhebBelhadj/opsforge/academy/internal/labsession/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/labstate"
 	"github.com/IhebBelhadj/opsforge/academy/internal/operations"
 	operationssqlite "github.com/IhebBelhadj/opsforge/academy/internal/operations/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
@@ -29,6 +30,8 @@ import (
 	progresssqlite "github.com/IhebBelhadj/opsforge/academy/internal/progress/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/quiz"
 	quizsqlite "github.com/IhebBelhadj/opsforge/academy/internal/quiz/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/rewards"
+	rewardssqlite "github.com/IhebBelhadj/opsforge/academy/internal/rewards/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/workspace"
 	"github.com/IhebBelhadj/opsforge/academy/internal/workspace/disk"
 	workspacesqlite "github.com/IhebBelhadj/opsforge/academy/internal/workspace/sqlite"
@@ -46,6 +49,8 @@ type world struct {
 	ops      *operations.Service
 	spaces   *workspace.Service
 	labs     *labsession.Service
+	rewards  *rewards.Service
+	state    *labstate.Service
 	lab      *scriptedLab
 }
 
@@ -60,7 +65,17 @@ type scriptedLab struct {
 func (l *scriptedLab) State(context.Context) (lab.State, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return lab.State{Up: true}, l.stateErr
+	if l.stateErr != nil {
+		return lab.State{}, l.stateErr
+	}
+	layout := "stretched"
+	return lab.State{Up: true, Topology: "topology.yml", Layout: &layout,
+		Sites: map[string]lab.Site{"a": {PublicIP: "203.0.113.10", VPC: "10.10.0.0/24"}},
+		Links: map[string]lab.Link{"a-b": {Live: lab.LinkConditions{RTT: "40ms", Loss: "100%"},
+			Desired: lab.LinkConditions{RTT: "40ms", Loss: "0.1%"}, Condition: "cut"}},
+		Nodes:        []lab.Node{{Name: "a-cp1", Site: "a", Role: "k3s-server", Status: "Running"}},
+		Fault:        true,
+		Placeholders: map[string]string{"${node:c}": "c-w1", "${public:a}": "203.0.113.10"}}, nil
 }
 
 func (l *scriptedLab) Run(context.Context, lab.RunRequest) (lab.RunResult, error) {
@@ -158,7 +173,38 @@ func newWorld(t *testing.T) *world {
 	w.progress = progress.NewService(progresssqlite.NewRepo(store.DB), w.catalog, w.history, clock,
 		progress.Sources{quizzes, labs})
 	w.history.Subscribe(w.progress.OnEvent)
+	ids := identity.NewService(identitysqlite.NewRepo(store.DB), clock)
+	w.rewards = rewards.NewService(rewardssqlite.NewRepo(store.DB), w.catalog, rewardSources(w.labs, w.quizzes,
+		w.progress, ids), w.history, clock, log)
+	w.history.Subscribe(w.rewards.OnEvent)
+	w.state = labstate.NewService(w.lab, clock)
+	w.history.Subscribe(w.state.OnEvent)
 	return w
+}
+
+// rewardSources reads the history for the rules from the modules, as cmd/academy adapts them.
+func rewardSources(labs *labsession.Service, quizzes *quiz.Service, learning *progress.Service,
+	ids *identity.Service) rewards.Sources {
+	return rewards.Sources{
+		Labs: func(ctx context.Context, user int64) ([]rewards.LabPass, error) {
+			passed, err := labs.Passed(ctx, user)
+			out := make([]rewards.LabPass, len(passed))
+			for i, a := range passed {
+				out[i] = rewards.LabPass{Lab: a.Lab, Hints: a.HintsUsed, Seconds: a.Seconds, XP: a.XP}
+			}
+			return out, err
+		},
+		Quizzes: func(ctx context.Context, user int64) ([]rewards.QuizPass, error) {
+			passed, err := quizzes.Passed(ctx, user)
+			out := make([]rewards.QuizPass, len(passed))
+			for i, a := range passed {
+				out[i] = rewards.QuizPass{Course: a.Course, Item: a.Item, XP: a.XP}
+			}
+			return out, err
+		},
+		Courses: learning.CompletedCourses,
+		Users:   ids.UserIDs,
+	}
 }
 
 // deps serves the world: identity on its database, the history and the event streams.
@@ -172,4 +218,6 @@ func (w *world) deps(d *httpapi.Deps) {
 	d.Labs = w.labs
 	d.Operations = w.ops
 	d.Workspaces = w.spaces
+	d.Awards = w.rewards
+	d.Lab = w.state
 }

@@ -219,10 +219,12 @@ operations   operations(id, user_id, kind, subject, status, result, error, creat
 
 - XP: labs and challenges give `xp` less hints (at least half), quizzes `xp` on first pass, lectures nothing; best
   result per item counts.
-- Badge rule types (registry in `rewards`, each a small strategy type with its own tests): `labs_passed`,
-  `lab_passed`, `xp` (Phase 10), plus `course_complete`, `quiz_score` (quiz, min %), `quizzes_perfect` (min count),
-  `challenges_accepted` (min, difficulty), `streak_days` (min).
-- A new rule is evaluated against the whole history at import (retroactive awards, as in Phase 10).
+- Badge rule types (registry `rewards.Rules`, each a small strategy type with its own tests): `labs_passed`,
+  `lab_passed`, `curriculum_complete`, `xp` (Phase 10, M1). A course's `badge` is awarded when the course is completed,
+  whatever the badge's rule. Later: `quiz_score` (quiz, min %), `quizzes_perfect` (min count), `challenges_accepted`
+  (min, difficulty), `streak_days` (min); each also needs its entry in `lab/labs.py` `RULES` (the compiler validates).
+- Every badge is evaluated against the whole history after each import and after each event that may earn one
+  (retroactive awards, as in Phase 10). XP is not stored: best pass per lab + best attempt per quiz.
 
 ## API resources (`/api/v1`, OpenAPI 3.1 in `academy/api/openapi.yaml`)
 
@@ -242,5 +244,5 @@ operations   operations(id, user_id, kind, subject, status, result, error, creat
 | `GET /schemas/kubernetes/{version}/{kind}.json` | JSON Schemas for monaco-yaml |
 | `GET /lab/state` · `GET /events` (SSE) | lab map; live events |
 | `GET /operations/{id}` | long operation status and result |
-| `GET /badges` | badges with awards |
+| `GET /badges` | XP and badges: every live badge with when it was awarded, plus retired ones already awarded |
 | `POST /admin/import` | re-import packs (dev) |

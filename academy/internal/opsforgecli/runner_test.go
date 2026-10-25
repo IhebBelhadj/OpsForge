@@ -151,6 +151,9 @@ func TestStateDecodesTheSharedFixtures(t *testing.T) {
 	if n := state.Nodes[0]; n.Name != "a-cp1" || n.Status != "Running" || state.Sites["a"].PublicIP == "" {
 		t.Fatalf("nodes[0] = %+v, sites = %+v", n, state.Sites)
 	}
+	if state.Placeholders["${node:c}"] != "c-w1" || state.Placeholders["${ip:c-w1}"] != "10.30.0.11" {
+		t.Fatalf("placeholders = %v", state.Placeholders)
+	}
 
 	fixture(t, "state.down.json")
 	if state, err = runner(t, "fixture").State(context.Background()); err != nil || state.Up {

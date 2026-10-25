@@ -93,3 +93,14 @@ def test_node_server_and_cluster_placeholders_follow_the_layout(topo, multi):
 def test_layout_must_be_known():
     doc = {"description": "x", "layout": "galaxy"}
     assert any("layout must be one of" in e for e in scenario.errors(doc))
+
+
+def test_placeholders_are_what_substitute_resolves(topo, multi):
+    for t in (topo, multi):
+        values = scenario.placeholders(t)
+        assert values and all(scenario.substitute(k, t) == v for k, v in values.items())
+        assert values["${public:a}"] == t["sites"]["a"]["public_ip"]
+    values = scenario.placeholders(topo)
+    assert (values["${node:b}"], values["${server:b}"], values["${cluster:b}"]) == ("b-w1", "a-cp1", "lab")
+    assert values["${ip:c-w1}"] == "10.30.0.11" and values["${ip:b-gw}"] == "10.20.0.1"
+    assert "${ip:mon}" in values and "${node:zz}" not in values

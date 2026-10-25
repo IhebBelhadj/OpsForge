@@ -21,6 +21,11 @@ var _ identity.Repo = (*Repo)(nil)
 // NewRepo uses the open database db.
 func NewRepo(db *sql.DB) *Repo { return &Repo{q: New(db)} }
 
+// UserIDs are every user's id, oldest first.
+func (r *Repo) UserIDs(ctx context.Context) ([]int64, error) {
+	return r.q.UserIDs(ctx)
+}
+
 // EnsureUser inserts the user unless it exists, then reads it (one statement each; a race inserts once).
 func (r *Repo) EnsureUser(ctx context.Context, name string, now time.Time) (identity.User, error) {
 	if err := r.q.InsertUser(ctx, InsertUserParams{Name: name, CreatedAt: sqlite.FormatTime(now)}); err != nil {

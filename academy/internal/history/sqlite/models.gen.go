@@ -75,6 +75,12 @@ type ItemProgress struct {
 	LastOpenedAt sql.NullString
 }
 
+type LegacyRow struct {
+	Kind     string
+	LegacyID int64
+	NewID    int64
+}
+
 type Note struct {
 	UserID    int64
 	CourseID  string
@@ -135,6 +141,12 @@ type User struct {
 	ID        int64
 	Name      string
 	CreatedAt string
+}
+
+type UserBadge struct {
+	UserID    int64
+	BadgeID   string
+	AwardedAt string
 }
 
 type Workspace struct {

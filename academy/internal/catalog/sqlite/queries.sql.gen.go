@@ -59,6 +59,56 @@ func (q *Queries) AllContent(ctx context.Context) ([]AllContentRow, error) {
 	return items, nil
 }
 
+const contentOfKind = `-- name: ContentOfKind :many
+SELECT kind, key, pack_id, course_id, position, title, content_hash, doc, retired FROM content
+WHERE kind = ? ORDER BY pack_id, position, key
+`
+
+type ContentOfKindRow struct {
+	Kind        string
+	Key         string
+	PackID      string
+	CourseID    sql.NullString
+	Position    int64
+	Title       string
+	ContentHash string
+	Doc         string
+	Retired     int64
+}
+
+func (q *Queries) ContentOfKind(ctx context.Context, kind string) ([]ContentOfKindRow, error) {
+	rows, err := q.db.QueryContext(ctx, contentOfKind, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ContentOfKindRow
+	for rows.Next() {
+		var i ContentOfKindRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.Key,
+			&i.PackID,
+			&i.CourseID,
+			&i.Position,
+			&i.Title,
+			&i.ContentHash,
+			&i.Doc,
+			&i.Retired,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const contentUpdatedAt = `-- name: ContentUpdatedAt :one
 SELECT updated_at FROM content WHERE kind = ? AND key = ?
 `

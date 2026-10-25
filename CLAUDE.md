@@ -7,10 +7,11 @@ structural changes; it has the phases, acceptance criteria and design decisions.
 **Now: Phase 11, OpsForge Academy** (plan in `docs/courses/`, read its README and `implementation.md` first: Go
 platform `academy/`, React + Vite `web/`, Python CLI as lab toolchain; tests first). **M0 foundations done**
 (2026-10-24): binary serving the empty shell + health endpoints, toolchain contract (`opsforge academy`), CI jobs.
-**Spike S6 done** (Go pty terminal, parity with Phase 10). **M1 so far** (2026-10-25): identity, catalog,
-contentimport, history (event bus + SSE), progress, quiz, operations, workspace, labsession (a Phase 10 lab passed
-end to end through the API on the live lab). **Next in M1:** rewards, labstate, `academy migrate-legacy`, then the
-six-lab acceptance run.
+**Spike S6 done** (Go pty terminal, parity with Phase 10). **M1 done** (2026-10-25): identity, catalog,
+contentimport, history (event bus + SSE), progress, quiz, operations, workspace, labsession, rewards, labstate,
+`academy migrate-legacy`; the six labs passed through the API on the live lab (docs/PLAN.md). **Next: split into two
+repos** (OpsForge + OpsForge Academy, `docs/PLAN.md` Phase 11) before
+M2; until then don't grow coupling (lab-side only through `--json` commands).
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML in `labs/` (curricula → levels →
 labs with probe/quiz/confirm checks, badges), progress in SQLite `.opsforge/labs.db`, `opsforge serve` = signal-box
 web UI on 127.0.0.1:8090 with a browser terminal. All 6 core labs pass on the live stretched lab and leave `verify`
@@ -51,7 +52,7 @@ reboot-survival check).
 | `lab/labs.py`, `lab/labpack.schema.json` | Pure pack logic: loading, schema + cross-reference validation, content hashes, check types (`CHECKS`), badge rules (`RULES`), XP, `unmet_needs` (layout/needs vs topology). |
 | `lab/labsdb.py`, `lab/migrations/` | SQLite: numbered migrations (`PRAGMA user_version`), idempotent pack import, catalog with unlocks, attempts, hints, events, badge awards. |
 | `lab/labserver.py`, `lab/web/` | `opsforge serve`: stdlib HTTP + JSON API, checks via `ScenarioRun`, WebSocket terminal on a pty; static UI (no build step). Deleted in Phase 11 M2. |
-| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, `toolchain.schema.json`, oapi-codegen config), `internal/{catalog,config,contentimport,history,httpapi,identity,lab,labsession,operations,opsforgecli,platform,progress,quiz,terminal,workspace}`, `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
+| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, `toolchain.schema.json`, oapi-codegen config), `internal/{catalog,config,contentimport,history,httpapi,identity,lab,labsession,labstate,legacy,operations,opsforgecli,platform,progress,quiz,rewards,terminal,workspace}`, `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack, `labs.phase10.sql`), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
 | `web/` | Phase 11 React 19 + Vite + TS app (pnpm): `src/{app,routes,features,components/ui,api,lib,test,styles}`, `e2e/` (Playwright against the built binary + `e2e/fake-opsforge.sh`). `src/api/schema.d.ts` and `src/routeTree.gen.ts` are generated and committed. |
 | `lab/academy.py`, `lab/course.schema.json` | Pure course-pack compiler: `courses/<id>/` (course.yml, lectures/*.md with front matter, quizzes, challenges) + Phase 10 labs/badges → the bundle (`compile_bundle`). |
 | `scenarios/` | `<name>.yml` experiments run by `opsforge scenario <name>`; `manifests/` holds what they apply to the cluster. Results: `.opsforge/results/`. |
@@ -254,6 +255,18 @@ reboot-survival check).
   the terminal starts there via `ACADEMY_WORKDIR`. Guard 401/403 contract coverage is generic
   (`guard_test.go` walks the spec); httpapi tests share one database through `newWorld(t)` (golden catalogue + a
   quiz lab, scripted lab controller). Lab XP = `labsession.PassXP` (half-to-even, as Phase 10's `pass_xp`).
+- Academy rewards/labstate/legacy (end of M1): `rewards` stores only awards (`user_badges`); XP is read (best pass per
+  lab + best quiz attempt per item) through `rewards.Sources` (cmd/academy adapts labsession, quiz, progress,
+  identity). Rule types = `rewards.Rules` ↔ `lab/labs.py` `RULES` (keep both); a course's `badge` is awarded on
+  completion. Badges are evaluated on `lab.passed`/`quiz.submitted`/`course.completed` and for every user after each
+  import (cmd/academy's `importer` wraps contentimport), so new rules are retroactive; retired badges stay shown once
+  awarded (`catalog.Service.Entries` includes retired entries). `labstate` caches `state` 5 s (a `lab.*` event
+  invalidates it) and resolves texts with `state`'s `placeholders` table (Python's `scenario.placeholders`, i.e.
+  `substitute` itself: no Go port) plus `${ns}` from the learner's attempt; httpapi resolves item views, attempt
+  hints and quiz choices (the generated `LabState` type forced the port name `httpapi.Lab`). `academy migrate-legacy`
+  (`internal/legacy`, a one-off data migration that writes several modules' tables in one transaction, like a goose
+  migration) remembers imported Phase 10 ids in `legacy_rows`, so running it again imports only what is new; then
+  `progress.Refresh` + `rewards.Evaluate` (its rows came without events).
 - Scenarios: `${node:<site>}`, `${server:<site>}`, `${cluster:<site>}` resolve per layout (never hard-code `b-w1`);
   `layout: stretched|multi-cluster` skips a scenario on the other layout.
 - Scenario files: step keys must not be YAML 1.1 booleans (`on`, `yes`, ...): `run` takes `host:`, not `on:`.

@@ -4,6 +4,9 @@ INSERT INTO users (name, created_at) VALUES (?, ?) ON CONFLICT (name) DO NOTHING
 -- name: UserByName :one
 SELECT id, name, created_at FROM users WHERE name = ?;
 
+-- name: UserIDs :many
+SELECT id FROM users ORDER BY id;
+
 -- name: UserByID :one
 SELECT id, name, created_at FROM users WHERE id = ?;
 

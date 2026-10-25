@@ -75,6 +75,12 @@ func (s *Service) Entry(ctx context.Context, kind Kind, key string) (Entry, erro
 	return s.r.Live(ctx, kind, key)
 }
 
+// Entries are every entry of a kind as imported, retired ones included (Entry.Retired), by pack then position: for
+// the modules that keep what a learner earned from content since retired (awards). Not for the transport.
+func (s *Service) Entries(ctx context.Context, kind Kind) ([]Entry, error) {
+	return s.r.List(ctx, kind)
+}
+
 // item reads a live item entry of a live course and its content entry.
 func (s *Service) item(ctx context.Context, course, id string) (itemDoc, Entry, Entry, error) {
 	if _, err := s.r.Live(ctx, KindCourse, course); err != nil {

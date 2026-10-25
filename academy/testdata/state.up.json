@@ -100,6 +100,28 @@
       "status": "Running"
     }
   ],
+  "placeholders": {
+    "${cluster:a}": "lab",
+    "${cluster:b}": "lab",
+    "${cluster:c}": "lab",
+    "${ip:a-cp1}": "10.10.0.11",
+    "${ip:a-gw}": "10.10.0.1",
+    "${ip:b-gw}": "10.20.0.1",
+    "${ip:b-w1}": "10.20.0.11",
+    "${ip:c-gw}": "10.30.0.1",
+    "${ip:c-w1}": "10.30.0.11",
+    "${ip:ci}": "10.10.0.12",
+    "${ip:mon}": "10.20.0.12",
+    "${node:a}": "a-cp1",
+    "${node:b}": "b-w1",
+    "${node:c}": "c-w1",
+    "${public:a}": "203.0.113.10",
+    "${public:b}": "203.0.113.20",
+    "${public:c}": "203.0.113.30",
+    "${server:a}": "a-cp1",
+    "${server:b}": "a-cp1",
+    "${server:c}": "a-cp1"
+  },
   "sites": {
     "a": {
       "public_ip": "203.0.113.10",

@@ -35,6 +35,16 @@ func (r *memRepo) EnsureUser(_ context.Context, name string, now time.Time) (ide
 	return u, nil
 }
 
+func (r *memRepo) UserIDs(context.Context) ([]int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []int64
+	for _, u := range r.users {
+		out = append(out, u.ID)
+	}
+	return out, nil
+}
+
 func (r *memRepo) User(_ context.Context, id int64) (identity.User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -149,5 +159,21 @@ func TestCheckCSRF(t *testing.T) {
 		if err := identity.CheckCSRF(p, bad); !errors.Is(err, identity.ErrBadCSRF) {
 			t.Errorf("token %q: err = %v", bad, err)
 		}
+	}
+}
+
+func TestLocalUserAndUserIDs(t *testing.T) {
+	repo := &memRepo{sessions: map[string]identity.Session{}}
+	svc := identity.NewService(repo, &clock{now: time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)})
+	ctx := context.Background()
+	u, err := svc.Local(ctx)
+	if err != nil || u.Name != identity.LocalUser {
+		t.Fatalf("Local = %+v, %v", u, err)
+	}
+	if again, _ := svc.Local(ctx); again.ID != u.ID {
+		t.Fatalf("a second local user: %+v", again)
+	}
+	if ids, err := svc.UserIDs(ctx); err != nil || len(ids) != 1 || ids[0] != u.ID {
+		t.Fatalf("UserIDs = %v, %v", ids, err)
 	}
 }

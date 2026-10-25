@@ -44,6 +44,16 @@ func (s *Service) OpenSession(ctx context.Context) (string, Principal, error) {
 	return token, Principal{User: user, Session: session}, nil
 }
 
+// Local is the local user, created if there is none yet (the owner of what migrate-legacy imports).
+func (s *Service) Local(ctx context.Context) (User, error) {
+	return s.repo.EnsureUser(ctx, LocalUser, s.clock.Now())
+}
+
+// UserIDs are every user's id, oldest first.
+func (s *Service) UserIDs(ctx context.Context) ([]int64, error) {
+	return s.repo.UserIDs(ctx)
+}
+
 // Authenticate returns who holds token, or ErrNoSession.
 func (s *Service) Authenticate(ctx context.Context, token string) (Principal, error) {
 	if token == "" {

@@ -33,6 +33,10 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		provideLabs,
 		provideQuizzes,
 		provideProgress,
+		provideRewards,
+		provideRewardingImporter,
+		provideLabState,
+		provideLegacy,
 		provideHandler,
 		newApp,
 	)

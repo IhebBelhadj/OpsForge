@@ -106,7 +106,7 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
 | Command | In | Out |
 |---|---|---|
 | `compile [packs...]` | – | the bundle: packs, courses, items, lectures (Markdown), quizzes (with keys), challenges, labs, badges, content hashes, validation errors (bundle schema: `academy/api/bundle.schema.json`) |
-| `state` | – | lab up, layout, topology name, sites, links (live/desired/condition), nodes, fault |
+| `state` | – | lab up, layout, topology name, sites, links (live/desired/condition), nodes, fault, placeholders (`${node:a}` → value) |
 | `run` | `{phase: setup\|teardown, steps, namespace?}` | `{metrics, log, error}`; a namespace (`lab-<attempt>`, `ch-<attempt>`, nothing else) is created before setup and deleted after teardown, even after a failing step, and fills `${ns}` |
 | `probe` | `{steps, expect, namespace?}` | `{passed, results: [{metric, want, got, passed, checked}], log, error}` (stops at the first failing named step; results in `expect` order) |
 | `apply` | `{manifest, namespace, dry_run: server\|none}` | `{ok, diagnostics: [{path, message}], output}` (kubectl through `opsforge kubectl`) |
@@ -120,9 +120,10 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
 - The Go side wraps it in **`LabController`** (port) with one adapter `opsforgecli` (spawns the CLI with a context
   and timeout, parses, maps errors) and one adapter `fake` for tests and the e2e suite.
 - Placeholders (`${node:c}`, `${ns}`, ...): the bundle keeps texts raw (they depend on the running topology, not on
-  the pack). For display, `academy` resolves them with the values `state` returns (sites, public IPs, nodes per site,
-  clusters), in a Go port of `scenario.substitute` tested against the same cases as the Python one. For execution
-  (`run`, `probe`, `apply`), the toolchain resolves them itself, so commands always use the Python implementation.
+  the pack). For display, `academy` (`labstate`) resolves them with the table `state` returns (`placeholders`: every
+  placeholder of the running topology with its value, computed by `scenario.substitute` itself, so there is no second
+  implementation to drift), plus `${ns}` from the learner's attempt. For execution (`run`, `probe`, `apply`), the
+  toolchain resolves them itself.
 
 ## Data
 
@@ -169,7 +170,8 @@ document on stderr otherwise. Versioned by `contract: 1` in every document; `aca
 
 ## Operations
 
-- `academy serve` (default `127.0.0.1:8090`), `academy import`, `academy migrate-legacy`, `academy version`.
+- `academy serve` (default `127.0.0.1:8090`), `academy migrate-legacy` (`-legacy-db`, default `.opsforge/labs.db`;
+  again imports only rows Phase 10 recorded since), `academy version`. Re-import: `POST /api/v1/admin/import`.
   `opsforge serve` becomes a thin wrapper that builds/starts `academy` (one command for the user).
 - **Logs**: `log/slog` JSON (request id, module, attempt id). **Metrics**: Prometheus `/metrics` on a separate
   loopback port (request latency, check durations, toolchain errors), scrapeable by the lab's VictoriaMetrics.

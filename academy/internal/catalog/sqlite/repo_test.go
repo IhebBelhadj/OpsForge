@@ -112,4 +112,12 @@ func TestLiveLeavesRetiredOut(t *testing.T) {
 	if list, _ := r.LiveList(ctx, catalog.KindLab); len(list) != 0 {
 		t.Fatalf("labs %+v", list)
 	}
+	all, err := r.List(ctx, catalog.KindCourse)
+	keys = nil
+	for _, e := range all {
+		keys = append(keys, e.Key)
+	}
+	if err != nil || strings.Join(keys, " ") != "gone a1 a2 b1" || !all[0].Retired || all[1].Retired {
+		t.Fatalf("List = %v, %v", keys, err)
+	}
 }

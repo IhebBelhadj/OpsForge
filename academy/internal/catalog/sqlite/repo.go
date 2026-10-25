@@ -60,6 +60,19 @@ func (r *Repo) LiveList(ctx context.Context, kind catalog.Kind) ([]catalog.Entry
 	return out, nil
 }
 
+// List returns every entry of a kind, retired ones included, by pack then position.
+func (r *Repo) List(ctx context.Context, kind catalog.Kind) ([]catalog.Entry, error) {
+	rows, err := r.q.ContentOfKind(ctx, string(kind))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]catalog.Entry, len(rows))
+	for i, row := range rows {
+		out[i] = toEntry(AllContentRow(row))
+	}
+	return out, nil
+}
+
 func toEntry(row AllContentRow) catalog.Entry {
 	return catalog.Entry{
 		Kind: catalog.Kind(row.Kind), Key: row.Key, PackID: row.PackID, CourseID: row.CourseID.String,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/catalog"
@@ -170,13 +171,33 @@ func (s *Service) SaveNote(ctx context.Context, user int64, course, item, body s
 	return n, s.repo.SaveNote(ctx, user, course, item, n)
 }
 
+// CompletedCourses are the courses user has completed (first completions, live or not).
+func (s *Service) CompletedCourses(ctx context.Context, user int64) ([]string, error) {
+	completions, err := s.repo.CourseCompletions(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(completions))
+	for c := range completions {
+		out = append(out, c)
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
 // OnEvent is the history handler: after an event that completes an item, every course the user has now completed
 // for the first time is recorded and announced (course.completed, which badge rules read).
 func (s *Service) OnEvent(ctx context.Context, e platform.Event) error {
 	if !CompletingEvents[e.Kind] {
 		return nil
 	}
-	overview, err := s.Overview(ctx, e.UserID)
+	return s.Refresh(ctx, e.UserID)
+}
+
+// Refresh records and announces every course user has completed for the first time (after OnEvent's events, or
+// after rows written without events: migrate-legacy).
+func (s *Service) Refresh(ctx context.Context, user int64) error {
+	overview, err := s.Overview(ctx, user)
 	if err != nil {
 		return err
 	}
@@ -185,7 +206,7 @@ func (s *Service) OnEvent(ctx context.Context, e platform.Event) error {
 			continue
 		}
 		now := s.clock.Now()
-		first, err := s.repo.CompleteCourse(ctx, e.UserID, p.Course, now)
+		first, err := s.repo.CompleteCourse(ctx, user, p.Course, now)
 		if err != nil {
 			return err
 		}
@@ -193,7 +214,7 @@ func (s *Service) OnEvent(ctx context.Context, e platform.Event) error {
 			continue
 		}
 		data, _ := json.Marshal(map[string]int{"items": p.Total})
-		if _, err := s.events.Publish(ctx, platform.Event{UserID: e.UserID, Kind: KindCourseCompleted,
+		if _, err := s.events.Publish(ctx, platform.Event{UserID: user, Kind: KindCourseCompleted,
 			Subject: p.Course, Data: data, At: now}); err != nil {
 			return err
 		}

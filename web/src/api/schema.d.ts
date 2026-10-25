@@ -183,6 +183,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/badges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The learner's XP and badges
+         * @description XP (the best pass of each lab plus the best attempt of each quiz) and every live badge with when it was awarded (null: not yet), plus retired badges the learner was awarded, in pack order.
+         */
+        get: operations["getRewards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{course}/progress": {
         parameters: {
             query?: never;
@@ -483,6 +503,26 @@ export interface paths {
          * @description Teardown and heal; nothing is earned. Runs in the background (202).
          */
         post: operations["abandonLab"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lab/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The lab now
+         * @description Instances, WAN links (live against topology.yml) and whether a fault is in place, as the toolchain reports them (`opsforge academy state`), at most a few seconds old. A lab that is down is a 200 with up false.
+         */
+        get: operations["getLabState"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1073,6 +1113,68 @@ export interface components {
             from: string;
             to: string;
         };
+        LinkConditions: {
+            rtt: string;
+            jitter?: string;
+            loss?: string;
+            rate?: string;
+            mtu?: number;
+        };
+        LabLink: {
+            live: components["schemas"]["LinkConditions"];
+            desired: components["schemas"]["LinkConditions"];
+            /**
+             * @description cut: 100 % loss; changed: live differs from desired
+             * @enum {string}
+             */
+            condition: "ok" | "changed" | "cut";
+        };
+        LabNode: {
+            name: string;
+            site: string;
+            role: string;
+            /** @description Incus status (Running, Stopped, ...) or Missing */
+            status: string;
+        };
+        LabSite: {
+            public_ip: string;
+            vpc: string;
+        };
+        LabState: {
+            /** @description wan-core is running */
+            up: boolean;
+            /** @description What could not be read */
+            error: string | null;
+            /** @description The topology file */
+            topology: string;
+            layout: components["schemas"]["Layout"];
+            sites: {
+                [key: string]: components["schemas"]["LabSite"];
+            };
+            links: {
+                [key: string]: components["schemas"]["LabLink"];
+            };
+            nodes: components["schemas"]["LabNode"][];
+            /** @description A fault is in place (heal undoes it) */
+            fault: boolean;
+        };
+        Badge: {
+            id: string;
+            pack: string;
+            title: string;
+            description: string;
+            icon: string | null;
+            /** @description The courses that award it on completion */
+            courses: string[];
+            /** @description Removed from its pack; shown only when awarded */
+            retired: boolean;
+            /** Format: date-time */
+            awarded_at: string | null;
+        };
+        Rewards: {
+            xp: number;
+            badges: components["schemas"]["Badge"][];
+        };
         /** @description One event of the learner's history. */
         HistoryEvent: {
             /**
@@ -1360,6 +1462,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgressOverview"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+        };
+    };
+    getRewards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description XP and badges. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rewards"];
                 };
             };
             401: components["responses"]["NoSession"];
@@ -1952,6 +2075,36 @@ export interface operations {
             };
             /** @description The attempt is not running (/problems/attempt-not-running) or the lab is busy (/problems/lab-busy). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLabState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lab's state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabState"];
+                };
+            };
+            401: components["responses"]["NoSession"];
+            /** @description The toolchain failed (not installed, crashed, or speaks another contract). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

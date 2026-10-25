@@ -44,6 +44,8 @@ type Deps struct {
 	Labs       Labs
 	Operations Operations
 	Workspaces Workspaces
+	Awards     Awards
+	Lab        Lab
 }
 
 type server struct {
@@ -72,7 +74,7 @@ func NewHandler(deps Deps) http.Handler {
 }
 
 func (s *server) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {
-	return GetHealthz200JSONResponse{Status: Ok, Version: s.deps.Build.Version}, nil
+	return GetHealthz200JSONResponse{Status: HealthStatusOk, Version: s.deps.Build.Version}, nil
 }
 
 // GetReadyz runs every probe at once and reports each; 503 if any failed.

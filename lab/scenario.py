@@ -139,6 +139,17 @@ def substitute(text, topo):
     return _PLACEHOLDER.sub(resolve, _NODE.sub(node, text))
 
 
+def placeholders(topo):
+    """Every placeholder `substitute` resolves in `topo`, with its value: ${public:<site>}, ${ip:<host>} (nodes and
+    gateways), and ${node|server|cluster:<site>} for sites with a K3s node. A nested ${ip:${node:a}} resolves the
+    inner one first, as `substitute` does. The Academy shows lab texts with these (opsforge academy state)."""
+    keys = [f"${{public:{site}}}" for site in topo["sites"]]
+    keys += [f"${{ip:{host}}}" for host in [*topo["nodes"], *(f"{site}-gw" for site in topo["sites"])]]
+    keys += [f"${{{kind}:{site}}}" for site in topo["sites"] for kind in ("node", "server", "cluster")
+             if any(n["site"] == site and n["role"] in render.K3S_ROLES for n in topo["nodes"].values())]
+    return {k: substitute(k, topo) for k in keys}
+
+
 def parse_condition(condition):
     """'>= base.p50_ms * 2' -> ('>=', 'base.p50_ms * 2'); the right side is checked when evaluated."""
     m = re.fullmatch(r"\s*(<=|>=|==|!=|<|>)\s*(.+?)\s*", condition)

@@ -100,7 +100,7 @@ func (s *server) StartLab(ctx context.Context, req StartLabRequestObject) (Start
 	if err != nil {
 		return nil, err
 	}
-	return StartLab202JSONResponse{Attempt: labAttempt(v), Operation: o}, nil
+	return StartLab202JSONResponse{Attempt: labAttempt(v, s.resolver(ctx, v.Namespace)), Operation: o}, nil
 }
 
 // GetCurrentAttempt is the learner's running lab, or null.
@@ -115,7 +115,7 @@ func (s *server) GetCurrentAttempt(ctx context.Context, _ GetCurrentAttemptReque
 	}
 	out := GetCurrentAttempt200JSONResponse{}
 	if ok {
-		a := labAttempt(v)
+		a := labAttempt(v, s.resolver(ctx, v.Namespace))
 		out.Attempt = &a
 	}
 	return out, nil
@@ -134,7 +134,7 @@ func (s *server) GetAttempt(ctx context.Context, req GetAttemptRequestObject) (G
 	if err != nil {
 		return nil, err
 	}
-	return GetAttempt200JSONResponse(labAttempt(v)), nil
+	return GetAttempt200JSONResponse(labAttempt(v, s.resolver(ctx, v.Namespace))), nil
 }
 
 // CheckStep checks the next step.
@@ -175,7 +175,8 @@ func (s *server) ShowHint(ctx context.Context, req ShowHintRequestObject) (ShowH
 		}
 		return nil, err
 	}
-	return ShowHint200JSONResponse{Step: h.Step, Index: h.Index, Hint: h.Text, HintsUsed: h.HintsUsed}, nil
+	return ShowHint200JSONResponse{Step: h.Step, Index: h.Index, Hint: s.resolver(ctx, h.Namespace)(h.Text),
+		HintsUsed: h.HintsUsed}, nil
 }
 
 // ResetLab sets the lab up again.
@@ -249,7 +250,8 @@ func operation(op operations.Operation) (Operation, error) {
 	return out, nil
 }
 
-func labAttempt(v labsession.View) LabAttempt {
+// labAttempt is an attempt for the page; resolve resolves its hints' placeholders.
+func labAttempt(v labsession.View, resolve func(string) string) LabAttempt {
 	out := LabAttempt{Id: v.ID, Lab: v.Lab, Course: opt(v.Course), Item: opt(v.Item),
 		Status: AttemptStatus(v.Status), StartedAt: v.StartedAt, FinishedAt: v.FinishedAt, Namespace: opt(v.Namespace),
 		Workspace: v.Workspace, HintsUsed: v.HintsUsed, Error: opt(v.Error), CurrentStep: opt(v.Current),
@@ -258,7 +260,11 @@ func labAttempt(v labsession.View) LabAttempt {
 		out.Xp, out.Seconds = &v.XP, &v.Seconds
 	}
 	for i, st := range v.Steps {
-		out.Steps[i] = LabStepState{Id: st.ID, Passed: st.Passed, Hints: strs(st.Hints)}
+		hints := make(Strings, len(st.Hints))
+		for j, h := range st.Hints {
+			hints[j] = resolve(h)
+		}
+		out.Steps[i] = LabStepState{Id: st.ID, Passed: st.Passed, Hints: hints}
 	}
 	return out
 }

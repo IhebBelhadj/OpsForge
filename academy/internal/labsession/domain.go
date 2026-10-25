@@ -281,8 +281,10 @@ type Outcome struct {
 	Error   *string           `json:"error"`
 }
 
-// HintShown is a hint the learner opened; HintsUsed is the attempt's count after it.
+// HintShown is a hint the learner opened; HintsUsed is the attempt's count after it, Namespace the attempt's
+// (its "${ns}").
 type HintShown struct {
+	Namespace string
 	Step      string
 	Index     int
 	Text      string

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
+	"github.com/IhebBelhadj/opsforge/academy/internal/legacy"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 )
 
@@ -74,5 +76,40 @@ func TestVersionCommand(t *testing.T) {
 func TestBadFlagsExitWithUsageError(t *testing.T) {
 	if code := run([]string{"serve", "--addr", "0.0.0.0:1"}); code != 2 {
 		t.Fatalf("exit %d", code)
+	}
+}
+
+// migrate-legacy through the wired graph: the Phase 10 fixture, then the same file again.
+func TestMigrateLegacyImportsOnce(t *testing.T) {
+	dir := t.TempDir()
+	script, err := os.ReadFile("../../testdata/labs.phase10.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyDB := filepath.Join(dir, "labs.db")
+	db, err := sql.Open("sqlite", "file:"+legacyDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(script)); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	cfg, err := config.Load([]string{"--root", dir, "--legacy-db", legacyDB, "--log-level", "error"},
+		func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	app, cleanup, err := initApp(ctx, cfg, platform.Build{Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if r, err := app.MigrateLegacy(ctx); err != nil || r.Attempts != 2 || r.Events != 7 || r.Awards != 1 {
+		t.Fatalf("first run: %+v %v", r, err)
+	}
+	if r, err := app.MigrateLegacy(ctx); err != nil || r != (legacy.Report{}) {
+		t.Fatalf("second run: %+v %v", r, err)
 	}
 }

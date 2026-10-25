@@ -24,6 +24,16 @@ func (m memReader) Live(_ context.Context, kind catalog.Kind, key string) (catal
 	return catalog.Entry{}, catalog.ErrNotFound
 }
 
+func (m memReader) List(_ context.Context, kind catalog.Kind) ([]catalog.Entry, error) {
+	var out []catalog.Entry
+	for _, e := range m.entries {
+		if e.Kind == kind {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func (m memReader) LiveList(_ context.Context, kind catalog.Kind) ([]catalog.Entry, error) {
 	var out []catalog.Entry
 	for _, e := range m.entries {

@@ -22,6 +22,9 @@ import (
 	identitysqlite "github.com/IhebBelhadj/opsforge/academy/internal/identity/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/labsession"
 	labsqlite "github.com/IhebBelhadj/opsforge/academy/internal/labsession/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/labstate"
+	"github.com/IhebBelhadj/opsforge/academy/internal/legacy"
+	legacysqlite "github.com/IhebBelhadj/opsforge/academy/internal/legacy/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/operations"
 	operationssqlite "github.com/IhebBelhadj/opsforge/academy/internal/operations/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli"
@@ -31,6 +34,8 @@ import (
 	progresssqlite "github.com/IhebBelhadj/opsforge/academy/internal/progress/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/quiz"
 	quizsqlite "github.com/IhebBelhadj/opsforge/academy/internal/quiz/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/rewards"
+	rewardssqlite "github.com/IhebBelhadj/opsforge/academy/internal/rewards/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/terminal"
 	"github.com/IhebBelhadj/opsforge/academy/internal/terminal/ptyshell"
 	"github.com/IhebBelhadj/opsforge/academy/internal/workspace"
@@ -45,11 +50,35 @@ type App struct {
 	log       *slog.Logger
 	handler   http.Handler
 	terminals *terminal.Service
-	importer  *contentimport.Service
+	importer  *importer
 	hub       *platform.Hub
 	ops       *operations.Service
 	labs      *labsession.Service
+	ids       *identity.Service
+	legacy    *legacy.Service
+	progress  *progress.Service
+	rewards   *rewards.Service
 	ready     chan string // receives the listen address once serving (tests use port 0)
+}
+
+// MigrateLegacy imports Phase 10's labs.db (cfg.LegacyDB) for the local user, then records the courses those
+// passes completed and evaluates the badges (the imported rows came without events).
+func (a *App) MigrateLegacy(ctx context.Context) (legacy.Report, error) {
+	user, err := a.ids.Local(ctx)
+	if err != nil {
+		return legacy.Report{}, err
+	}
+	report, err := a.legacy.Migrate(ctx, a.cfg.LegacyDB, user.ID)
+	if err != nil {
+		return report, err
+	}
+	if err := a.progress.Refresh(ctx, user.ID); err != nil {
+		return report, fmt.Errorf("course completions: %w", err)
+	}
+	if _, err := a.rewards.Evaluate(ctx, user.ID); err != nil {
+		return report, fmt.Errorf("badges: %w", err)
+	}
+	return report, nil
 }
 
 // Run imports the packs, then serves until ctx ends, then stops accepting and gives running requests
@@ -168,6 +197,32 @@ func provideImporter(toolchain *opsforgecli.Runner, repo *catalogsqlite.Repo, cl
 	return contentimport.NewService(toolchain, repo, clock)
 }
 
+// importer imports the packs, then evaluates every user's badges: a badge added or changed by the import is
+// awarded for what was done before it.
+type importer struct {
+	content *contentimport.Service
+	rewards *rewards.Service
+	log     *slog.Logger
+}
+
+func provideRewardingImporter(content *contentimport.Service, awards *rewards.Service, log *slog.Logger) *importer {
+	return &importer{content: content, rewards: awards, log: log}
+}
+
+// Import imports, then awards; a failed evaluation is logged (the import itself happened).
+func (i *importer) Import(ctx context.Context) (contentimport.Report, error) {
+	report, err := i.content.Import(ctx)
+	if err != nil {
+		return report, err
+	}
+	if n, err := i.rewards.EvaluateAll(ctx); err != nil {
+		i.log.Error("evaluating badges after the import", slog.Any("error", err))
+	} else if n > 0 {
+		i.log.Info("badges awarded after the import", slog.Int("count", n))
+	}
+	return report, nil
+}
+
 func provideCatalog(repo *catalogsqlite.Repo) *catalog.Service { return catalog.NewService(repo) }
 
 func provideOperations(store *sqlite.Store, hub *platform.Hub, clock platform.Clock, log *slog.Logger) *operations.Service {
@@ -215,19 +270,63 @@ func provideProgress(store *sqlite.Store, courses *catalog.Service, events *hist
 	return svc
 }
 
+// provideRewards reads the history for the badge rules from the modules that record it (lab and quiz passes,
+// completed courses) and subscribes to the history (an event that may earn a badge evaluates the user's badges).
+func provideRewards(store *sqlite.Store, courses *catalog.Service, events *history.Service, clock platform.Clock,
+	log *slog.Logger, labs *labsession.Service, quizzes *quiz.Service, learning *progress.Service,
+	ids *identity.Service) *rewards.Service {
+	sources := rewards.Sources{
+		Labs: func(ctx context.Context, user int64) ([]rewards.LabPass, error) {
+			passed, err := labs.Passed(ctx, user)
+			out := make([]rewards.LabPass, len(passed))
+			for i, a := range passed {
+				out[i] = rewards.LabPass{Lab: a.Lab, Hints: a.HintsUsed, Seconds: a.Seconds, XP: a.XP}
+			}
+			return out, err
+		},
+		Quizzes: func(ctx context.Context, user int64) ([]rewards.QuizPass, error) {
+			passed, err := quizzes.Passed(ctx, user)
+			out := make([]rewards.QuizPass, len(passed))
+			for i, a := range passed {
+				out[i] = rewards.QuizPass{Course: a.Course, Item: a.Item, XP: a.XP}
+			}
+			return out, err
+		},
+		Courses: learning.CompletedCourses,
+		Users:   ids.UserIDs,
+	}
+	svc := rewards.NewService(rewardssqlite.NewRepo(store.DB), courses, sources, events, clock, log)
+	events.Subscribe(svc.OnEvent)
+	return svc
+}
+
+// provideLabState caches the toolchain's state; a lab event invalidates it.
+func provideLabState(toolchain *opsforgecli.Runner, events *history.Service, clock platform.Clock) *labstate.Service {
+	svc := labstate.NewService(toolchain, clock)
+	events.Subscribe(svc.OnEvent)
+	return svc
+}
+
 func provideHandler(build platform.Build, checks []httpapi.ReadinessCheck, shells terminal.Shells,
-	ids *identity.Service, importer *contentimport.Service, courses *catalog.Service, events *history.Service,
+	ids *identity.Service, importer *importer, courses *catalog.Service, events *history.Service,
 	hub *platform.Hub, learning *progress.Service, quizzes *quiz.Service, labs *labsession.Service,
-	ops *operations.Service, spaces *workspace.Service, log *slog.Logger) http.Handler {
+	ops *operations.Service, spaces *workspace.Service, awards *rewards.Service, state *labstate.Service,
+	log *slog.Logger) http.Handler {
 	return httpapi.NewHandler(httpapi.Deps{
 		Build: build, Readiness: checks, Web: web.FS(), Log: log, Terminals: shells, Identity: ids,
 		Importer: importer, Catalog: courses, History: events, Streams: hub,
-		Progress: learning, Quizzes: quizzes, Labs: labs, Operations: ops, Workspaces: spaces,
+		Progress: learning, Quizzes: quizzes, Labs: labs, Operations: ops, Workspaces: spaces, Awards: awards,
+		Lab: state,
 	})
 }
 
+func provideLegacy(store *sqlite.Store) *legacy.Service {
+	return legacy.NewService(legacysqlite.Reader{}, legacysqlite.NewStore(store.DB))
+}
+
 func newApp(cfg config.Config, log *slog.Logger, handler http.Handler, terminals *terminal.Service,
-	importer *contentimport.Service, hub *platform.Hub, ops *operations.Service, labs *labsession.Service) *App {
+	importer *importer, hub *platform.Hub, ops *operations.Service, labs *labsession.Service,
+	ids *identity.Service, old *legacy.Service, learning *progress.Service, awards *rewards.Service) *App {
 	return &App{cfg: cfg, log: log, handler: handler, terminals: terminals, importer: importer, hub: hub, ops: ops,
-		labs: labs}
+		labs: labs, ids: ids, legacy: old, progress: learning, rewards: awards}
 }

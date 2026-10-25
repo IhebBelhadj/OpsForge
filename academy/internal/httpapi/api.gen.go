@@ -110,13 +110,13 @@ func (e CourseSummaryLevel) Valid() bool {
 
 // Defines values for HealthStatus.
 const (
-	Ok HealthStatus = "ok"
+	HealthStatusOk HealthStatus = "ok"
 )
 
 // Valid indicates whether the value is a known member of the HealthStatus enum.
 func (e HealthStatus) Valid() bool {
 	switch e {
-	case Ok:
+	case HealthStatusOk:
 		return true
 	default:
 		return false
@@ -162,6 +162,27 @@ func (e ItemType) Valid() bool {
 	case ItemTypeLecture:
 		return true
 	case ItemTypeQuiz:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LabLinkCondition.
+const (
+	LabLinkConditionChanged LabLinkCondition = "changed"
+	LabLinkConditionCut     LabLinkCondition = "cut"
+	LabLinkConditionOk      LabLinkCondition = "ok"
+)
+
+// Valid indicates whether the value is a known member of the LabLinkCondition enum.
+func (e LabLinkCondition) Valid() bool {
+	switch e {
+	case LabLinkConditionChanged:
+		return true
+	case LabLinkConditionCut:
+		return true
+	case LabLinkConditionOk:
 		return true
 	default:
 		return false
@@ -293,6 +314,22 @@ func (e StepCheckType) Valid() bool {
 
 // AttemptStatus setup while its setup runs; failed when the setup failed
 type AttemptStatus string
+
+// Badge defines model for Badge.
+type Badge struct {
+	AwardedAt *time.Time `json:"awarded_at"`
+
+	// Courses The courses that award it on completion
+	Courses     []string `json:"courses"`
+	Description string   `json:"description"`
+	Icon        *string  `json:"icon"`
+	Id          string   `json:"id"`
+	Pack        string   `json:"pack"`
+
+	// Retired Removed from its pack; shown only when awarded
+	Retired bool   `json:"retired"`
+	Title   string `json:"title"`
+}
 
 // ChallengeView defines model for ChallengeView.
 type ChallengeView struct {
@@ -587,6 +624,27 @@ type LabAttempt struct {
 	Xp *int `json:"xp"`
 }
 
+// LabLink defines model for LabLink.
+type LabLink struct {
+	// Condition cut: 100 % loss; changed: live differs from desired
+	Condition LabLinkCondition `json:"condition"`
+	Desired   LinkConditions   `json:"desired"`
+	Live      LinkConditions   `json:"live"`
+}
+
+// LabLinkCondition cut: 100 % loss; changed: live differs from desired
+type LabLinkCondition string
+
+// LabNode defines model for LabNode.
+type LabNode struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
+	Site string `json:"site"`
+
+	// Status Incus status (Running, Stopped, ...) or Missing
+	Status string `json:"status"`
+}
+
 // LabOutcome What a lab operation did. status is the attempt's after it; step, passed, explain and results belong to a check; xp and seconds to a pass; error is a step that failed (the setup, a probe that could not run, the teardown).
 type LabOutcome struct {
 	Attempt int64   `json:"attempt"`
@@ -604,6 +662,12 @@ type LabOutcome struct {
 	Xp     *int          `json:"xp"`
 }
 
+// LabSite defines model for LabSite.
+type LabSite struct {
+	PublicIp string `json:"public_ip"`
+	Vpc      string `json:"vpc"`
+}
+
 // LabStart defines model for LabStart.
 type LabStart struct {
 	// Course The course the lab is started from
@@ -615,6 +679,27 @@ type LabStart struct {
 type LabStarted struct {
 	Attempt   LabAttempt `json:"attempt"`
 	Operation Operation  `json:"operation"`
+}
+
+// LabState defines model for LabState.
+type LabState struct {
+	// Error What could not be read
+	Error *string `json:"error"`
+
+	// Fault A fault is in place (heal undoes it)
+	Fault bool `json:"fault"`
+
+	// Layout The lab layout it needs; null for any
+	Layout *Layout            `json:"layout"`
+	Links  map[string]LabLink `json:"links"`
+	Nodes  []LabNode          `json:"nodes"`
+	Sites  map[string]LabSite `json:"sites"`
+
+	// Topology The topology file
+	Topology string `json:"topology"`
+
+	// Up wan-core is running
+	Up bool `json:"up"`
 }
 
 // LabStep defines model for LabStep.
@@ -679,6 +764,15 @@ type Layout string
 type Lecture struct {
 	Markdown  string     `json:"markdown"`
 	Resources []Resource `json:"resources"`
+}
+
+// LinkConditions defines model for LinkConditions.
+type LinkConditions struct {
+	Jitter *string `json:"jitter,omitempty"`
+	Loss   *string `json:"loss,omitempty"`
+	Mtu    *int    `json:"mtu,omitempty"`
+	Rate   *string `json:"rate,omitempty"`
+	Rtt    string  `json:"rtt"`
 }
 
 // Me defines model for Me.
@@ -863,6 +957,12 @@ type Resource struct {
 	Url string `json:"url"`
 }
 
+// Rewards defines model for Rewards.
+type Rewards struct {
+	Badges []Badge `json:"badges"`
+	Xp     int     `json:"xp"`
+}
+
 // Section defines model for Section.
 type Section struct {
 	Items []ItemRef `json:"items"`
@@ -1026,6 +1126,9 @@ type ServerInterface interface {
 	// ResetLab Set the lab up again
 	// (POST /api/v1/attempts/{attempt}/reset)
 	ResetLab(w http.ResponseWriter, r *http.Request, attempt int64)
+	// GetRewards The learner's XP and badges
+	// (GET /api/v1/badges)
+	GetRewards(w http.ResponseWriter, r *http.Request)
 	// ListCourses The catalogue
 	// (GET /api/v1/courses)
 	ListCourses(w http.ResponseWriter, r *http.Request)
@@ -1056,6 +1159,9 @@ type ServerInterface interface {
 	// GetCourseProgress Where the learner stands in a course
 	// (GET /api/v1/courses/{course}/progress)
 	GetCourseProgress(w http.ResponseWriter, r *http.Request, course string)
+	// GetLabState The lab now
+	// (GET /api/v1/lab/state)
+	GetLabState(w http.ResponseWriter, r *http.Request)
 	// StartLab Start a lab
 	// (POST /api/v1/labs/{lab}/attempts)
 	StartLab(w http.ResponseWriter, r *http.Request, lab string)
@@ -1261,6 +1367,20 @@ func (siw *ServerInterfaceWrapper) ResetLab(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResetLab(w, r, attempt)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRewards operation middleware
+func (siw *ServerInterfaceWrapper) GetRewards(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRewards(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1572,6 +1692,20 @@ func (siw *ServerInterfaceWrapper) GetCourseProgress(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCourseProgress(w, r, course)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLabState operation middleware
+func (siw *ServerInterfaceWrapper) GetLabState(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLabState(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2076,6 +2210,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/courses/{course}", wrapper.GetCourse)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/courses/{course}/items/{item}", wrapper.GetItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/progress", wrapper.GetProgressOverview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/badges", wrapper.GetRewards)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/courses/{course}/progress", wrapper.GetCourseProgress)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/courses/{course}/items/{item}/complete", wrapper.CompleteLecture)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/courses/{course}/items/{item}/visit", wrapper.VisitItem)
@@ -2092,6 +2227,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/attempts/{attempt}/hints", wrapper.ShowHint)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/attempts/{attempt}/reset", wrapper.ResetLab)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/attempts/{attempt}/abandon", wrapper.AbandonLab)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/lab/state", wrapper.GetLabState)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/operations/{operation}", wrapper.GetOperation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/workspaces/{workspace}/tree", wrapper.GetWorkspaceTree)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/workspaces/{workspace}/files", wrapper.DeleteWorkspaceFile)
@@ -2619,6 +2755,43 @@ func (response ResetLab409ApplicationProblemPlusJSONResponse) VisitResetLabRespo
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRewardsRequestObject struct {
+}
+
+type GetRewardsResponseObject interface {
+	VisitGetRewardsResponse(w http.ResponseWriter) error
+}
+
+type GetRewards200JSONResponse Rewards
+
+func (response GetRewards200JSONResponse) VisitGetRewardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRewards401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response GetRewards401ApplicationProblemPlusJSONResponse) VisitGetRewardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3264,6 +3437,57 @@ func (response GetCourseProgress404ApplicationProblemPlusJSONResponse) VisitGetC
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLabStateRequestObject struct {
+}
+
+type GetLabStateResponseObject interface {
+	VisitGetLabStateResponse(w http.ResponseWriter) error
+}
+
+type GetLabState200JSONResponse LabState
+
+func (response GetLabState200JSONResponse) VisitGetLabStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLabState401ApplicationProblemPlusJSONResponse struct {
+	NoSessionApplicationProblemPlusJSONResponse
+}
+
+func (response GetLabState401ApplicationProblemPlusJSONResponse) VisitGetLabStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLabState503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetLabState503ApplicationProblemPlusJSONResponse) VisitGetLabStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4275,6 +4499,9 @@ type StrictServerInterface interface {
 	// ResetLab Set the lab up again
 	// (POST /api/v1/attempts/{attempt}/reset)
 	ResetLab(ctx context.Context, request ResetLabRequestObject) (ResetLabResponseObject, error)
+	// GetRewards The learner's XP and badges
+	// (GET /api/v1/badges)
+	GetRewards(ctx context.Context, request GetRewardsRequestObject) (GetRewardsResponseObject, error)
 	// ListCourses The catalogue
 	// (GET /api/v1/courses)
 	ListCourses(ctx context.Context, request ListCoursesRequestObject) (ListCoursesResponseObject, error)
@@ -4305,6 +4532,9 @@ type StrictServerInterface interface {
 	// GetCourseProgress Where the learner stands in a course
 	// (GET /api/v1/courses/{course}/progress)
 	GetCourseProgress(ctx context.Context, request GetCourseProgressRequestObject) (GetCourseProgressResponseObject, error)
+	// GetLabState The lab now
+	// (GET /api/v1/lab/state)
+	GetLabState(ctx context.Context, request GetLabStateRequestObject) (GetLabStateResponseObject, error)
 	// StartLab Start a lab
 	// (POST /api/v1/labs/{lab}/attempts)
 	StartLab(ctx context.Context, request StartLabRequestObject) (StartLabResponseObject, error)
@@ -4583,6 +4813,30 @@ func (sh *strictHandler) ResetLab(w http.ResponseWriter, r *http.Request, attemp
 	}
 }
 
+// GetRewards operation middleware
+func (sh *strictHandler) GetRewards(w http.ResponseWriter, r *http.Request) {
+	var request GetRewardsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRewards(ctx, request.(GetRewardsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRewards")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRewardsResponseObject); ok {
+		if err := validResponse.VisitGetRewardsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListCourses operation middleware
 func (sh *strictHandler) ListCourses(w http.ResponseWriter, r *http.Request) {
 	var request ListCoursesRequestObject
@@ -4848,6 +5102,30 @@ func (sh *strictHandler) GetCourseProgress(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCourseProgressResponseObject); ok {
 		if err := validResponse.VisitGetCourseProgressResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLabState operation middleware
+func (sh *strictHandler) GetLabState(w http.ResponseWriter, r *http.Request) {
+	var request GetLabStateRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLabState(ctx, request.(GetLabStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLabState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLabStateResponseObject); ok {
+		if err := validResponse.VisitGetLabStateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

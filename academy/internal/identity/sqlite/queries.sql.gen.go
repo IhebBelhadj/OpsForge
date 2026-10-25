@@ -93,3 +93,30 @@ func (q *Queries) UserByName(ctx context.Context, name string) (User, error) {
 	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
 	return i, err
 }
+
+const userIDs = `-- name: UserIDs :many
+SELECT id FROM users ORDER BY id
+`
+
+func (q *Queries) UserIDs(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

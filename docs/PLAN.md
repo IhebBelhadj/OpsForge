@@ -736,6 +736,46 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
   for non-loopback names: DNS rebinding) and the WebSocket Origin check came with it. Live on the built binary:
   `opsforge academy state` typed in a browser terminal answers in 0.6 s; 17.8 MiB RSS with 4 shells; SIGTERM hangs up
   every shell.
+- [x] **M1 platform core (done 2026-10-25).** Modules identity, catalog, contentimport, history (event bus + SSE),
+  progress, quiz, operations, workspace, labsession, then **rewards** (awards only; XP read from the passes; Phase
+  10's rule types + course badges; evaluated after each rewarding event and for every user after each import, so new
+  rules are retroactive; `GET /api/v1/badges`), **labstate** (`GET /api/v1/lab/state`, 5 s cache invalidated by lab
+  events; lab texts resolved with the `placeholders` table `opsforge academy state` now returns, computed by
+  `scenario.substitute` itself, plus `${ns}` of the learner's attempt) and **`academy migrate-legacy`** (Phase 10's
+  labs.db in one transaction, imported ids remembered so a re-run imports only what is new).
+  **Acceptance met 2026-10-25 (stretched, live), through the API with the learner's commands:** a locked lab refused
+  (409 `/problems/lab-locked`), an attempt abandoned, then 6/6 labs passed: one hint (Regions and latency, 90 XP), the
+  "not yet" path answered in ~1 s, a reset in Nodes and regions started the steps over; Routing around failure
+  rerouted in ~11 s; Losing a site NotReady 43 s after the partition, pods moved after 63 s more, back Ready 16 s after
+  `heal`. 790 XP (Phase 10's 800 less the hint), 6/6 badges, the temporary course complete; importing unchanged packs
+  changed nothing; editing a lab flagged exactly its pass, reverting cleared it; a badge added afterwards was awarded
+  from history and stayed (retired) when removed. `verify` green afterwards. Server 48 MiB RSS. The real Phase 10
+  labs.db migrated: 9 attempts, 38 step results, 62 events, 6 awards; 800 XP and 6/6 badges as in Phase 10; a second
+  run imported nothing. `make check` and `make e2e` (16/16) green.
+- [ ] **Split into two repositories (decided 2026-10-25), right after M1's acceptance run, before M2.** OpsForge
+  stays the infra lab for developers (Python CLI, Incus, Ansible, scenarios); OpsForge Academy becomes its own repo
+  (Go platform, web app, course and lab content) that drives an installed `opsforge` only through the JSON contract.
+  Why: different audiences and toolchains (an infra user should not need Go/pnpm/Playwright), independent releases,
+  a one-way dependency, and the contract (`contract: N`, `toolchain.schema.json`, golden documents) is already the
+  boundary. Why not before: the rest of M1 still changes the contract, and both sides change in one commit until it
+  is frozen. Until the split, keep coupling from growing: lab-side features only through `--json` commands (Go never
+  reads `.opsforge/` or `topology.yml` itself), content stays out of `lab/` code.
+  Steps:
+  - Freeze contract v1 once the six-lab acceptance run passes.
+  - Rename the toolchain commands to a neutral name (`opsforge academy …` → e.g. `opsforge exec … --json`), keeping
+    the generic primitives (`run`/`probe`/`heal`, setup/teardown, `lab-*`/`ch-*` namespaces, `state`) in OpsForge.
+  - Content to Academy: `labs/`, `courses/`, the course compiler (`lab/academy.py`, `lab/course.schema.json`, the
+    pack logic of `lab/labs.py` it needs); decide whether it stays Python (a tool in the Academy repo) or is ported
+    to Go.
+  - Academy config: split `Root` into the OpsForge install (toolchain path, state dir) and the content root.
+  - Phase 10 leftovers (`lab/labserver.py`, `lab/labsdb.py`, `lab/web/`, `opsforge labs`/`serve`) deleted first, so
+    neither repo inherits them; `migrate-legacy` runs before that.
+  - Contract tests across repos: OpsForge publishes the schemas and golden documents with each tag; Academy pins an
+    OpsForge version and checks against it (the e2e fake toolchain stays in Academy).
+  - Move `academy/`, `web/`, content and `docs/courses/` with `git filter-repo` (history kept); split CI, Makefile,
+    README and CLAUDE.md; tag OpsForge `v1.0`.
+  - **Done when:** each repo's `make check` and CI are green on its own; Academy against a tagged OpsForge passes
+    the six-lab run on the live lab; OpsForge clones and runs with no Go/Node toolchain.
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets

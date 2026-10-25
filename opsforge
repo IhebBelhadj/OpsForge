@@ -1949,12 +1949,13 @@ def lab_state():
     except (LabError, OSError):
         topo = None
     state = {"up": False, "error": None, "topology": TOPOLOGY.name, "layout": None, "sites": {},
-             "links": {}, "nodes": [], "fault": False}
+             "links": {}, "nodes": [], "fault": False, "placeholders": {}}
     if topo is None:
         state["error"] = f"{TOPOLOGY.name} is invalid: run ./opsforge validate"
         return state
     state["layout"] = scenario.layout(topo)
     state["sites"] = {name: {"public_ip": s["public_ip"], "vpc": s["vpc"]} for name, s in topo["sites"].items()}
+    state["placeholders"] = scenario.placeholders(topo)
     try:
         insts = {i["name"]: i for i in lab_instances()}
     except (OSError, subprocess.SubprocessError) as e:
