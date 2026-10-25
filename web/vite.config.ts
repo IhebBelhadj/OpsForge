@@ -8,6 +8,14 @@ import { defineConfig } from "vite";
 // `pnpm dev` proxies the platform's routes to a running `academy serve` (ACADEMY_URL, default its usual address).
 const academy = process.env.ACADEMY_URL ?? "http://127.0.0.1:8090";
 
+// The platform answers only its own host and origin (the terminal is a shell), so the proxy speaks as the page served
+// by the platform would: its Host, and its Origin on changes and WebSocket upgrades.
+const asAcademy = {
+  target: academy,
+  changeOrigin: true,
+  headers: { origin: academy },
+};
+
 export default defineConfig({
   plugins: [
     // Before react(): generates src/routeTree.gen.ts from src/routes/ and splits each route into its own chunk
@@ -18,10 +26,10 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     proxy: {
-      "/api": academy,
-      "/healthz": academy,
-      "/readyz": academy,
-      "/ws": { target: academy, ws: true },
+      "/api": asAcademy,
+      "/healthz": asAcademy,
+      "/readyz": asAcademy,
+      "/ws": { ...asAcademy, ws: true },
     },
   },
   build: { outDir: "dist", emptyOutDir: true },

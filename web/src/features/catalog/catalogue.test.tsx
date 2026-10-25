@@ -7,7 +7,7 @@ import { renderRoute } from "@/test/render";
 
 describe("the catalogue", () => {
   it("shows each live course as a card linking to its page", async () => {
-    renderRoute("/");
+    renderRoute("/courses");
     const link = await screen.findByRole("link", { name: "Kubernetes introduction" });
     expect(link).toHaveAttribute("href", "/courses/k8s-intro");
     const card = link.closest("li") as HTMLElement;
@@ -17,7 +17,7 @@ describe("the catalogue", () => {
 
   it("filters by level", async () => {
     const user = userEvent.setup();
-    renderRoute("/");
+    renderRoute("/courses");
     await screen.findByRole("link", { name: "Kubernetes introduction" });
     await user.click(screen.getByRole("combobox", { name: "Level" }));
     await user.click(await screen.findByRole("option", { name: "Advanced" }));
@@ -27,7 +27,7 @@ describe("the catalogue", () => {
 
   it("says where courses come from when there are none", async () => {
     server.use(http.get("*/api/v1/courses", () => HttpResponse.json({ courses: [] })));
-    renderRoute("/");
+    renderRoute("/courses");
     expect(await screen.findByText(/No courses yet/)).toBeInTheDocument();
   });
 });

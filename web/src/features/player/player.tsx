@@ -21,11 +21,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChallengeView } from "@/features/challenge";
+import { LabView } from "@/features/lab";
 import { LectureView } from "@/features/lecture";
+import { QuizView } from "@/features/quiz";
+import { cn } from "@/lib/utils";
 import { placed, type Placed, typeName } from "@/lib/course";
 import { duration } from "@/lib/format";
-
-import { ChallengePreview, LabPreview, QuizPreview } from "./previews";
 
 /** The course player (design.md §3): top bar with the course and Prev/Next, the item, the curriculum on the right. */
 export function Player({ courseId, itemId }: { courseId: string; itemId: string }) {
@@ -47,7 +49,7 @@ function Missing({ what, error }: { what: string; error: Error | "not-found" }) 
           <h1 className="font-serif text-3xl">No such {what}</h1>
           <p className="mt-3 text-ink-soft">
             It is not in the catalogue, or was removed from the packs.{" "}
-            <Link to="/" className="underline underline-offset-4">
+            <Link to="/courses" className="underline underline-offset-4">
               Back to the courses
             </Link>
           </p>
@@ -74,7 +76,19 @@ function Loaded({ course, itemId }: { course: Course; itemId: string }) {
   const prev = at > 0 ? items[at - 1] : undefined;
   const next = at >= 0 ? items[at + 1] : undefined;
   const navigate = useNavigate();
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, setOpen } = useSidebar();
+  // Labs and challenges need the width (design.md §5): the course content folds away, the item fills the window
+  const workspace = current?.item.type === "lab" || current?.item.type === "challenge";
+  useEffect(() => {
+    setOpen(!workspace);
+  }, [workspace, setOpen]);
+  const nextButton = next ? (
+    <Button asChild>
+      <Link to="/learn/$course/$item" params={{ course: course.id, item: next.item.id }}>
+        Next: {typeName[next.item.type]} {next.number} <ChevronRight aria-hidden />
+      </Link>
+    </Button>
+  ) : undefined;
 
   // ← and → as on Udemy, unless the learner is typing
   useEffect(() => {
@@ -91,7 +105,7 @@ function Loaded({ course, itemId }: { course: Course; itemId: string }) {
 
   return (
     <>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={cn("flex min-w-0 flex-1 flex-col", workspace && "h-svh")}>
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b-4 border-ink bg-enamel px-4 py-2">
           <Link
             to="/courses/$course"
@@ -108,16 +122,14 @@ function Loaded({ course, itemId }: { course: Course; itemId: string }) {
           <ThemeToggle />
           <ContentToggle />
         </header>
-        <main id="main" className="flex-1 px-4 py-8 sm:px-8">
-          {current ? <ItemView course={course} placedItem={current} /> : <Missing what="item" error="not-found" />}
-          {next ? (
-            <div className="mx-auto mt-12 flex max-w-[70ch] justify-end">
-              <Button asChild>
-                <Link to="/learn/$course/$item" params={{ course: course.id, item: next.item.id }}>
-                  Next: {typeName[next.item.type]} {next.number} <ChevronRight aria-hidden />
-                </Link>
-              </Button>
-            </div>
+        <main id="main" className={workspace ? "min-h-0 flex-1" : "flex-1 px-4 py-8 sm:px-8"}>
+          {current ? (
+            <ItemView course={course} placedItem={current} next={nextButton} />
+          ) : (
+            <Missing what="item" error="not-found" />
+          )}
+          {nextButton && current?.item.type === "lecture" ? (
+            <div className="mx-auto mt-12 flex max-w-[70ch] justify-end">{nextButton}</div>
           ) : null}
         </main>
       </div>
@@ -205,20 +217,20 @@ function ContentToggle() {
   );
 }
 
-function ItemView({ course, placedItem }: { course: Course; placedItem: Placed }) {
+function ItemView({ course, placedItem, next }: { course: Course; placedItem: Placed; next: React.ReactNode }) {
   const item = useQuery(queries.item(course.id, placedItem.item.id));
   if (item.isPending)
     return <Skeleton aria-label="Loading the item" className="mx-auto h-96 max-w-[70ch] rounded-md" />;
   if (item.isError) return <Missing what="item" error={item.error} />;
-  const props = { item: item.data, number: placedItem.number };
+  const props = { item: item.data, number: placedItem.number, next };
   switch (item.data.type) {
     case "lecture":
-      return <LectureView {...props} courseDescription={course.description} />;
+      return <LectureView item={item.data} number={placedItem.number} courseDescription={course.description} />;
     case "quiz":
-      return <QuizPreview {...props} />;
+      return <QuizView {...props} />;
     case "lab":
-      return <LabPreview {...props} />;
+      return <LabView {...props} />;
     case "challenge":
-      return <ChallengePreview {...props} />;
+      return <ChallengeView {...props} />;
   }
 }

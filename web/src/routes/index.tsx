@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { queries } from "@/api/client";
-import { Catalogue } from "@/features/catalog";
+import { Home } from "@/features/home";
 
 export const Route = createFileRoute("/")({
-  loader: ({ context }) => context.queryClient.query(queries.courses()).catch(() => undefined),
-  component: Catalogue,
+  component: Home,
 });

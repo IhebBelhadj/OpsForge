@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // player. The page signs itself in (no cookie at the start).
 
 test("from the catalogue through a course in the player", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/courses");
   await page.getByRole("link", { name: "Kubernetes introduction" }).click();
   await expect(page).toHaveURL("/courses/k8s-intro");
   await expect(page.getByRole("heading", { level: 1, name: "Kubernetes introduction" })).toBeVisible();

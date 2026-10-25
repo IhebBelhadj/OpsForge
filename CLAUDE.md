@@ -217,13 +217,20 @@ reboot-survival check).
   CLI may write a wrong `cn` import: check every `shadcn add`. MSW 3: `onUnhandledFrame`. The API client looks up
   `fetch` per call (MSW). Theme = `data-theme` on `<html>` (none = system); `dark:` utilities follow the same rule.
   A Go test that re-executes itself as a fake CLI sets `GORACE=atexit_sleep_ms=0` (else +1 s per call under -race).
-- Academy web screens (M2, `web/src/features/{catalog,course,player,lecture}`): routes `/`, `/courses/$course`,
-  `/learn/$course/$item` (the player brings its own chrome; the root shell steps aside for `/learn/`). The API client
+- Academy web screens (M2, `web/src/features/{shell,home,roadmap,catalog,course,practice,profile,settings,player,
+  lecture,quiz,lab,challenge,editor,terminal,labmap}`): routes `/` (home), `/roadmap`, `/courses`, `/courses/$course`,
+  `/practice`, `/profile`, `/settings`, `/learn/$course/$item` (the player brings its own chrome; the root shell steps
+  aside for `/learn/`; labs and challenges fill the window and fold the course content away). Data the API has no
+  endpoint for yet comes from `web/src/mock/` (one import per screen, replaced by a query when its module lands; the
+  mock quiz keys exist only because nothing is scored server-side yet). The editor and terminal are placeholders with
+  Monaco's and xterm's props (`CodeEditor`, `TerminalPane`). jsdom lays out at 0×0, so react-resizable-panels takes
+  any click inside a panel for a divider grab: tests focus inputs directly. The theme is a store (`useTheme`,
+  `setTheme`) shared by the header toggle and settings. `pnpm dev`'s proxy sends the platform's Host and Origin. The API client
   (`src/api/client.ts`) opens the session itself (GET /me, else POST /sessions), adds `X-CSRF-Token` to changes and
   repeats a read once after a 401; `queries.*` reject with `ProblemError` (not retried below 500). Lecture Markdown:
   react-markdown + remark-gfm + rehype-sanitize (no raw HTML; `[!NOTE]` alerts via `data-alert`), Shiki through
   `shiki/core` with the languages listed in `highlight.ts` (the full bundle adds 13 MB to the binary). Quiz, lab and
-  challenge items are read-only previews until their backends exist. Page tests render the whole route tree with
+  challenge items run full screens on mock runtime data until their backends exist. Page tests render the whole route tree with
   `renderRoute(path)` against MSW fixtures (`src/test/server.ts`, the demo course); `src/test/setup.ts` stubs what
   jsdom lacks (matchMedia, pointer capture, scrollIntoView). The e2e fake toolchain compiles to
   `academy/testdata/bundle.golden.json`. Phones (< 900 px): the course content is a drawer that closes on a choice.

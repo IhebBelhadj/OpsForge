@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // M0 smoke: the binary serves the embedded app, the app reaches the API, client routes and themes work.
 
 test("the shell loads and the platform lamp turns green", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/courses");
   await expect(page).toHaveTitle("OpsForge Academy");
   await expect(page.getByRole("heading", { level: 1, name: "Courses" })).toBeVisible();
   const lamp = page.getByRole("status");
@@ -17,7 +17,7 @@ test("a deep link is answered by the app, an unknown page by its not-found view"
   await expect(page.getByRole("heading", { name: "No such course" })).toBeVisible();
   await page.goto("/no/such/page");
   await expect(page.getByRole("heading", { name: "No such page" })).toBeVisible();
-  await page.getByRole("link", { name: "Back to the courses" }).click();
+  await page.getByRole("link", { name: "Back to home" }).click();
   await expect(page).toHaveURL("/");
 });
 

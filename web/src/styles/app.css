@@ -129,6 +129,8 @@
   --color-amber: var(--amber);
   --color-red: var(--red);
   --color-green: var(--green);
+  --color-term-bg: var(--term-bg);
+  --color-term-fg: var(--term-fg);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -228,5 +230,36 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .code-shiki span {
     color: var(--shiki-dark);
+  }
+}
+
+/* The one moving thing (design principle): the station you are at breathes, like a lamp waiting for the signalman */
+@keyframes station-wait {
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--amber) 30%, transparent);
+  }
+}
+.station-current {
+  box-shadow: 0 0 0 0 transparent;
+  animation: station-wait 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .station-current {
+    animation: none;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 30%, transparent);
+  }
+}
+
+@keyframes terminal-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.terminal-cursor {
+  animation: terminal-blink 1.1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .terminal-cursor {
+    animation: none;
   }
 }

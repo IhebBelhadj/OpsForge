@@ -31,7 +31,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
         <h1 className="font-serif text-3xl">No such course</h1>
         <p className="mt-3 text-ink-soft">
           It is not in the catalogue, or was removed from the packs.{" "}
-          <Link to="/" className="underline underline-offset-4">
+          <Link to="/courses" className="underline underline-offset-4">
             Back to the courses
           </Link>
         </p>
@@ -64,7 +64,7 @@ function Loaded({ course }: { course: Course }) {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link to="/">Courses</Link>
+              <Link to="/courses">Courses</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />

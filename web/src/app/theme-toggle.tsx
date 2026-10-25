@@ -1,11 +1,12 @@
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui/button";
 
-type Theme = "system" | "light" | "dark";
+export type Theme = "system" | "light" | "dark";
 const order: Theme[] = ["system", "light", "dark"];
 const KEY = "opsforge-theme";
+const listeners = new Set<() => void>();
 
 function stored(): Theme {
   try {
@@ -16,18 +17,40 @@ function stored(): Theme {
   }
 }
 
-/** Cycles the theme: follow the system, pinned light, pinned dark ("night shift"). Kept per browser. */
+let current: Theme = stored();
+apply(current);
+
+function apply(theme: Theme) {
+  if (theme === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+}
+
+/** Sets the theme everywhere (header toggle, settings) and keeps it per browser. */
+export function setTheme(theme: Theme) {
+  current = theme;
+  apply(theme);
+  try {
+    localStorage.setItem(KEY, theme);
+  } catch {
+    // private window: the choice lasts for this page only
+  }
+  for (const l of listeners) l();
+}
+
+/** The theme: follow the system, pinned light, pinned dark ("night shift"). */
+export function useTheme(): Theme {
+  return useSyncExternalStore(
+    (onChange) => {
+      listeners.add(onChange);
+      return () => listeners.delete(onChange);
+    },
+    () => current,
+  );
+}
+
+/** Cycles the theme from the header. */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(stored);
-  useEffect(() => {
-    if (theme === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem(KEY, theme);
-    } catch {
-      // private window: the choice lasts for this page only
-    }
-  }, [theme]);
+  const theme = useTheme();
   const next = order[(order.indexOf(theme) + 1) % order.length] ?? "system";
   const Icon = { system: Monitor, light: Sun, dark: Moon }[theme];
   return (

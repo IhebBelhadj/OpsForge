@@ -22,11 +22,20 @@ Magic UI, Origin UI, Kibo UI), Monaco, xterm.js. Each screen below names the com
 
 | Route | Screen |
 |---|---|
-| `/` | Catalogue: "Continue learning" row + all courses |
+| `/` | Home: resume card with the course's line, streak (five weeks of lamps) and level, next on your line, your courses, recent activity |
+| `/roadmap` | Roadmap (AlgoMonster's learning path as the mimic panel): every course a line off one trunk, every section a station; `?course=` opens a course's first station |
+| `/courses` | Catalogue: all courses, filtered by level |
 | `/courses/$course` | Course page (landing): overview, what you'll learn, requirements, curriculum accordion |
+| `/practice` | Practice (LeetCode's problem list): every lab, challenge and quiz, filters, "Pick one for me", solved ring, progress by topic |
 | `/learn/$course/$item` | Course player: the item (lecture, quiz, lab or challenge) plus the curriculum sidebar |
 | `/labs/$lab` | A lab outside any course (labs not yet placed in a course) |
-| `/badges`, `/settings` | Badges (Phase 10); theme, terminal and editor preferences |
+| `/profile`, `/settings` | Profile (LeetCode's: level, a year of practice, solved, badges, courses); theme, terminal, editor and lab preferences |
+
+The header: Home, Roadmap, Courses, Practice; search (Ctrl+K, the command palette); streak and level (to the
+profile); theme. Screens whose backends do not exist yet (rewards, labstate, practice, streaks, quiz attempts, lab
+sessions, challenge runs) read `web/src/mock/`, shaped as the API will serve them: hooking a screen up replaces that
+import with a query. The roadmap is the page's one bold element; the station you are at is the only thing that
+moves (`station-current`, off with reduced motion).
 
 History-mode routes (TanStack Router); the Go server answers unknown non-API paths with `index.html`.
 

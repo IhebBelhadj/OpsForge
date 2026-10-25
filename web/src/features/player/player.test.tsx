@@ -45,25 +45,51 @@ describe("the course player", () => {
     });
   });
 
-  it("previews a quiz by what an attempt will be, not its questions", async () => {
+  it("takes a quiz: intro, one question at a time, then itemised results", async () => {
+    const user = userEvent.setup();
     renderRoute("/learn/k8s-intro/pods-check");
     expect(await screen.findByText("Questions")).toBeInTheDocument();
     expect(screen.getByText("70 %")).toBeInTheDocument();
     expect(screen.getByText("No limit")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start quiz" }));
+    await user.click(screen.getByRole("radio", { name: "The kubelet, through the container runtime" }));
+    expect(screen.getByRole("button", { name: "Question 1, answered" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+    expect(screen.getByText("Question 2 of 5")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Submit quiz" }));
+    expect(screen.getByRole("heading", { name: "Not passed yet: 1 of 5" })).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Wrong")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: /Retake quiz/ })).toBeInTheDocument();
   });
 
-  it("previews a lab's steps and how each is checked", async () => {
+  it("runs a lab: start, setup, a failed check with what was wanted, then the next step", async () => {
+    const user = userEvent.setup();
     renderRoute("/learn/k8s-intro/meet-the-cluster");
     expect(await screen.findByRole("heading", { name: /List the nodes/ })).toBeInTheDocument();
-    expect(screen.getByText("Checked on the lab · 1 hint")).toBeInTheDocument();
-    expect(screen.getByText("You confirm")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start lab" }));
+    expect(await screen.findByText("Connected", {}, { timeout: 4000 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    const failed = await screen.findByRole("alert", {}, { timeout: 2000 });
+    expect(within(failed).getByText("(none)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    expect(await screen.findByText("Step 2 of 2", {}, { timeout: 2000 })).toBeInTheDocument();
   });
 
-  it("previews a challenge with its test cases and starter file", async () => {
+  it("solves a challenge: the starter fails, an edited manifest is accepted", async () => {
+    const user = userEvent.setup();
     renderRoute("/learn/k8s-intro/first-pod");
-    expect(await screen.findByText("pod is ready")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "pod.yaml" })).toBeInTheDocument();
-    expect(screen.getByText("easy")).toBeInTheDocument();
+    const editor = await screen.findByRole("textbox", { name: "Edit pod.yaml" });
+    expect(editor).toHaveValue("apiVersion: v1\nkind: Pod\nmetadata:\n  name: web\n");
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText("Wrong answer", {}, { timeout: 2000 })).toBeInTheDocument();
+    // jsdom lays everything out at 0×0, so the resizable panels take any click for a grab of their divider: focus the
+    // editor directly
+    editor.focus();
+    await user.keyboard("spec: {{}}");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText("Accepted", {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Solution" })).toBeInTheDocument();
   });
 
   it("says when the item is not in the course", async () => {
