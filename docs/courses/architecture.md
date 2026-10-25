@@ -16,7 +16,7 @@
                 │                          │                                                │
                 │                          └── incus / ssh / kubectl → the lab (wan-core, gateways, K3s) │
                 └──────────────────────────────────────────────────────────────────────────┘
- author ── edits labs/<pack>/ ── `opsforge api compile` → bundle.json ── imported by academy
+ author ── edits labs/<pack>/ ── academy's compiler (steps checked by `opsforge api validate-steps`) → bundle ── imported
 ```
 
 Two programs, one boundary:
@@ -51,7 +51,8 @@ client, nothing else.
 |---|---|---|
 | `identity` | users, local session (cookie), CSRF token; one local user now | `UserRepo`, `Clock` |
 | `catalog` | courses, sections, items, lectures, quizzes, challenges, labs **as imported**; content queries; retired content | `ContentRepo` |
-| `contentimport` | runs `opsforge api compile`, validates the bundle against its JSON Schema, upserts idempotently, reports changes | `Toolchain`, `ContentRepo`, `EventBus` |
+| `compiler` | reads the content folder's packs (YAML as PyYAML read it), checks them, writes the bundle (content hashes over Python's JSON bytes); scenario steps checked by the toolchain | `StepChecker` |
+| `contentimport` | compiles in-process, flattens the bundle, upserts idempotently, reports changes | `Compiler`, `ContentRepo`, `EventBus` |
 | `progress` | item status, course progress, resume point, stale revisions, notes | `ProgressRepo`, `catalog.Service`, `EventBus` |
 | `quiz` | quiz attempts: draw/shuffle, timing, server-side scoring, explanations | `QuizRepo`, `catalog.Service`, `Random`, `Clock`, `EventBus` |
 | `labsession` | lab attempts: start (setup), check (probe), hint, reset, finish/abandon (teardown + heal); one running lab; busy lock | `AttemptRepo`, `LabController`, `Workspace`, `catalog.Service`, `EventBus`, `Clock` |

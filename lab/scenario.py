@@ -35,6 +35,8 @@ STEPS = {
 }
 # Steps whose value is the argument itself rather than a mapping: `sleep: 30s`, `partition: c`, `heal: true`
 SCALAR_STEPS = ("sleep", "partition", "heal", "stop_flap")
+# Steps that change the lab: allowed in a lab's setup/teardown, never in a check (checks only observe)
+FAULT_STEPS = ("partition", "heal", "degrade", "mtu", "flap", "stop_flap")
 _PLACEHOLDER = re.compile(r"\$\{(ip|public):([a-z0-9-]+)\}")
 _NODE = re.compile(r"\$\{(node|server|cluster):([a-z0-9-]+)\}")
 LAYOUTS = ("stretched", "multi-cluster")

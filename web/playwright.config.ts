@@ -22,7 +22,7 @@ export default defineConfig({
     ...(process.env.CI ? [{ name: "firefox", use: { ...devices["Desktop Firefox"] } }] : []),
   ],
   webServer: {
-    command: `../academy/bin/academy serve --addr 127.0.0.1:${String(port)} --root .. --db ${db} --toolchain ${join(import.meta.dirname, "e2e", "fake-opsforge.sh")} --log-level warn`,
+    command: `../academy/bin/academy serve --addr 127.0.0.1:${String(port)} --root .. --content ../academy/testdata/packs --db ${db} --toolchain ${join(import.meta.dirname, "e2e", "fake-opsforge.sh")} --log-level warn`,
     url: `http://127.0.0.1:${String(port)}/healthz`,
     reuseExistingServer: false,
     timeout: 20_000,

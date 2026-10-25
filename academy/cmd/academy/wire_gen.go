@@ -32,8 +32,9 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		return nil, nil, err
 	}
 	identityService := provideIdentity(store, systemClock)
+	compilerService := provideCompiler(cfg, runner, systemClock)
 	repo := provideCatalogRepo(store)
-	contentimportService := provideImporter(runner, repo, systemClock)
+	contentimportService := provideImporter(compilerService, repo, systemClock)
 	catalogService := provideCatalog(repo)
 	hub, cleanup3 := provideHub()
 	historyService := provideHistory(store, hub, systemClock, logger)

@@ -9,8 +9,8 @@ platform `academy/`, React + Vite `web/`, Python CLI as lab toolchain; tests fir
 (2026-10-24): binary serving the empty shell + health endpoints, toolchain contract (`opsforge api`), CI jobs.
 **Spike S6 done** (Go pty terminal, parity with Phase 10). **M1 done** (2026-10-25): identity, catalog,
 contentimport, history (event bus + SSE), progress, quiz, operations, workspace, labsession, rewards, labstate,
-`academy migrate-legacy`; the six labs passed through the API on the live lab (docs/PLAN.md). **Next: split into two
-repos** (OpsForge + OpsForge Academy, `docs/PLAN.md` Phase 11) before
+`academy migrate-legacy`; the six labs passed through the API on the live lab (docs/PLAN.md). **Now: split into two
+repos** (OpsForge + OpsForge Academy, `docs/PLAN.md` Phase 11; steps 1 contract v1 and 2 compiler in Go done) before
 M2; until then don't grow coupling (lab-side only through `--json` commands).
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML in `labs/` (curricula → levels →
 labs with probe/quiz/confirm checks, badges), progress in SQLite `.opsforge/labs.db`, `opsforge serve` = signal-box
@@ -52,14 +52,14 @@ reboot-survival check).
 | `lab/labs.py`, `lab/labpack.schema.json` | Pure pack logic: loading, schema + cross-reference validation, content hashes, check types (`CHECKS`), badge rules (`RULES`), XP, `unmet_needs` (layout/needs vs topology). |
 | `lab/labsdb.py`, `lab/migrations/` | SQLite: numbered migrations (`PRAGMA user_version`), idempotent pack import, catalog with unlocks, attempts, hints, events, badge awards. |
 | `lab/labserver.py`, `lab/web/` | `opsforge serve`: stdlib HTTP + JSON API, checks via `ScenarioRun`, WebSocket terminal on a pty; static UI (no build step). Deleted in Phase 11 M2. |
-| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, `toolchain.schema.json`, oapi-codegen config), `internal/{catalog,config,contentimport,history,httpapi,identity,lab,labsession,labstate,legacy,operations,opsforgecli,platform,progress,quiz,rewards,terminal,workspace}`, `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack, `labs.phase10.sql`), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
+| `academy/` | Phase 11 Go platform (module `github.com/IhebBelhadj/opsforge/academy`): `cmd/academy` (main, Wire `wire.go` → `wire_gen.go`), `api/` (`openapi.yaml`, `bundle.schema.json`, the pack formats `course.schema.json` + `labpack.schema.json`, oapi-codegen config), `internal/{catalog,compiler,config,contentimport,history,httpapi,identity,lab,labsession,labstate,legacy,operations,opsforgecli,platform,progress,quiz,rewards,terminal,workspace}`, `migrations/` (goose, embedded), `web/dist` (embed target), `testdata/` (golden fixtures, demo pack, `labs.phase10.sql`), `tools/go.mod` (pinned sqlc, oapi-codegen, wire, golangci-lint: `go tool -modfile=tools/go.mod <tool>`), `.golangci.yml` (depguard layering). |
 | `web/` | Phase 11 React 19 + Vite + TS app (pnpm): `src/{app,routes,features,components/ui,api,lib,test,styles}`, `e2e/` (Playwright against the built binary + `e2e/fake-opsforge.sh`). `src/api/schema.d.ts` and `src/routeTree.gen.ts` are generated and committed. |
-| `lab/academy.py`, `lab/course.schema.json` | Pure course-pack compiler: `courses/<id>/` (course.yml, lectures/*.md with front matter, quizzes, challenges) + Phase 10 labs/badges → the bundle (`compile_bundle`). |
+| `lab/academy.py` | `opsforge api` helpers: contract version (`CONTRACT`, `CONTRACT_MINOR`), input checks, `${ns}`, `step_errors` (validate-steps). The course compiler is Go: `academy/internal/compiler`. |
 | `scenarios/` | `<name>.yml` experiments run by `opsforge scenario <name>`; `manifests/` holds what they apply to the cluster. Results: `.opsforge/results/`. |
 | `.opsforge/` | Generated controller state (gitignored, survives `down`): `ssh/` client key, per-instance host keys, config, known_hosts; `pki/` lab CA; `wg/` gateways' WireGuard keys; `forwards/` one control socket + JSON per `opsforge forward` tunnel; `captures/` pcaps from `opsforge capture`; `k3s/` K3s binary, join tokens, Flux/Skupper CLIs and manifests; `kubeconfig-<cluster>` (from `provision`); `cache/` big downloads (Grafana's .deb); `grafana-admin` password; `gitea-admin` password and `ci/` (Gitea secrets, bot and database passwords); `results/` scenario runs. |
 | `scripts/host-setup.sh` | One-time, idempotent **root** setup for Arch: packages, subuid/subgid, kernel modules, sysctls, Docker coexistence, Incus preseed, `incus-admin` group. |
 | `lab/host/` | Files installed by host-setup: `modules-load.conf`, `sysctl.conf`, `incus-preseed.yaml`, Docker `DOCKER-USER` rules script + systemd unit. |
-| `tests/` | pytest unit tests for `render.py`, `topology_errors`, CLI helpers and the teaching labs (`test_labs.py`: packs, DB, API with a fake lab), the academy toolchain (`test_academy.py`: compile, contract, golden fixtures; no Incus needed); CI in `.github/workflows/check.yml`. |
+| `tests/` | pytest unit tests for `render.py`, `topology_errors`, CLI helpers and the teaching labs (`test_labs.py`: packs, DB, API with a fake lab), `opsforge api` (`test_academy.py`: contract, golden fixtures, validate-steps; no Incus needed); CI in `.github/workflows/check.yml`. |
 | `scripts/k3s-spike.sh` | Phase 2.5 throwaway unprivileged-K3s check (creates and removes `opsforge-k3s-spike` + a profile of the same name). |
 | `Makefile` | `make check` (shellcheck, yamllint, py_compile, ansible-lint when `ansible/` exists, topology + lab-pack validation + academy compile, Go lint/tests, web checks, `gen-check`), `make academy` (web build embedded → `academy/bin/academy`), `academy-test`, `academy-lint`, `web-check`, `gen`, `e2e`, `make preflight`, `make smoke`. |
 
@@ -182,7 +182,7 @@ reboot-survival check).
   `opsforgecli.MinMinor`/`MinRelease` only when it starts using the addition); breaking = major (`CONTRACT` and
   `opsforgecli.Contract`). Inputs are strict, outputs open (Academy ignores unknown fields; OpsForge's tests check its
   outputs against the closed schema). `api version` = `{contract, minor, opsforge}` (`VERSION` in `opsforge`).
-  `academy/testdata/bundle.golden.json` stays Academy's (compile leaves the contract when the compiler moves to Go).
+  `validate-steps` (`academy.step_errors`) is how the course compiler checks scenario steps: one call with every set.
   Labs without `files` keep Phase 10's content hash (passes stay fresh).
   `run`/`probe`/`heal` (`lab_run`, `lab_probe`, also used by Phase 10's `LabDriver`) read their input on stdin, checked
   against `contract/toolchain.schema.json` (the Go adapter checks the outputs); a failing step is the result's
@@ -214,6 +214,16 @@ reboot-survival check).
   attempt), solutions, check/test probes, hint texts (counts only). New content fields reach the API only by being
   added to a view; the API's view schemas are `additionalProperties: false`. Texts keep their placeholders until
   `labstate` resolves them.
+- Academy compiler (`internal/compiler`, Phase 11 split step 2): compiles the content folder (`--content`, default
+  `<root>/labs`: sub-folders with a pack.yml, each read through an `os.Root`) into the bundle; contentimport calls it
+  in-process, `academy compile [--json] [pack...]` prints a summary or the bundle (`make check` runs it). Content
+  hashes must stay byte-identical to Python's (Phase 10 and the Python compiler recorded them; a changed hash flags a
+  pass as stale): YAML is read as PyYAML's safe_load did (`yaml.go`: YAML 1.1 scalars, merge keys, `testdata/yaml11.*`
+  pins Python's reading) and hashed over `pyjson.go`'s bytes (Python's `json.dumps(sort_keys, compact, ensure_ascii)`,
+  float repr); the bundle is written the same way. Never change either without a hash test proving old content keeps
+  its hash. Scenario steps are OpsForge's: queued as `lab.StepSet`s (probes and challenge actions refuse faults) and
+  checked in one `api validate-steps` call; their errors take the queued place. Golden: `academy/testdata/
+  bundle.golden.json` (`ACADEMY_UPDATE_GOLDEN=1 go test ./internal/compiler`, review the diff).
 - Academy terminals (`internal/terminal`): sessions outlive their socket for `Linger` (60 s) and replay the last 64 KiB;
   the newest socket takes a session over. Wire format = Phase 10's (binary out; `{t:"i",d}` / `{t:"r",cols,rows}` in);
   close codes 1000 exited, 4000 replaced, 4001 slow, 1001 shutdown (`httpapi.StatusReplaced/StatusSlow`). Every
@@ -245,8 +255,8 @@ reboot-survival check).
   `shiki/core` with the languages listed in `highlight.ts` (the full bundle adds 13 MB to the binary). Quiz, lab and
   challenge items run full screens on mock runtime data until their backends exist. Page tests render the whole route tree with
   `renderRoute(path)` against MSW fixtures (`src/test/server.ts`, the demo course); `src/test/setup.ts` stubs what
-  jsdom lacks (matchMedia, pointer capture, scrollIntoView). The e2e fake toolchain compiles to
-  `academy/testdata/bundle.golden.json`. Phones (< 900 px): the course content is a drawer that closes on a choice.
+  jsdom lacks (matchMedia, pointer capture, scrollIntoView). The e2e suite serves
+  `academy/testdata/packs` (`--content`; the fake toolchain finds every step valid). Phones (< 900 px): the course content is a drawer that closes on a choice.
 - Academy learner modules (M1): every domain event goes through `history.Service.Publish` (events table, then
   `platform.Hub` → SSE `history` with the id for Last-Event-ID replay, then handlers); kinds keep Phase 10's dotted
   names. Completion is read, not derived from events: progress takes a `progress.Source` per module (cmd/academy
@@ -263,7 +273,7 @@ reboot-survival check).
   quiz lab, scripted lab controller). Lab XP = `labsession.PassXP` (half-to-even, as Phase 10's `pass_xp`).
 - Academy rewards/labstate/legacy (end of M1): `rewards` stores only awards (`user_badges`); XP is read (best pass per
   lab + best quiz attempt per item) through `rewards.Sources` (cmd/academy adapts labsession, quiz, progress,
-  identity). Rule types = `rewards.Rules` ↔ `lab/labs.py` `RULES` (keep both); a course's `badge` is awarded on
+  identity). Rule types = `rewards.Rules` ↔ `compiler.ruleTypes` (and Phase 10's `lab/labs.py` `RULES` until it goes; keep all); a course's `badge` is awarded on
   completion. Badges are evaluated on `lab.passed`/`quiz.submitted`/`course.completed` and for every user after each
   import (cmd/academy's `importer` wraps contentimport), so new rules are retroactive; retired badges stay shown once
   awarded (`catalog.Service.Entries` includes retired entries). `labstate` caches `state` 5 s (a `lab.*` event

@@ -1,6 +1,6 @@
 # OpsForge toolchain contract
 
-`opsforge api <command>` is OpsForge's machine interface: one JSON document on stdin (for `run` and `probe`), one on
+`opsforge api <command>` is OpsForge's machine interface: one JSON document on stdin (for `run`, `probe` and `validate-steps`), one on
 stdout and exit 0 on success; a problem document (`{contract, type: /problems/<slug>, title, detail}`) on stderr and
 exit 1 otherwise. OpsForge Academy drives the lab through it; any other tool may.
 
@@ -11,6 +11,7 @@ exit 1 otherwise. OpsForge Academy drives the lab through it; any other tool may
 | `run` | `runInput`: `{contract, phase: setup\|teardown, steps, namespace?}` | `runOutput`: `{contract, metrics, log, error}` |
 | `probe` | `probeInput`: `{contract, steps, expect, namespace?}` | `probeOutput`: `{contract, passed, results, log, error}` |
 | `heal` | | `healOutput`: `{contract, healed}` |
+| `validate-steps` | `stepsInput`: `{contract, sets: [{steps, expect?, faults?}]}` | `stepsOutput`: `{contract, errors: [{set, message}]}` |
 
 The documents are `$defs` of [`toolchain.schema.json`](toolchain.schema.json); [`golden/`](golden/) holds what this
 release prints for fixed inputs (written by `tests/test_academy.py`, `OPSFORGE_UPDATE_GOLDEN=1` to rewrite them).
@@ -28,4 +29,4 @@ release prints for fixed inputs (written by `tests/test_academy.py`, `OPSFORGE_U
 
 | Minor | OpsForge | Added |
 |---|---|---|
-| 0 | 1.0.0 | `version`, `state` (with `placeholders`), `run`, `probe`, `heal` |
+| 0 | 1.0.0 | `version`, `state` (with `placeholders`), `run`, `probe`, `heal`, `validate-steps` |

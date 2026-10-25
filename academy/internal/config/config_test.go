@@ -19,7 +19,7 @@ func TestDefaultsDeriveFromTheRepositoryRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := config.Config{
-		Addr: "127.0.0.1:8090", Root: "/repo", DB: "/repo/.opsforge/academy.db", Workspaces: "/repo/.opsforge/workspaces",
+		Addr: "127.0.0.1:8090", Root: "/repo", Content: "/repo/labs", DB: "/repo/.opsforge/academy.db", Workspaces: "/repo/.opsforge/workspaces",
 		Toolchain: "/repo/opsforge", LegacyDB: "/repo/.opsforge/labs.db",
 		ToolchainTimeout: 30 * time.Second, LabTimeout: 20 * time.Minute, ShutdownTimeout: 15 * time.Second,
 		LogLevel: slog.LevelInfo,
@@ -62,5 +62,19 @@ func TestInvalidConfigurationIsRejected(t *testing.T) {
 				t.Fatalf("err = %v, want it to mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCompileTakesPacksAndJSON(t *testing.T) {
+	cfg, c, err := config.LoadCompile([]string{"--json", "--content", "/packs", "a", "b"},
+		env(map[string]string{"ACADEMY_ROOT": "/repo"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.JSON || strings.Join(c.Packs, " ") != "a b" || cfg.Content != "/packs" {
+		t.Fatalf("got %+v %+v", c, cfg)
+	}
+	if _, err := config.Load([]string{"--json"}, env(nil)); err == nil {
+		t.Fatal("serve takes no --json")
 	}
 }

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opsforge.lab/contract/toolchain.schema.json",
   "title": "OpsForge lab toolchain documents (contract 1)",
-  "description": "Inputs (stdin) and outputs (stdout) of `opsforge api run|probe|heal` (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
+  "description": "Inputs (stdin) and outputs (stdout) of `opsforge api run|probe|heal|validate-steps|version` (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
   "$defs": {
     "namespace": {
       "description": "A namespace the platform owns: lab-<attempt> for labs, ch-<attempt> for challenge submissions. Created before setup, deleted after teardown.",
@@ -83,6 +83,47 @@
       "properties": {
         "contract": { "const": 1 },
         "healed": { "description": "false when there was no fault to heal", "type": "boolean" }
+      }
+    },
+    "stepsInput": {
+      "type": "object",
+      "required": ["contract", "sets"],
+      "additionalProperties": false,
+      "properties": {
+        "contract": { "const": 1 },
+        "sets": {
+          "description": "Sets of scenario steps to check without running them: a lab's setup or teardown, a check's probe (with its expect).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["steps"],
+            "additionalProperties": false,
+            "properties": {
+              "steps": { "type": "array" },
+              "expect": { "type": "object" },
+              "faults": { "description": "false: fault steps (partition, degrade, ...) are refused, as in a check that only observes the lab", "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "stepsOutput": {
+      "type": "object",
+      "required": ["contract", "errors"],
+      "properties": {
+        "contract": { "const": 1 },
+        "errors": {
+          "description": "Why steps would not run, in set order; empty when every set is valid.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["set", "message"],
+            "properties": {
+              "set": { "description": "Index of the set in the input", "type": "integer", "minimum": 0 },
+              "message": { "description": "steps[<i>]: ... or expect: <metric>: ...", "type": "string" }
+            }
+          }
+        }
       }
     },
     "versionOutput": {

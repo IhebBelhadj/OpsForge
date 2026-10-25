@@ -63,15 +63,10 @@ func fake(mode string, args []string) int {
 	return 0
 }
 
-// fixture makes the fake print one of the pinned contract's golden documents (academy/contract/golden/<name>), or
-// a document of Academy's own testdata (bundle.*).
+// fixture makes the fake print one of the pinned contract's golden documents (academy/contract/golden/<name>).
 func fixture(t *testing.T, name string) {
 	t.Helper()
-	dir := filepath.Join("..", "..", "contract", "golden")
-	if strings.HasPrefix(name, "bundle.") {
-		dir = filepath.Join("..", "..", "testdata")
-	}
-	path, err := filepath.Abs(filepath.Join(dir, name))
+	path, err := filepath.Abs(filepath.Join("..", "..", "contract", "golden", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,25 +195,27 @@ func TestStateDecodesTheSharedFixtures(t *testing.T) {
 	}
 }
 
-func TestCompileValidatesTheBundle(t *testing.T) {
-	fixture(t, "bundle.golden.json")
-	bundle, err := runner(t, "fixture").Compile(context.Background())
-	if err != nil {
-		t.Fatal(err)
+func TestCheckSteps(t *testing.T) {
+	fixture(t, "validate-steps.json")
+	read := record(t)
+	errs, err := runner(t, "fixture").CheckSteps(context.Background(), []lab.StepSet{
+		{Steps: []any{map[string]any{"sleep": "1s"}}},
+		{Steps: []any{map[string]any{"partition": "c"}}, Expect: map[string]any{"b.value": "== 1"}, NoFaults: true},
+	})
+	if err != nil || len(errs) != 5 || errs[0].Set != 1 || !strings.HasPrefix(errs[0].Message, "steps[0]: unknown step") {
+		t.Fatalf("errors %+v, %v", errs, err)
 	}
-	var doc struct {
-		Packs []struct {
-			ID string `json:"id"`
-		} `json:"packs"`
-	}
-	if err := json.Unmarshal(bundle, &doc); err != nil || len(doc.Packs) != 1 || doc.Packs[0].ID != "demo" {
-		t.Fatalf("bundle: %v %+v", err, doc)
+	args, stdin := read()
+	want := `{"contract":1,"sets":[{"steps":[{"sleep":"1s"}]},` +
+		`{"expect":{"b.value":"== 1"},"faults":false,"steps":[{"partition":"c"}]}]}`
+	if args != "api validate-steps --json" || stdin != want {
+		t.Fatalf("argv %q stdin %s", args, stdin)
 	}
 
-	fixture(t, "bundle.invalid.json")
-	if _, err := runner(t, "fixture").Compile(context.Background()); err == nil ||
-		!strings.Contains(err.Error(), "bundle.schema.json") {
-		t.Fatalf("invalid bundle: err = %v", err)
+	fixture(t, "heal.json")
+	if _, err := runner(t, "fixture").CheckSteps(context.Background(), nil); !errors.Is(err,
+		opsforgecli.ErrInvalidDocument) {
+		t.Fatalf("a document of another kind: err = %v", err)
 	}
 }
 

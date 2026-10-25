@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/IhebBelhadj/opsforge/academy/api"
 	"github.com/IhebBelhadj/opsforge/academy/contract"
 	"github.com/IhebBelhadj/opsforge/academy/internal/lab"
 )
@@ -20,17 +20,16 @@ func (r *Runner) State(ctx context.Context) (lab.State, error) {
 	return s, r.Call(ctx, "state", nil, &s)
 }
 
-// Compile runs `api compile` over the repository's packs and returns the bundle, checked against
-// bundle.schema.json (the importer decodes it).
-func (r *Runner) Compile(ctx context.Context) (json.RawMessage, error) {
-	var raw json.RawMessage
-	if err := r.Call(ctx, "compile", nil, &raw); err != nil {
-		return nil, err
+// CheckSteps asks why sets of scenario steps would not run, without running them (`api validate-steps`): the course
+// compiler sends every lab's and challenge's steps.
+func (r *Runner) CheckSteps(ctx context.Context, sets []lab.StepSet) ([]lab.StepError, error) {
+	var res struct {
+		Errors []lab.StepError `json:"errors"`
 	}
-	if err := validate(raw, "bundle.schema.json"); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidBundle, err)
-	}
-	return raw, nil
+	return res.Errors, r.checked(ctx, r.Timeout, "validate-steps", struct {
+		Contract int           `json:"contract"`
+		Sets     []lab.StepSet `json:"sets"`
+	}{Contract, sets}, "stepsOutput", &res)
 }
 
 // Run runs a lab's setup or teardown steps (`api run`).
@@ -59,11 +58,15 @@ func (r *Runner) Heal(ctx context.Context) (bool, error) {
 	return res.Healed, r.lab(ctx, "heal", nil, "healOutput", &res)
 }
 
-// lab calls a command that acts on the lab, with the lab timeout, and checks its output against
-// toolchain.schema.json's $defs/<def> before decoding it.
+// lab calls a command that acts on the lab, with the lab timeout.
 func (r *Runner) lab(ctx context.Context, command string, in any, def string, out any) error {
+	return r.checked(ctx, r.LabTimeout, command, in, def, out)
+}
+
+// checked calls a command and checks its output against toolchain.schema.json's $defs/<def> before decoding it.
+func (r *Runner) checked(ctx context.Context, timeout time.Duration, command string, in any, def string, out any) error {
 	var raw json.RawMessage
-	if err := r.call(ctx, r.LabTimeout, command, in, &raw); err != nil {
+	if err := r.call(ctx, timeout, command, in, &raw); err != nil {
 		return err
 	}
 	if err := validate(raw, "toolchain.schema.json#/$defs/"+def); err != nil {
@@ -91,12 +94,11 @@ func validate(raw json.RawMessage, ref string) error {
 var schemas = sync.OnceValue(func() *jsonschema.Compiler {
 	c := jsonschema.NewCompiler()
 	for name, data := range map[string][]byte{
-		"bundle.schema.json":    api.BundleSchema,
 		"toolchain.schema.json": contract.ToolchainSchema,
 	} {
 		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
 		if err != nil {
-			panic(err) // embedded at build time; the Compile and lab document tests cover them
+			panic(err) // embedded at build time; the lab document tests cover it
 		}
 		if err := c.AddResource(name, doc); err != nil {
 			panic(err)

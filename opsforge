@@ -2109,23 +2109,16 @@ def api_heal():
     return {"contract": academy.CONTRACT, "healed": heal_links()}
 
 
-def api_compile(paths):
-    for path in paths:
-        if not (path / "pack.yml").is_file():
-            raise Problem("not-a-pack", "Not a pack", f"{path}: no pack.yml (a pack is a folder like labs/core)")
-    # SOURCE_DATE_EPOCH (reproducible builds) pins the timestamp, so the same packs compile to the same bytes
-    epoch = os.environ.get("SOURCE_DATE_EPOCH")
-    stamp = time.gmtime(int(epoch)) if epoch else time.gmtime()
-    return academy.compile_bundle(paths, ROOT, time.strftime("%Y-%m-%dT%H:%M:%SZ", stamp))
+def api_validate_steps(doc):
+    """`opsforge api validate-steps`: why sets of scenario steps (a lab's setup, a check's probe) would not run."""
+    return {"contract": academy.CONTRACT, "errors": academy.step_errors(doc["sets"])}
 
 
 def cmd_api(args):
     """OpsForge's machine interface (contract/README.md), which OpsForge Academy calls: one document on stdout, exit
     0; a problem document on stderr and exit 1 otherwise."""
     try:
-        if args.action == "compile":
-            doc = api_compile([p.resolve() for p in args.packs] or labs.find_packs(LABS))
-        elif args.action == "state":
+        if args.action == "state":
             doc = api_state()
         elif args.action == "run":
             doc = api_run(api_input("runInput"))
@@ -2133,6 +2126,8 @@ def cmd_api(args):
             doc = api_probe(api_input("probeInput"))
         elif args.action == "heal":
             doc = api_heal()
+        elif args.action == "validate-steps":
+            doc = api_validate_steps(api_input("stepsInput"))
         else:
             doc = {"contract": academy.CONTRACT, "minor": academy.CONTRACT_MINOR, "opsforge": VERSION}
     except Problem as e:
@@ -2148,13 +2143,9 @@ def cmd_api(args):
     if args.json:
         print(json.dumps(doc, sort_keys=True))
         return 0
-    if args.action == "compile":
-        packs = doc["packs"]
-        count = {k: sum(len(p[k]) for p in packs) for k in ("courses", "labs")}
-        print(f"{len(packs)} pack(s), {count['courses']} course(s), {count['labs']} lab(s): "
-              + ("no errors" if not doc["errors"] else f"{len(doc['errors'])} error(s)"))
+    if args.action == "validate-steps":
         for e in doc["errors"]:
-            print(f"  {e['pack']}: {e['message']}")
+            print(f"set {e['set']}: {e['message']}")
         return 1 if doc["errors"] else 0
     if args.action in ("run", "probe"):
         print("\n".join(doc["log"]))
@@ -2302,10 +2293,9 @@ def main():
     p.add_argument("--port", type=int, default=LABS_PORT, help=f"port (default {LABS_PORT})")
     p.set_defaults(func=cmd_serve)
     p = sub.add_parser("api", help="the machine interface (contract/README.md): lab state, run and probe steps, heal, "
-                       "version; compile course packs (until Academy compiles them)")
-    p.add_argument("action", choices=("compile", "state", "run", "probe", "heal", "version"),
-                   help="run and probe read their input document on stdin")
-    p.add_argument("packs", nargs="*", type=Path, help="compile: pack folders (default: every pack in labs/)")
+                       "validate steps, version")
+    p.add_argument("action", choices=("state", "run", "probe", "heal", "validate-steps", "version"),
+                   help="run, probe and validate-steps read their input document on stdin")
     p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
     p.set_defaults(func=cmd_api)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take

@@ -8,7 +8,7 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/catalog"
 )
 
-// Compiler compiles the repository's packs into a bundle checked against bundle.schema.json.
+// Compiler compiles the content folder's packs into a bundle (bundle.schema.json; internal/compiler).
 type Compiler interface {
 	Compile(ctx context.Context) (json.RawMessage, error)
 }

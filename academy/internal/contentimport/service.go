@@ -9,7 +9,8 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 )
 
-// ErrCompile wraps a failed compile: the toolchain is missing, crashed or speaks another contract.
+// ErrCompile wraps a failed compile: a pack folder cannot be read, or the toolchain could not check the scenario
+// steps (missing, crashed or speaking another contract).
 var ErrCompile = errors.New("compiling the packs failed")
 
 // Service imports the packs; one import runs at a time.

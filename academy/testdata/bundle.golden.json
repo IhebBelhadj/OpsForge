@@ -72,7 +72,7 @@
           "xp": 50
         }
       ],
-      "content_hash": "87a73307523e4f51",
+      "content_hash": "dacc2de66d3478fe",
       "courses": [
         {
           "badge": "intro-done",
@@ -141,7 +141,7 @@
         }
       ],
       "curricula": [],
-      "description": "The golden fixture of `opsforge api compile` (one course with every item type).",
+      "description": "The golden fixture of the course compiler (one course with every item type).",
       "hint_penalty": 0.1,
       "id": "demo",
       "labs": [
@@ -227,7 +227,7 @@
           "title": "What is a pod"
         }
       ],
-      "path": "academy/testdata/packs/demo",
+      "path": "demo",
       "quizzes": [
         {
           "content_hash": "61c63c2c869f2c32",

@@ -24,7 +24,7 @@ func (s *server) ImportContent(ctx context.Context, _ ImportContentRequestObject
 		for i, e := range invalid.Errors {
 			list[i] = PackError{Pack: e.Pack, Message: e.Message}
 		}
-		detail := "fix the packs (./opsforge api compile lists the errors), then import again"
+		detail := "fix the packs (academy compile lists the errors), then import again"
 		return ImportContent422ApplicationProblemPlusJSONResponse{Type: "/problems/invalid-packs",
 			Title: "The packs have errors", Status: http.StatusUnprocessableEntity, Detail: &detail, Errors: &list}, nil
 	case errors.Is(err, contentimport.ErrCompile):

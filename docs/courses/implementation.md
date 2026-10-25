@@ -14,7 +14,7 @@ academy/                         Go module (platform service)
   web/                           go:embed target (copied from web/dist at build)
   testdata/                      golden bundle, state fixtures, fake opsforge
 web/                             React + Vite app (frontend.md "Structure")
-lab/                             Python lab toolchain (existing) + academy.py (contract commands)
+lab/                             Python lab toolchain (existing) + academy.py (`opsforge api` helpers)
 labs/                            content packs (courses, labs, quizzes, challenges)
 docs/courses/                    this plan
 ```
@@ -64,7 +64,7 @@ Each milestone ends with: its acceptance criteria met, `make check` + CI green, 
 ### Repository split (between M1 and M2)
 Academy moves to its own repository once M1's acceptance run passes and the contract is frozen at v1; the steps
 and acceptance are in [PLAN.md](../PLAN.md) (Phase 11, "Split into two repositories"). From M2 on, paths in this plan
-(`academy/`, `web/`, `labs/`, `lab/academy.py`) refer to the Academy repository; OpsForge keeps only the lab
+(`academy/`, `web/`, `labs/`) refer to the Academy repository; OpsForge keeps only the lab
 toolchain behind the contract.
 
 ### M2: Player and parity (frontend), Phase 10 server removed

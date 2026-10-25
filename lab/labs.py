@@ -19,8 +19,7 @@ import scenario
 SCHEMA = Path(__file__).resolve().parent / "labpack.schema.json"
 DEFAULT_HINT_PENALTY = 0.1
 DEFAULT_XP = 100
-# Scenario steps that change the lab: allowed in a lab's setup/teardown, never in a check (checks only observe)
-FAULT_STEPS = ("partition", "heal", "degrade", "mtu", "flap", "stop_flap")
+FAULT_STEPS = scenario.FAULT_STEPS
 
 
 def load_pack(path):

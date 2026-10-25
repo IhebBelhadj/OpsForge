@@ -100,3 +100,33 @@ type Expectation struct {
 	Passed  bool     `json:"passed"`
 	Checked bool     `json:"checked"`
 }
+
+// StepSet is scenario steps to check without running them (`api validate-steps`): a lab's setup or teardown, a
+// check's probe with its Expect. NoFaults refuses fault steps (partition, degrade, ...): a check only observes the
+// lab.
+type StepSet struct {
+	Steps    []any
+	Expect   map[string]any
+	NoFaults bool
+}
+
+// MarshalJSON writes the contract's stepsInput set: `faults: false` only when refused, `expect` only when given.
+func (s StepSet) MarshalJSON() ([]byte, error) {
+	doc := map[string]any{"steps": s.Steps}
+	if s.Steps == nil {
+		doc["steps"] = []any{}
+	}
+	if s.Expect != nil {
+		doc["expect"] = s.Expect
+	}
+	if s.NoFaults {
+		doc["faults"] = false
+	}
+	return json.Marshal(doc)
+}
+
+// StepError is why the steps of the Set-th StepSet would not run ("steps[2]: ..." or "expect: <metric>: ...").
+type StepError struct {
+	Set     int    `json:"set"`
+	Message string `json:"message"`
+}

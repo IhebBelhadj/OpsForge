@@ -13,6 +13,7 @@ import (
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/catalog"
 	catalogsqlite "github.com/IhebBelhadj/opsforge/academy/internal/catalog/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/compiler"
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
 	"github.com/IhebBelhadj/opsforge/academy/internal/contentimport"
 	"github.com/IhebBelhadj/opsforge/academy/internal/history"
@@ -193,8 +194,13 @@ func provideCatalogRepo(store *sqlite.Store) *catalogsqlite.Repo {
 	return catalogsqlite.NewRepo(store.DB)
 }
 
-func provideImporter(toolchain *opsforgecli.Runner, repo *catalogsqlite.Repo, clock platform.Clock) *contentimport.Service {
-	return contentimport.NewService(toolchain, repo, clock)
+// provideCompiler compiles the content folder's packs; OpsForge checks their scenario steps.
+func provideCompiler(cfg config.Config, toolchain *opsforgecli.Runner, clock platform.Clock) *compiler.Service {
+	return compiler.NewService(cfg.Content, toolchain, clock)
+}
+
+func provideImporter(packs *compiler.Service, repo *catalogsqlite.Repo, clock platform.Clock) *contentimport.Service {
+	return contentimport.NewService(packs, repo, clock)
 }
 
 // importer imports the packs, then evaluates every user's badges: a badge added or changed by the import is

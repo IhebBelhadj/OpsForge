@@ -153,8 +153,5 @@ func (r *Runner) Ready(ctx context.Context) error {
 	return nil
 }
 
-// ErrInvalidBundle wraps a bundle that does not match bundle.schema.json.
-var ErrInvalidBundle = errors.New("bundle does not match bundle.schema.json")
-
-// ErrInvalidDocument wraps a run, probe or heal document that does not match toolchain.schema.json.
+// ErrInvalidDocument wraps a run, probe, heal or validate-steps document that does not match toolchain.schema.json.
 var ErrInvalidDocument = errors.New("document does not match toolchain.schema.json")

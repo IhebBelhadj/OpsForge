@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opsforge.lab/academy/bundle.schema.json",
-  "title": "OpsForge Academy content bundle (contract 1)",
-  "description": "Output of `opsforge api compile`, input of `academy import` (docs/courses/content-model.md). Texts keep their placeholders raw. A bundle with errors is never imported.",
+  "title": "OpsForge Academy content bundle (format 1)",
+  "description": "Output of the course compiler (internal/compiler, `academy compile --json`), input of the import (docs/courses/content-model.md). Texts keep their placeholders raw. A bundle with errors is never imported.",
   "type": "object",
   "required": ["contract", "compiled_at", "packs", "errors"],
   "additionalProperties": false,
   "properties": {
-    "contract": { "const": 1 },
+    "contract": { "const": 1, "description": "The bundle format version (internal/compiler.Version)" },
     "compiled_at": { "type": "string", "format": "date-time" },
     "packs": { "type": "array", "items": { "$ref": "#/$defs/pack" } },
     "errors": {
@@ -40,7 +40,7 @@
         "author": { "type": "string" },
         "description": { "type": "string" },
         "hint_penalty": { "type": "number", "minimum": 0, "maximum": 0.5 },
-        "path": { "type": "string", "description": "The pack folder, relative to the repository root (assets are served from it)" },
+        "path": { "type": "string", "description": "The pack folder, relative to the content folder (absolute when outside it; assets are served from it)" },
         "content_hash": { "$ref": "#/$defs/hash" },
         "courses": { "type": "array", "items": { "$ref": "#/$defs/course" } },
         "lectures": { "type": "array", "items": { "$ref": "#/$defs/lecture" } },

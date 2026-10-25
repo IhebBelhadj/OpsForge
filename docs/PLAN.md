@@ -771,16 +771,20 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      keeps a pinned copy (`academy/contract/` + `PINNED`, `make contract-update`; `make contract-check` fails while it
      differs), reads outputs leniently and fails `/readyz` naming the minimum OpsForge when the minor is too old
      (`opsforgecli.MinMinor`/`MinRelease`).
-  2. **Compiler to Go**: `lab/academy.py` + `lab/course.schema.json` + the pack logic of `lab/labs.py` it uses (pack
-     loading, validation, content hashes, badge-rule validation) become `internal/compiler` (golden bundle and the
-     invalid-pack cases ported as Go tests; content hashes byte-identical so passes stay fresh). Content
-     import calls it in-process; `compile` leaves the contract. Lab checks still name scenario step types, so the
-     step validation stays in OpsForge: the compiler checks steps through `opsforge api validate-steps` (contract
-     minor 1) or accepts them and lets `run`/`probe` refuse them (decide during the port).
+  2. **Compiler to Go** (done 2026-10-25): `academy/internal/compiler` replaces `lab/academy.py`'s compiler and the
+     pack logic of `lab/labs.py` it used (loading, schema + cross-reference checks, content hashes, badge rules);
+     `course.schema.json` moved to `academy/api/`, `labpack.schema.json` copied there (Phase 10 keeps its own until
+     step 3). Packs are read as PyYAML read them (YAML 1.1 scalars) and hashed over Python's `json.dumps` bytes: the
+     Go bundle is byte-identical to Python's for the repo and demo packs, so no pass turned stale (re-import into
+     the live database: only the pack row changed, its `path` now relative to the content folder). Scenario steps
+     stay OpsForge's knowledge: the compiler sends every lab's and challenge's steps in one `opsforge api
+     validate-steps` call (in minor 0, since contract 1 is not released yet; `compile` left the contract). Content
+     import calls it in-process; `academy compile [--json] [pack...]` for authors and `make check`; `--content`
+     (default `<root>/labs`) names the packs folder.
   3. **Phase 10 removed** (`lab/labserver.py`, `lab/labsdb.py`, `lab/web/`, `lab/migrations/`, `opsforge labs` and
      `serve`); Academy's `migrate-legacy` stays until M2 (it reads the file, not the code).
-  4. **Academy config split**: `--opsforge` (the OpsForge checkout: CLI, `.opsforge/` state) and `--content` (packs);
-     `--root` goes.
+  4. **Academy config split**: `--opsforge` (the OpsForge checkout: CLI, `.opsforge/` state) next to `--content`
+     (added in step 2); `--root` goes.
   5. **Move** `academy/`, `web/`, `labs/` (content), `docs/courses/` with `git filter-repo` (history kept) into the new
      repo; split CI, Makefile, README, CLAUDE.md; CHANGELOG.md in both; tag OpsForge `v1.0.0`, Academy `v0.1.0`.
   - **Done when:** each repo's `make check` and CI are green on its own; Academy against tagged OpsForge `v1.0.0`

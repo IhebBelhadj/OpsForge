@@ -6,6 +6,8 @@ ignore: |
   ansible/inventory/
   web/node_modules/
   web/pnpm-lock.yaml
+  # YAML 1.1 edge cases on purpose (octal, yes/no, ...): the compiler must read them as PyYAML did
+  academy/internal/compiler/testdata/yaml11.yml
 
 rules:
   line-length:

@@ -27,7 +27,7 @@ lint-ansible:
 validate:
 	./opsforge validate
 	./opsforge labs validate
-	./opsforge api compile
+	cd academy && go run ./cmd/academy compile --root ..
 
 # Academy's pinned copy of the toolchain contract (academy/contract) must be OpsForge's (contract/) while both live in
 # this repository; after the split, contract-update copies a release instead.

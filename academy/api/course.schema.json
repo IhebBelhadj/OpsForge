@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opsforge.lab/course.schema.json",
   "title": "OpsForge Academy course",
-  "description": "One course folder of a pack, loaded (docs/courses/content-model.md): course.yml, lectures (front matter + Markdown), quizzes and challenges. Cross-references, files and scenario steps are checked by lab/academy.py.",
+  "description": "One course folder of a pack, loaded (docs/courses/content-model.md): course.yml, lectures (front matter + Markdown), quizzes and challenges. Cross-references and files are checked by internal/compiler, scenario steps by OpsForge (`opsforge api validate-steps`).",
   "type": "object",
   "required": ["course", "lectures", "quizzes", "challenges"],
   "additionalProperties": false,
