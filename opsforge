@@ -2068,7 +2068,7 @@ def cmd_api_serve(args):
     if not loopback and not args.tls_cert:
         raise LabError(f"{args.host} is not a loopback address: serve it with --tls-cert/--tls-key (the API opens "
                        "shells on this host), or keep 127.0.0.1 and reach it through an SSH tunnel")
-    apiserver.serve(sys.modules[__name__], args.host, args.port, args.tls_cert, args.tls_key)
+    apiserver.serve(sys.modules[__name__], args.host, args.port, args.tls_cert, args.tls_key, args.data)
     return 0
 
 
@@ -2244,6 +2244,7 @@ def main():
                    help=f"serve: port (default {apiserver.DEFAULT_PORT})")
     p.add_argument("--tls-cert", type=Path, help="serve: TLS certificate (PEM), with --tls-key")
     p.add_argument("--tls-key", type=Path, help="serve: TLS private key (PEM)")
+    p.add_argument("--data", type=Path, help="serve: token, workspaces and shell history here (default .opsforge/)")
     p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
     p.set_defaults(func=cmd_api)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take

@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,28 +14,44 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/httpapi"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi/opsforgefake"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 	"github.com/IhebBelhadj/opsforge/academy/internal/terminal"
-	"github.com/IhebBelhadj/opsforge/academy/internal/terminal/ptyshell"
 )
 
-// labServer is the transport over real shells (bash on ptys, as in production), on a loopback listener.
-func labServer(t *testing.T, opts ...func(*httpapi.Deps)) (*httptest.Server, *terminal.Service) {
+// fakeOpsForge is OpsForge's API in memory (an echoing shell, workspaces in memory) and a client of it.
+func fakeOpsForge(t *testing.T) (*opsforgefake.Fake, *opsforgeapi.Client) {
 	t.Helper()
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "opsforge"), []byte("#!/bin/sh\necho \"opsforge $*\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	spec, err := ptyshell.Bash(root, filepath.Join(root, ".opsforge"), 80, 24)
+	fake := opsforgefake.New("token")
+	srv := httptest.NewServer(fake)
+	t.Cleanup(srv.Close)
+	c, err := opsforgeapi.New(srv.URL, opsforgeapi.StaticToken("token"), 5*time.Second, 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := terminal.NewService(ptyshell.Spawner{})
+	return fake, c
+}
+
+// shells serves terminals on the lab host of c.
+func shells(t *testing.T, c *opsforgeapi.Client) (terminal.Shells, *terminal.Service) {
+	t.Helper()
+	svc := terminal.NewService(c.Shells())
+	t.Cleanup(svc.Shutdown)
+	return terminal.NewShells(svc), svc
+}
+
+// labServer is the transport with terminals on a fake OpsForge, on a loopback listener (real shells: the
+// integration test against `opsforge api serve`, cmd/academy).
+func labServer(t *testing.T, opts ...func(*httpapi.Deps)) (*httptest.Server, *terminal.Service) {
+	t.Helper()
+	_, c := fakeOpsForge(t)
+	sh, svc := shells(t, c)
 	deps := httpapi.Deps{
 		Build:     platform.Build{Version: "test"},
 		Web:       built,
 		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Terminals: terminal.NewShells(svc, spec),
+		Terminals: sh,
 		Identity:  identities(t),
 	}
 	for _, opt := range opts {
@@ -110,16 +124,16 @@ func expect(t *testing.T, c *websocket.Conn, want string) string {
 	return out.String()
 }
 
-// The Phase 10 terminal's behaviour, on the new stack (spike S6): typed input, bracketed paste, resize, reconnect
-// with replay, and the end of the shell.
-func TestTerminalParityWithPhase10(t *testing.T) {
+// The browser terminal's transport over OpsForge's: typed input and a paste reach the shell, a resize too,
+// reconnecting replays, and the end of the shell closes the socket (bash itself: cmd/academy's integration test).
+func TestTerminalTransport(t *testing.T) {
 	srv, _ := labServer(t)
 	b := signIn(t, srv)
 	id := sessionID(t, b, `{"cols": 100, "rows": 30}`)
 	c := dial(t, b, id)
 	expect(t, c, "Lab terminal in")
 
-	send(t, c, map[string]any{"t": "i", "d": "\x1b[200~echo parity-$((6*7))\x1b[201~"})
+	send(t, c, map[string]any{"t": "i", "d": "\x1b[200~echo parity-42\x1b[201~"})
 	send(t, c, map[string]any{"t": "i", "d": "\r"})
 	expect(t, c, "parity-42")
 

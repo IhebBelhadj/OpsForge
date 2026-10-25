@@ -232,24 +232,17 @@ func newID() string {
 	return hex.EncodeToString(b)
 }
 
-// Shells opens sessions of one shell (base), sized by the client.
+// Shells opens sessions of the lab shell, sized by the client.
 type Shells struct {
-	svc  *Service
-	base Spec
+	svc *Service
 }
 
-// NewShells serves base's shell from svc.
-func NewShells(svc *Service, base Spec) Shells { return Shells{svc: svc, base: base} }
+// NewShells serves the lab shell from svc.
+func NewShells(svc *Service) Shells { return Shells{svc: svc} }
 
-// Open starts the shell at cols × rows, in dir when it is set (a workspace: the shell gets ACADEMY_WORKDIR).
-func (s Shells) Open(cols, rows uint16, dir string) (string, error) {
-	spec := s.base
-	spec.Cols, spec.Rows = cols, rows
-	if dir != "" {
-		spec.Dir = dir
-		spec.Env = append(append([]string(nil), s.base.Env...), "ACADEMY_WORKDIR="+dir)
-	}
-	return s.svc.Open(spec)
+// Open starts the shell at cols × rows, in workspace ws when it is set.
+func (s Shells) Open(cols, rows uint16, ws string) (string, error) {
+	return s.svc.Open(Spec{Workspace: ws, Cols: cols, Rows: rows})
 }
 
 // Attach connects a client to a session (Service.Attach).

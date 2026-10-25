@@ -34,13 +34,12 @@ const (
 	ReasonClosed   = "closed"   // the platform is shutting down
 )
 
-// Spec is the shell to start.
+// Spec is the shell to start: on the lab host, in a workspace (the learner's files) or, without one, in
+// OpsForge's checkout.
 type Spec struct {
-	Argv []string
-	Dir  string
-	Env  []string // added to the platform's environment
-	Cols uint16
-	Rows uint16
+	Workspace string
+	Cols      uint16
+	Rows      uint16
 }
 
 // ring keeps the last len(buf) bytes written to it.

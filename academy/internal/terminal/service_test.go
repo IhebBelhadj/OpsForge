@@ -77,7 +77,7 @@ func (s *fakeSpawner) pty(i int) *fakePty {
 	return s.ptys[i]
 }
 
-var spec = terminal.Spec{Argv: []string{"bash"}, Dir: "/repo", Cols: 80, Rows: 24}
+var spec = terminal.Spec{Workspace: "lab-1", Cols: 80, Rows: 24}
 
 func newService() (*terminal.Service, *fakeSpawner) {
 	spawner := &fakeSpawner{}

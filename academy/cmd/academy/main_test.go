@@ -4,29 +4,43 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
 	"github.com/IhebBelhadj/opsforge/academy/internal/legacy"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi/opsforgefake"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 )
 
-// The wired application end to end: real SQLite in a temp folder, a fake toolchain script, a real listener.
-func TestServeAnswersHealthAndReadinessThenShutsDownCleanly(t *testing.T) {
-	dir := t.TempDir()
-	toolchain := filepath.Join(dir, "opsforge")
-	if err := os.WriteFile(toolchain, []byte("#!/bin/sh\necho '{\"contract\": 1}'\n"), 0o755); err != nil {
+// testConfig is the wired application's configuration over a fake OpsForge (its token copied into the data folder),
+// with an empty content folder.
+func testConfig(t *testing.T, dir string, args ...string) config.Config {
+	t.Helper()
+	fake := httptest.NewServer(opsforgefake.New("token"))
+	t.Cleanup(fake.Close)
+	if err := os.WriteFile(filepath.Join(dir, "opsforge-token"), []byte("token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load([]string{"--addr", "127.0.0.1:0", "--root", dir, "--log-level", "error"},
+	cfg, err := config.Load(append([]string{"--addr", "127.0.0.1:0", "--data", dir, "--content",
+		filepath.Join(dir, "content"), "--opsforge-url", fake.URL, "--log-level", "error"}, args...),
 		func(string) string { return "" })
 	if err != nil {
 		t.Fatal(err)
 	}
+	return cfg
+}
+
+// The wired application end to end: real SQLite in a temp folder, a fake OpsForge, a real listener.
+func TestServeAnswersHealthAndReadinessThenShutsDownCleanly(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	app, cleanup, err := initApp(ctx, cfg, platform.Build{Version: "test"})
 	if err != nil {
@@ -62,7 +76,7 @@ func TestServeAnswersHealthAndReadinessThenShutsDownCleanly(t *testing.T) {
 		t.Fatal("no shutdown within 5 s")
 	}
 	cleanup()
-	if _, err := os.Stat(filepath.Join(dir, ".opsforge", "academy.db")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "academy.db")); err != nil {
 		t.Fatalf("database: %v", err)
 	}
 }
@@ -76,6 +90,34 @@ func TestVersionCommand(t *testing.T) {
 func TestBadFlagsExitWithUsageError(t *testing.T) {
 	if code := run([]string{"serve", "--addr", "0.0.0.0:1"}); code != 2 {
 		t.Fatalf("exit %d", code)
+	}
+	if code := run([]string{"migrate-legacy", "--data", t.TempDir()}); code != 2 {
+		t.Fatalf("migrate-legacy without --legacy-db: exit %d", code)
+	}
+}
+
+// Without OpsForge's token Academy still starts (migrate-legacy needs no OpsForge), and readyz says what is missing.
+func TestAMissingTokenIsAReadinessProblem(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, dir)
+	cfg.OpsForgeTokenFile = filepath.Join(dir, "missing")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	app, cleanup, err := initApp(ctx, cfg, platform.Build{Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	app.ready = make(chan string, 1)
+	go func() { _ = app.Run(ctx) }()
+	resp, err := http.Get("http://" + <-app.ready + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), "opsforge-token-file") {
+		t.Fatalf("%d %s", resp.StatusCode, body)
 	}
 }
 
@@ -95,11 +137,7 @@ func TestMigrateLegacyImportsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = db.Close()
-	cfg, err := config.Load([]string{"--root", dir, "--legacy-db", legacyDB, "--log-level", "error"},
-		func(string) string { return "" })
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg := testConfig(t, dir, "--legacy-db", legacyDB)
 	ctx := context.Background()
 	app, cleanup, err := initApp(ctx, cfg, platform.Build{Version: "test"})
 	if err != nil {

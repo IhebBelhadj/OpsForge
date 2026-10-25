@@ -43,7 +43,7 @@ type Catalog interface {
 	Entry(ctx context.Context, kind catalog.Kind, key string) (catalog.Entry, error)
 }
 
-// LabController runs things on the lab through the toolchain (opsforgecli.Runner).
+// LabController runs things on the lab through OpsForge (opsforgeapi.Client).
 type LabController interface {
 	State(ctx context.Context) (lab.State, error)
 	Run(ctx context.Context, req lab.RunRequest) (lab.RunResult, error)

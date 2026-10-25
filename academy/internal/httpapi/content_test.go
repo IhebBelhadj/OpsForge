@@ -10,7 +10,7 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/catalog"
 	"github.com/IhebBelhadj/opsforge/academy/internal/contentimport"
 	"github.com/IhebBelhadj/opsforge/academy/internal/httpapi"
-	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi"
 )
 
 type importer struct {
@@ -46,8 +46,8 @@ func TestImportFailures(t *testing.T) {
 	}{
 		"invalid packs": {invalid, 422, "/problems/invalid-packs"},
 		"toolchain": {fmt.Errorf("%w: %w", contentimport.ErrCompile,
-			&opsforgecli.Problem{Type: "/problems/lab-error", Detail: "boom"}), 503, "/problems/toolchain"},
-		"contract": {fmt.Errorf("%w: %w", contentimport.ErrCompile, &opsforgecli.ContractError{Got: 2}), 503,
+			&opsforgeapi.Problem{Type: "/problems/lab-error", Detail: "boom"}), 503, "/problems/toolchain"},
+		"contract": {fmt.Errorf("%w: %w", contentimport.ErrCompile, &opsforgeapi.ContractError{Got: 2}), 503,
 			"/problems/toolchain"},
 		"unreachable": {fmt.Errorf("%w: %w", contentimport.ErrCompile, errors.New("exec: no such file")), 503,
 			"/problems/toolchain"},

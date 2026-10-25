@@ -10,7 +10,7 @@ type Pty interface {
 	Close() error
 }
 
-// Spawner starts shells (adapter: creack.go).
+// Spawner starts shells (adapter: opsforgeapi.Shells, a shell on the lab host).
 type Spawner interface {
 	Spawn(spec Spec) (Pty, error)
 }

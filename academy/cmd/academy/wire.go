@@ -18,7 +18,7 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 		wire.Value(platform.SystemClock{}),
 		provideLogger,
 		provideStore,
-		provideToolchain,
+		provideOpsForge,
 		provideReadiness,
 		provideTerminals,
 		provideShells,

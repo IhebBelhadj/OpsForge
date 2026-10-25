@@ -101,10 +101,10 @@ as done when its lab was passed).
 
 ## The lab toolchain contract (Go → Python)
 
-> **Moving to HTTP** (decided 2026-10-25, PLAN.md Phase 11 split steps 4-5): `opsforge api serve` serves the same
-> documents under `/v1/` (jobs for lab work, a WebSocket terminal and workspaces on the lab host, a bearer token), and
-> Academy's only adapter becomes an HTTP client (`internal/opsforgeapi`); the CLI form below stays for people and
-> scripts.
+> **Over HTTP since 2026-10-25** (PLAN.md Phase 11 split steps 4-5): `opsforge api serve` serves the same documents
+> under `/v1/` (`contract/openapi.yaml`: jobs for lab work, a WebSocket terminal and the workspaces on the lab host, a
+> bearer token), and Academy's only adapter is an HTTP client (`internal/opsforgeapi`: `LabController`, `StepChecker`,
+> `workspace.FileStore`, `terminal.Spawner`, the readiness check). The CLI form below stays for people and scripts.
 
 `opsforge api <command> --json`, one JSON document on stdin, one on stdout, exit 0 on success, a problem document on
 stderr otherwise. OpsForge owns it (`contract/README.md`: schema, golden documents, versioning rules); Academy pins a

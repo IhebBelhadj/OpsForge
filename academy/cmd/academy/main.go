@@ -18,7 +18,7 @@ import (
 	"syscall"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/config"
-	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 )
 
@@ -36,7 +36,7 @@ func run(args []string) int {
 		command, args = args[0], args[1:]
 	}
 	if command == "version" {
-		fmt.Printf("academy %s (toolchain contract %d)\n", version, opsforgecli.Contract)
+		fmt.Printf("academy %s (opsforge contract %d.%d or later)\n", version, opsforgeapi.Contract, opsforgeapi.MinMinor)
 		return 0
 	}
 	if command == "compile" {
@@ -48,6 +48,10 @@ func run(args []string) int {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "academy: %v\n", err)
+		return 2
+	}
+	if command == "migrate-legacy" && cfg.LegacyDB == "" {
+		fmt.Fprintln(os.Stderr, "academy: migrate-legacy needs --legacy-db (OpsForge's .opsforge/labs.db, or a copy)")
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -86,7 +90,12 @@ func compilePacks(args []string) int {
 		fmt.Fprintf(os.Stderr, "academy: %v\n", err)
 		return 2
 	}
-	packs := provideCompiler(cfg, provideToolchain(cfg), platform.SystemClock{})
+	opsforge, err := provideOpsForge(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "academy: %v\n", err)
+		return 2
+	}
+	packs := provideCompiler(cfg, opsforge, platform.SystemClock{})
 	var data json.RawMessage
 	if len(c.Packs) > 0 {
 		data, err = packs.CompilePaths(context.Background(), c.Packs)

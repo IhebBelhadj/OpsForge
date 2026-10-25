@@ -22,30 +22,29 @@ func initApp(ctx context.Context, cfg config.Config, build platform.Build) (*App
 	if err != nil {
 		return nil, nil, err
 	}
-	runner := provideToolchain(cfg)
-	v := provideReadiness(store, runner)
-	service, cleanup2 := provideTerminals()
-	shells, err := provideShells(cfg, service)
+	client, err := provideOpsForge(cfg)
 	if err != nil {
-		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
+	v := provideReadiness(store, client)
+	service, cleanup2 := provideTerminals(client)
+	shells := provideShells(service)
 	identityService := provideIdentity(store, systemClock)
-	compilerService := provideCompiler(cfg, runner, systemClock)
+	compilerService := provideCompiler(cfg, client, systemClock)
 	repo := provideCatalogRepo(store)
 	contentimportService := provideImporter(compilerService, repo, systemClock)
 	catalogService := provideCatalog(repo)
 	hub, cleanup3 := provideHub()
 	historyService := provideHistory(store, hub, systemClock, logger)
-	workspaceService := provideWorkspaces(cfg, store, systemClock)
+	workspaceService := provideWorkspaces(client, store, systemClock)
 	operationsService := provideOperations(store, hub, systemClock, logger)
-	labsessionService := provideLabs(store, catalogService, runner, workspaceService, operationsService, historyService, systemClock)
+	labsessionService := provideLabs(store, catalogService, client, workspaceService, operationsService, historyService, systemClock)
 	quizService := provideQuizzes(store, catalogService, historyService, systemClock)
 	progressService := provideProgress(store, catalogService, historyService, systemClock, quizService, labsessionService)
 	rewardsService := provideRewards(store, catalogService, historyService, systemClock, logger, labsessionService, quizService, progressService, identityService)
 	mainImporter := provideRewardingImporter(contentimportService, rewardsService, logger)
-	labstateService := provideLabState(runner, historyService, systemClock)
+	labstateService := provideLabState(client, historyService, systemClock)
 	handler := provideHandler(build, v, shells, identityService, mainImporter, catalogService, historyService, hub, progressService, quizService, labsessionService, operationsService, workspaceService, rewardsService, labstateService, logger)
 	legacyService := provideLegacy(store)
 	app := newApp(cfg, logger, handler, service, mainImporter, hub, operationsService, labsessionService, identityService, legacyService, progressService, rewardsService)

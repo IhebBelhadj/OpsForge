@@ -21,11 +21,17 @@ linters:
         - name: var-naming
     depguard:
       rules:
+        # HTTP in: internal/httpapi; HTTP out: internal/opsforgeapi (the adapter to OpsForge and its fake)
         transport-at-the-edge:
-          files: ["**/internal/**", "!**/internal/httpapi/**", "!$test"]
+          files: ["**/internal/**", "!**/internal/httpapi/**", "!**/internal/opsforgeapi/**", "!$test"]
           deny:
             - pkg: net/http
-              desc: HTTP belongs to internal/httpapi
+              desc: HTTP belongs to internal/httpapi (served) and internal/opsforgeapi (called)
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/httpapi
+              desc: nothing imports the transport
+        adapter-is-not-the-transport:
+          files: ["**/internal/opsforgeapi/**"]
+          deny:
             - pkg: github.com/IhebBelhadj/opsforge/academy/internal/httpapi
               desc: nothing imports the transport
         pure-domain:
@@ -37,7 +43,7 @@ linters:
               desc: the domain knows no toolchain
             - pkg: github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite
               desc: the domain knows no adapter
-            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi
               desc: the domain knows no adapter
         services-use-ports:
           files: ["**/internal/*/service.go"]
@@ -48,7 +54,7 @@ linters:
               desc: services use the LabController port
             - pkg: github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite
               desc: adapters are injected, not imported
-            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli
+            - pkg: github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi
               desc: adapters are injected, not imported
         lab-documents-are-pure:
           files: ["**/internal/lab/*.go"]
@@ -56,7 +62,7 @@ linters:
             - pkg: github.com/IhebBelhadj/opsforge/academy/internal
               desc: the contract documents import no module (every module imports them)
             - pkg: os/exec
-              desc: the documents are data; internal/opsforgecli runs the toolchain
+              desc: the documents are data; internal/opsforgeapi calls OpsForge
         platform-is-a-leaf:
           files: ["**/internal/platform/**"]
           list-mode: lax

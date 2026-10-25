@@ -16,7 +16,7 @@ jobs:
         run: pip install pyyaml jsonschema pytest yamllint ansible-core ansible-lint
       - name: Lint (needs no Incus)
         run: make lint-shell lint-yaml lint-python lint-ansible
-      - name: Validate topology, packs and the academy bundle; run unit tests
+      - name: Validate the topology; run unit tests
         run: make validate test
 
   go:
@@ -27,10 +27,17 @@ jobs:
         with:
           go-version-file: academy/go.mod
           cache-dependency-path: academy/**/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install OpsForge's dependencies (tests run against a throwaway `opsforge api serve`)
+        run: pip install pyyaml jsonschema
       - name: Lint (vet, golangci-lint with the layering rules)
         run: make academy-lint
-      - name: Test
+      - name: Test (with the integration tests against OpsForge's API)
         run: make academy-test
+      - name: Compile the packs (steps checked by OpsForge's API)
+        run: make academy-validate
 
   web:
     runs-on: ubuntu-latest
@@ -87,7 +94,7 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Install dependencies and browsers
         run: make web-deps && cd web && pnpm exec playwright install --with-deps chromium firefox
-      - name: Build academy and run Playwright (fake lab toolchain)
+      - name: Build academy and run Playwright (fake OpsForge API)
         run: make e2e
       - uses: actions/upload-artifact@v4
         if: failure()

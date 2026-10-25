@@ -10,7 +10,7 @@ import (
 
 // Workspaces is what the transport needs from the workspace module.
 type Workspaces interface {
-	Dir(ctx context.Context, user int64, ws string) (string, error)
+	Workdir(ctx context.Context, user int64, ws string) (string, error)
 	Tree(ctx context.Context, user int64, ws string) (workspace.Tree, error)
 	Read(ctx context.Context, user int64, ws, path string) (workspace.File, error)
 	Write(ctx context.Context, user int64, ws, path, content string, base *string) (workspace.File, error)

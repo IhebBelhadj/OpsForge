@@ -1,6 +1,6 @@
-// Package workspace is the learner's files: one tree per lab attempt (`.opsforge/workspaces/<id>/`), seeded with
-// the lab's files, shared by the editor (the API) and the terminal (its shell starts there). Paths are confined to
-// the tree (no `..`, no absolute paths, symlinks never followed out of it) and sizes capped
+// Package workspace is the learner's files: one tree per lab attempt, kept on the lab host (OpsForge's
+// `/v1/workspaces/<id>`, opsforgeapi.Files) and seeded with the lab's files, shared by the editor (the API) and the
+// terminal (its shell starts there). Paths are confined to the tree (no `..`, no absolute paths, symlinks never followed out of it) and sizes capped
 // (docs/courses/architecture.md, "Security").
 package workspace
 

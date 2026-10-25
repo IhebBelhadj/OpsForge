@@ -24,6 +24,8 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/labstate"
 	"github.com/IhebBelhadj/opsforge/academy/internal/operations"
 	operationssqlite "github.com/IhebBelhadj/opsforge/academy/internal/operations/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi/opsforgefake"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/progress"
@@ -32,8 +34,8 @@ import (
 	quizsqlite "github.com/IhebBelhadj/opsforge/academy/internal/quiz/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/rewards"
 	rewardssqlite "github.com/IhebBelhadj/opsforge/academy/internal/rewards/sqlite"
+	"github.com/IhebBelhadj/opsforge/academy/internal/terminal"
 	"github.com/IhebBelhadj/opsforge/academy/internal/workspace"
-	"github.com/IhebBelhadj/opsforge/academy/internal/workspace/disk"
 	workspacesqlite "github.com/IhebBelhadj/opsforge/academy/internal/workspace/sqlite"
 )
 
@@ -52,6 +54,10 @@ type world struct {
 	rewards  *rewards.Service
 	state    *labstate.Service
 	lab      *scriptedLab
+	// OpsForge in memory: the workspaces and terminals (lab work is the scripted lab's)
+	opsforge  *opsforgefake.Fake
+	client    *opsforgeapi.Client
+	terminals terminal.Shells
 }
 
 // scriptedLab is the toolchain as the HTTP tests see it: a lab that is up and passes every probe, unless told
@@ -157,8 +163,9 @@ func newWorld(t *testing.T) *world {
 		return out, err
 	})
 	w.ops = operations.NewService(operationssqlite.NewRepo(store.DB), hub, clock, log)
-	w.spaces = workspace.NewService(disk.Store{Base: filepath.Join(t.TempDir(), "workspaces")},
-		workspacesqlite.NewRepo(store.DB), clock)
+	w.opsforge, w.client = fakeOpsForge(t)
+	w.terminals, _ = shells(t, w.client)
+	w.spaces = workspace.NewService(w.client.Files(), workspacesqlite.NewRepo(store.DB), clock)
 	w.lab = &scriptedLab{}
 	w.labs = labsession.NewService(labsqlite.NewRepo(store.DB), w.catalog, w.lab, w.spaces, w.ops, w.history, clock)
 	t.Cleanup(func() { _ = w.ops.Wait(context.Background()) })
@@ -220,4 +227,5 @@ func (w *world) deps(d *httpapi.Deps) {
 	d.Workspaces = w.spaces
 	d.Awards = w.rewards
 	d.Lab = w.state
+	d.Terminals = w.terminals
 }

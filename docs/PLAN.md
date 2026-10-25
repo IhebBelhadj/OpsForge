@@ -813,17 +813,28 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
        size, job control, close 1000), and the OpenAPI document vs the routes. Golden `job.json`.
      - *Not done*: a systemd user unit (the checkout's path is the user's; `opsforge api serve` runs in a terminal
        until a deployment needs it). Running it needs the `incus-admin` group like every lab command.
-  5. **Academy on the API** (still in this repo): a `internal/opsforgeapi` adapter (an HTTP client over
-     `internal/lab`'s types, checked against the pinned schema; or oapi-codegen's from the pinned `openapi.yaml`, whose
-     refs into `toolchain.schema.json` would need bundling: decide in the step) implements `LabController`, `StepChecker`, the readiness check, the terminal
-     (a `terminal.Spawner` whose pty is the WebSocket) and `workspace.FileStore`; `internal/opsforgecli` and the local pty spawner (`ptyshell`) are deleted
-     (one adapter, one way in). Config: `--opsforge-url` + `--opsforge-token-file`, `--content`, `--data` (Academy's
-     own state: the database until step 7); `--root`, `--toolchain` go: Academy reads nothing
-     of an OpsForge checkout. The e2e suite runs against a fake OpsForge API (a small Go server in Academy's
-     testdata) instead of `fake-opsforge.sh`; contract tests decode the pinned golden documents as before.
-     **Done when:** the six-lab acceptance passes with Academy talking only HTTP to `opsforge api serve` (same
-     results as M1: hints, reset, not-yet, losing-a-site, XP 790/800, badges); `grep -r opsforge academy/` finds
-     no path into the checkout.
+  5. **Academy on the API** (done 2026-10-25): `academy/internal/opsforgeapi` is Academy's only way to OpsForge: a
+     hand-written HTTP client over `internal/lab`'s types (outputs checked against the pinned schema; oapi-codegen was
+     not needed) implementing `LabController` (state; run, probe, heal as jobs polled with `?wait=`), `StepChecker`,
+     the readiness check (version, minor, token), `workspace.FileStore` (the trees on the lab host; its methods now
+     take a context) and `terminal.Spawner` (`terminal.Spec` is now a workspace and a size; the shell is a WebSocket
+     to `/v1/terminal`). Deleted: `internal/opsforgecli`, `internal/terminal/ptyshell` (creack/pty),
+     `internal/workspace/disk`, `web/e2e/fake-opsforge.sh`. Config: `--data` (default
+     `$XDG_DATA_HOME/opsforge-academy`: `academy.db`, `opsforge-token`), `--content` (default `./labs`),
+     `--opsforge-url` (plain http only to loopback), `--opsforge-token-file` (read at every call: a missing token is a
+     readyz problem, not a start failure; migrate-legacy needs no OpsForge), `--legacy-db` (required by
+     migrate-legacy); `--root`, `--toolchain`, `--workspaces` are gone. Tests: `opsforgeapi/opsforgefake` (the API in
+     memory) serves httpapi's world, cmd/academy and the e2e suite (`cmd/opsforge-fake`); the golden documents decode;
+     `make academy-test` and `academy-validate` run against a throwaway real `opsforge api serve`
+     (`scripts/with-opsforge-api.sh`), where real bash in the terminal is tested (paste, resize, job control, a file
+     made in the shell read back through the API). CI's go job installs Python for it; the python job no longer
+     compiles packs (it has no Go).
+     **Acceptance met 2026-10-25 (stretched, live)**, Academy talking only HTTP to `opsforge api serve` and every
+     learner command typed into Academy's terminal (a shell on the lab host in the attempt's workspace): the same as
+     M1's run: locked lab refused, an abandon, 6/6 passed (one hint: 90 XP; not-yet in ~1 s; a reset; Routing around
+     failure rerouted in ~11 s; Losing a site NotReady after 50 s, pods moved after 61 s more, Ready 58 s after
+     `heal`), 790 XP and 6/6 badges, import twice = no change, an edit flags exactly its pass, a late badge awarded
+     from history. `verify` green afterwards. Academy 51 MiB RSS, `opsforge api serve` 40 MiB.
   6. **Move** `academy/`, `web/`, `labs/` (content), `docs/courses/` with `git filter-repo` (history kept) into the new
      repo; split CI, Makefile, README, CLAUDE.md; CHANGELOG.md in both; tag OpsForge `v1.0.0` (contract 1.0 frozen),
      Academy `v0.1.0`. From here the two evolve separately: OpsForge changes the contract by minors (or a major),

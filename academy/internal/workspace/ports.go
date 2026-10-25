@@ -5,23 +5,21 @@ import (
 	"time"
 )
 
-// FileStore holds the workspaces' trees; paths are already CleanPath'd, but a store must still refuse to leave a
-// tree (a symlink made in the terminal).
+// FileStore holds the workspaces' trees (on the lab host: opsforgeapi.Files); paths are already CleanPath'd, but a
+// store must still refuse to leave a tree (a symlink made in the terminal).
 type FileStore interface {
 	// Create makes an empty tree; ErrExists if there is one.
-	Create(ws string) error
+	Create(ctx context.Context, ws string) error
 	// List is the tree's regular files, by path.
-	List(ws string) ([]Entry, error)
+	List(ctx context.Context, ws string) ([]Entry, error)
 	// Read returns a file's content; ErrNotFound if there is none.
-	Read(ws, path string) ([]byte, error)
+	Read(ctx context.Context, ws, path string) ([]byte, error)
 	// Write replaces (or creates, with its folders) a file.
-	Write(ws, path string, data []byte) error
+	Write(ctx context.Context, ws, path string, data []byte) error
 	// Remove deletes a file; ErrNotFound if there is none.
-	Remove(ws, path string) error
+	Remove(ctx context.Context, ws, path string) error
 	// Rename moves a file (creating the target's folders); ErrNotFound if there is none.
-	Rename(ws, from, to string) error
-	// Dir is the tree's folder on disk (where a terminal starts).
-	Dir(ws string) string
+	Rename(ctx context.Context, ws, from, to string) error
 }
 
 // Repo records who owns each workspace.

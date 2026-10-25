@@ -642,14 +642,16 @@ ROUTES = [
 ]
 
 
-def make_server(cli, host, port, tls_cert=None, tls_key=None):
+def make_server(cli, host, port, tls_cert=None, tls_key=None, data=None):
     """The API server for this checkout (`cli` is the opsforge module): token, workspaces and the shell's rcfile
-    under .opsforge/."""
-    token = load_token(cli.STATE / "api-token")
-    rcfile = cli.STATE / "api-bashrc"
-    rcfile.write_text(BASHRC.format(history=shell_quote(cli.STATE / "api-history"), cli=shell_quote(cli.ROOT / "opsforge"),
+    in `data` (default .opsforge/; tests and tools give their own)."""
+    data = Path(data or cli.STATE)
+    data.mkdir(parents=True, exist_ok=True)
+    token = load_token(data / "api-token")
+    rcfile = data / "api-bashrc"
+    rcfile.write_text(BASHRC.format(history=shell_quote(data / "api-history"), cli=shell_quote(cli.ROOT / "opsforge"),
                                     root=shell_quote(cli.ROOT)))
-    server = Server((host, port), cli, token, Workspaces(cli.STATE / "workspaces"), rcfile)
+    server = Server((host, port), cli, token, Workspaces(data / "workspaces"), rcfile)
     if tls_cert:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(tls_cert, tls_key)
@@ -657,13 +659,13 @@ def make_server(cli, host, port, tls_cert=None, tls_key=None):
     return server
 
 
-def serve(cli, host, port, tls_cert=None, tls_key=None):
+def serve(cli, host, port, tls_cert=None, tls_key=None, data=None):
     """Serves until SIGINT/SIGTERM; a running lab job is waited for (stopping halfway through a setup would leave
     the lab half-changed)."""
-    server = make_server(cli, host, port, tls_cert, tls_key)
+    server = make_server(cli, host, port, tls_cert, tls_key, data)
     scheme = "https" if tls_cert else "http"
     print(f"opsforge api on {scheme}://{host}:{server.server_address[1]}/v1/ (token: "
-          f"{(cli.STATE / 'api-token').relative_to(cli.ROOT)})", flush=True)
+          f"{Path(data or cli.STATE) / 'api-token'})", flush=True)
 
     def stop(*_):
         threading.Thread(target=server.shutdown, daemon=True).start()

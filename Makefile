@@ -6,8 +6,8 @@ SHELLCHECK := $(shell shellcheck --version >/dev/null 2>&1 && echo shellcheck ||
 .PHONY: check test lint-shell lint-yaml lint-python lint-ansible validate preflight smoke up down provision verify host-setup \
 	academy academy-test academy-lint web-deps web-build web-check gen gen-check e2e contract-check contract-update
 
-check: lint-shell lint-yaml lint-python lint-ansible validate test contract-check academy-lint academy-test web-check \
-	gen-check
+check: lint-shell lint-yaml lint-python lint-ansible validate test contract-check academy-lint academy-test \
+	academy-validate web-check gen-check
 
 test:
 	python3 -m pytest -q tests
@@ -26,7 +26,6 @@ lint-ansible:
 
 validate:
 	./opsforge validate
-	cd academy && go run ./cmd/academy compile --root ..
 
 # Academy's pinned copy of the toolchain contract (academy/contract) must be OpsForge's (contract/) while both live in
 # this repository; after the split, contract-update copies a release instead.
@@ -72,10 +71,17 @@ academy: web-build
 	touch academy/web/dist/.gitkeep
 	cd academy && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(ACADEMY_VERSION)" \
 		-o bin/academy ./cmd/academy
+	cd academy && CGO_ENABLED=0 go build -trimpath -o bin/opsforge-fake ./cmd/opsforge-fake
 	@echo "built academy/bin/academy $(ACADEMY_VERSION): ./academy/bin/academy serve"
 
+# Academy reaches OpsForge only over its API: its tests (the integration ones included) and the pack compile run
+# against a throwaway `opsforge api serve` (scripts/with-opsforge-api.sh sets ACADEMY_OPSFORGE_URL and
+# ACADEMY_OPSFORGE_TOKEN_FILE), so they need Python with PyYAML and jsonschema.
 academy-test:
-	cd academy && go test -race ./...
+	cd academy && ../scripts/with-opsforge-api.sh go test -race ./...
+
+academy-validate:
+	cd academy && ../scripts/with-opsforge-api.sh go run ./cmd/academy compile --content ../labs
 
 academy-lint:
 	cd academy && go vet ./... && $(GO_TOOL) golangci-lint run ./...
@@ -107,6 +113,6 @@ gen-check:
 		diff .gen-before .gen-after; rm -f .gen-before .gen-after; \
 		echo "generated code was stale: make gen rewrote the files above (review and commit them)"; exit 1; }
 
-# End to end: the built binary with a fake lab toolchain, driven by Playwright (web/e2e/)
+# End to end: the built binary against the fake OpsForge API (bin/opsforge-fake), driven by Playwright (web/e2e/)
 e2e: academy
 	cd web && pnpm e2e

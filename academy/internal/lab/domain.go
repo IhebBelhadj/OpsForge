@@ -1,6 +1,6 @@
 // Package lab is the lab as the platform sees it: the documents of the toolchain contract (docs/courses/
 // architecture.md, "The lab toolchain contract"; academy/api/toolchain.schema.json). Modules declare the ports they
-// need over these types (labsession, labstate, challenge); internal/opsforgecli implements them. Pure data.
+// need over these types (labsession, labstate, challenge); internal/opsforgeapi implements them. Pure data.
 package lab
 
 import "encoding/json"

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -69,10 +67,7 @@ func TestTheLabsWorkspaceIsEditable(t *testing.T) {
 	}
 
 	// Refusals, one per documented status
-	dir, _ := w.spaces.Dir(t.Context(), 1, ws)
-	if err := os.WriteFile(filepath.Join(dir, "bin"), []byte{0xff}, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	w.opsforge.Files.Set(ws, "bin", []byte{0xff}) // made in the terminal
 	big := `{"content":"` + strings.Repeat("x", 1<<20+1) + `"}`
 	for _, tc := range []struct {
 		method, path, op, body string

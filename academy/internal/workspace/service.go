@@ -43,7 +43,7 @@ func (s *Service) Create(ctx context.Context, user int64, ws string, files map[s
 	if total > MaxTotal {
 		return ErrTooLarge
 	}
-	if err := s.files.Create(ws); err != nil {
+	if err := s.files.Create(ctx, ws); err != nil {
 		return err
 	}
 	paths := make([]string, 0, len(clean))
@@ -52,7 +52,7 @@ func (s *Service) Create(ctx context.Context, user int64, ws string, files map[s
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		if err := s.files.Write(ws, p, []byte(clean[p])); err != nil {
+		if err := s.files.Write(ctx, ws, p, []byte(clean[p])); err != nil {
 			return err
 		}
 	}
@@ -74,12 +74,13 @@ func (s *Service) own(ctx context.Context, user int64, ws string) error {
 	return nil
 }
 
-// Dir is the folder of user's workspace ws (a terminal starts there).
-func (s *Service) Dir(ctx context.Context, user int64, ws string) (string, error) {
+// Workdir is user's workspace ws for a terminal to start in (ErrNotFound when it is another user's or none):
+// the shell runs on the lab host, in the workspace's folder there.
+func (s *Service) Workdir(ctx context.Context, user int64, ws string) (string, error) {
 	if err := s.own(ctx, user, ws); err != nil {
 		return "", err
 	}
-	return s.files.Dir(ws), nil
+	return ws, nil
 }
 
 // Tree lists user's workspace ws.
@@ -87,7 +88,7 @@ func (s *Service) Tree(ctx context.Context, user int64, ws string) (Tree, error)
 	if err := s.own(ctx, user, ws); err != nil {
 		return Tree{}, err
 	}
-	files, err := s.files.List(ws)
+	files, err := s.files.List(ctx, ws)
 	if err != nil {
 		return Tree{}, err
 	}
@@ -107,7 +108,7 @@ func (s *Service) Read(ctx context.Context, user int64, ws, p string) (File, err
 	if err != nil {
 		return File{}, err
 	}
-	data, err := s.files.Read(ws, c)
+	data, err := s.files.Read(ctx, ws, c)
 	if err != nil {
 		return File{}, err
 	}
@@ -130,7 +131,7 @@ func (s *Service) Write(ctx context.Context, user int64, ws, p, content string, 
 	if len(content) > MaxFile {
 		return File{}, ErrTooLarge
 	}
-	current, err := s.files.Read(ws, c)
+	current, err := s.files.Read(ctx, ws, c)
 	exists := err == nil
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return File{}, err
@@ -138,7 +139,7 @@ func (s *Service) Write(ctx context.Context, user int64, ws, p, content string, 
 	if base != nil && ((*base == "" && exists) || (*base != "" && (!exists || Hash(current) != *base))) {
 		return File{}, ErrConflict
 	}
-	files, err := s.files.List(ws)
+	files, err := s.files.List(ctx, ws)
 	if err != nil {
 		return File{}, err
 	}
@@ -149,7 +150,7 @@ func (s *Service) Write(ctx context.Context, user int64, ws, p, content string, 
 	if total > MaxTotal {
 		return File{}, ErrTooLarge
 	}
-	if err := s.files.Write(ws, c, []byte(content)); err != nil {
+	if err := s.files.Write(ctx, ws, c, []byte(content)); err != nil {
 		return File{}, err
 	}
 	return File{Path: c, Content: content, Hash: Hash([]byte(content))}, nil
@@ -164,7 +165,7 @@ func (s *Service) Delete(ctx context.Context, user int64, ws, p string) error {
 	if err != nil {
 		return err
 	}
-	return s.files.Remove(ws, c)
+	return s.files.Remove(ctx, ws, c)
 }
 
 // Move renames a file of user's workspace ws; ErrExists if the target exists.
@@ -180,10 +181,10 @@ func (s *Service) Move(ctx context.Context, user int64, ws, from, to string) err
 	if err != nil {
 		return err
 	}
-	if _, err := s.files.Read(ws, t); err == nil {
+	if _, err := s.files.Read(ctx, ws, t); err == nil {
 		return ErrExists
 	} else if !errors.Is(err, ErrNotFound) {
 		return err
 	}
-	return s.files.Rename(ws, f, t)
+	return s.files.Rename(ctx, ws, f, t)
 }

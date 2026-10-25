@@ -16,7 +16,7 @@ import (
 // readyTimeout bounds each readiness probe (the toolchain one starts a Python process).
 const readyTimeout = 10 * time.Second
 
-// Probe is something readyz asks: the database, the toolchain.
+// Probe is something readyz asks: the database, OpsForge.
 type Probe interface {
 	Ready(ctx context.Context) error
 }

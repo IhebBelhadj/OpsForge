@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/IhebBelhadj/opsforge/academy/internal/catalog"
@@ -28,7 +27,7 @@ import (
 	legacysqlite "github.com/IhebBelhadj/opsforge/academy/internal/legacy/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/operations"
 	operationssqlite "github.com/IhebBelhadj/opsforge/academy/internal/operations/sqlite"
-	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgecli"
+	"github.com/IhebBelhadj/opsforge/academy/internal/opsforgeapi"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform"
 	"github.com/IhebBelhadj/opsforge/academy/internal/platform/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/progress"
@@ -38,9 +37,7 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/rewards"
 	rewardssqlite "github.com/IhebBelhadj/opsforge/academy/internal/rewards/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/internal/terminal"
-	"github.com/IhebBelhadj/opsforge/academy/internal/terminal/ptyshell"
 	"github.com/IhebBelhadj/opsforge/academy/internal/workspace"
-	"github.com/IhebBelhadj/opsforge/academy/internal/workspace/disk"
 	workspacesqlite "github.com/IhebBelhadj/opsforge/academy/internal/workspace/sqlite"
 	"github.com/IhebBelhadj/opsforge/academy/web"
 )
@@ -154,28 +151,23 @@ func provideStore(ctx context.Context, cfg config.Config, clock platform.Clock) 
 	return store, func() { _ = store.Close() }, nil
 }
 
-func provideToolchain(cfg config.Config) *opsforgecli.Runner {
-	return opsforgecli.New(cfg.Toolchain, cfg.Root, cfg.ToolchainTimeout, cfg.LabTimeout)
+// provideOpsForge is OpsForge's API with its token (a copy of OpsForge's .opsforge/api-token, read at each call).
+func provideOpsForge(cfg config.Config) (*opsforgeapi.Client, error) {
+	return opsforgeapi.New(cfg.OpsForgeURL, opsforgeapi.TokenFile(cfg.OpsForgeTokenFile), cfg.OpsForgeTimeout,
+		cfg.LabTimeout)
 }
 
-func provideReadiness(store *sqlite.Store, toolchain *opsforgecli.Runner) []httpapi.ReadinessCheck {
-	return []httpapi.ReadinessCheck{{Name: "database", Probe: store}, {Name: "toolchain", Probe: toolchain}}
+func provideReadiness(store *sqlite.Store, opsforge *opsforgeapi.Client) []httpapi.ReadinessCheck {
+	return []httpapi.ReadinessCheck{{Name: "database", Probe: store}, {Name: "opsforge", Probe: opsforge}}
 }
 
-func provideTerminals() (*terminal.Service, func()) {
-	svc := terminal.NewService(ptyshell.Spawner{})
+// provideTerminals runs the learners' shells on the lab host (OpsForge's WebSocket terminal).
+func provideTerminals(opsforge *opsforgeapi.Client) (*terminal.Service, func()) {
+	svc := terminal.NewService(opsforge.Shells())
 	return svc, svc.Shutdown
 }
 
-// provideShells is the lab shell of Phase 10: bash in the repository with the opsforge function, or in a lab
-// attempt's workspace when the terminal is opened for one.
-func provideShells(cfg config.Config, svc *terminal.Service) (terminal.Shells, error) {
-	spec, err := ptyshell.Bash(cfg.Root, filepath.Join(cfg.Root, ".opsforge"), 80, 24)
-	if err != nil {
-		return terminal.Shells{}, fmt.Errorf("terminal shell: %w", err)
-	}
-	return terminal.NewShells(svc, spec), nil
-}
+func provideShells(svc *terminal.Service) terminal.Shells { return terminal.NewShells(svc) }
 
 func provideIdentity(store *sqlite.Store, clock platform.Clock) *identity.Service {
 	return identity.NewService(identitysqlite.NewRepo(store.DB), clock)
@@ -195,8 +187,8 @@ func provideCatalogRepo(store *sqlite.Store) *catalogsqlite.Repo {
 }
 
 // provideCompiler compiles the content folder's packs; OpsForge checks their scenario steps.
-func provideCompiler(cfg config.Config, toolchain *opsforgecli.Runner, clock platform.Clock) *compiler.Service {
-	return compiler.NewService(cfg.Content, toolchain, clock)
+func provideCompiler(cfg config.Config, opsforge *opsforgeapi.Client, clock platform.Clock) *compiler.Service {
+	return compiler.NewService(cfg.Content, opsforge, clock)
 }
 
 func provideImporter(packs *compiler.Service, repo *catalogsqlite.Repo, clock platform.Clock) *contentimport.Service {
@@ -235,13 +227,14 @@ func provideOperations(store *sqlite.Store, hub *platform.Hub, clock platform.Cl
 	return operations.NewService(operationssqlite.NewRepo(store.DB), hub, clock, log)
 }
 
-func provideWorkspaces(cfg config.Config, store *sqlite.Store, clock platform.Clock) *workspace.Service {
-	return workspace.NewService(disk.Store{Base: cfg.Workspaces}, workspacesqlite.NewRepo(store.DB), clock)
+// provideWorkspaces keeps the learners' files on the lab host, where their shells run.
+func provideWorkspaces(opsforge *opsforgeapi.Client, store *sqlite.Store, clock platform.Clock) *workspace.Service {
+	return workspace.NewService(opsforge.Files(), workspacesqlite.NewRepo(store.DB), clock)
 }
 
-func provideLabs(store *sqlite.Store, courses *catalog.Service, toolchain *opsforgecli.Runner,
+func provideLabs(store *sqlite.Store, courses *catalog.Service, opsforge *opsforgeapi.Client,
 	spaces *workspace.Service, ops *operations.Service, events *history.Service, clock platform.Clock) *labsession.Service {
-	return labsession.NewService(labsqlite.NewRepo(store.DB), courses, toolchain, spaces, ops, events, clock)
+	return labsession.NewService(labsqlite.NewRepo(store.DB), courses, opsforge, spaces, ops, events, clock)
 }
 
 func provideQuizzes(store *sqlite.Store, courses *catalog.Service, events *history.Service,
@@ -306,9 +299,9 @@ func provideRewards(store *sqlite.Store, courses *catalog.Service, events *histo
 	return svc
 }
 
-// provideLabState caches the toolchain's state; a lab event invalidates it.
-func provideLabState(toolchain *opsforgecli.Runner, events *history.Service, clock platform.Clock) *labstate.Service {
-	svc := labstate.NewService(toolchain, clock)
+// provideLabState caches OpsForge's lab state; a lab event invalidates it.
+func provideLabState(opsforge *opsforgeapi.Client, events *history.Service, clock platform.Clock) *labstate.Service {
+	svc := labstate.NewService(opsforge, clock)
 	events.Subscribe(svc.OnEvent)
 	return svc
 }

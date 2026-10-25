@@ -14,7 +14,7 @@ import (
 
 // Terminals is what the transport needs from the terminal module.
 type Terminals interface {
-	Open(cols, rows uint16, dir string) (string, error)
+	Open(cols, rows uint16, workspace string) (string, error)
 	Attach(id string) (*terminal.Attachment, error)
 }
 
@@ -51,13 +51,13 @@ func (s *server) OpenTerminal(ctx context.Context, req OpenTerminalRequestObject
 		return OpenTerminal400ApplicationProblemPlusJSONResponse{Type: "/problems/bad-request", Title: "Bad request",
 			Status: http.StatusBadRequest, Detail: &detail}, nil
 	}
-	var dir string
+	var ws string
 	if req.Body != nil && req.Body.Workspace != nil {
 		user, err := userID(ctx)
 		if err != nil {
 			return nil, err
 		}
-		dir, err = s.deps.Workspaces.Dir(ctx, user, *req.Body.Workspace)
+		ws, err = s.deps.Workspaces.Workdir(ctx, user, *req.Body.Workspace)
 		if errors.Is(err, workspace.ErrNotFound) {
 			return OpenTerminal404ApplicationProblemPlusJSONResponse(workspaceProblem(err)), nil
 		}
@@ -65,7 +65,7 @@ func (s *server) OpenTerminal(ctx context.Context, req OpenTerminalRequestObject
 			return nil, err
 		}
 	}
-	id, err := s.deps.Terminals.Open(uint16(cols), uint16(rows), dir) //nolint:gosec // range checked above
+	id, err := s.deps.Terminals.Open(uint16(cols), uint16(rows), ws) //nolint:gosec // range checked above
 	if errors.Is(err, terminal.ErrTooMany) {
 		detail := "close a terminal tab first"
 		return OpenTerminal429ApplicationProblemPlusJSONResponse{Type: "/problems/too-many-terminals",

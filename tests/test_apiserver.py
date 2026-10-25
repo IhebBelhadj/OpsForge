@@ -91,7 +91,7 @@ def test_unknown_routes_and_methods(api):
 
 
 def test_serve_refuses_other_addresses_without_tls():
-    args = cli.argparse.Namespace(action="serve", host="0.0.0.0", port=0, tls_cert=None, tls_key=None)
+    args = cli.argparse.Namespace(action="serve", host="0.0.0.0", port=0, tls_cert=None, tls_key=None, data=None)
     with pytest.raises(cli.LabError, match="not a loopback address"):
         cli.cmd_api_serve(args)
 
