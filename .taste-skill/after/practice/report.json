@@ -1,0 +1,1358 @@
+{
+ "url": "http://127.0.0.1:18191/practice",
+ "at": "2026-10-25T13:08:55.633Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.47,
+    0.42,
+    0.46
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 2262,
+     "screens": 2.5,
+     "words": 540,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 48,
+     "sections": 3,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Practice",
+     "words": 1,
+     "chars": 8,
+     "lines": 1,
+     "size": 24,
+     "vw": 1.7,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.33,
+     "top": 97,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Practice",
+     "words": 1,
+     "lines": 1,
+     "size": 24,
+     "font": "IBM Plex Sans"
+    },
+    "headings": [],
+    "headingSummary": {
+     "count": 0,
+     "maxLines": 0,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      14,
+      16,
+      17,
+      24
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": {
+      "font": "IBM Plex Sans",
+      "size": 14,
+      "leading": 1.43,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 5.9
+     },
+     "measureChars": 92,
+     "max": {
+      "size": 24,
+      "vw": 1.7,
+      "font": "IBM Plex Sans",
+      "text": "Practice"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.13,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f7f8fa",
+     "bodyBgHsl": {
+      "h": 220,
+      "s": 0.23,
+      "l": 0.97
+     },
+     "dark": false,
+     "sectionBgs": [],
+     "textColors": [
+      {
+       "color": "#5c6068",
+       "share": 0.56
+      },
+      {
+       "color": "#1c1d1f",
+       "share": 0.38
+      },
+      {
+       "color": "#a35a00",
+       "share": 0.02
+      },
+      {
+       "color": "#12806a",
+       "share": 0.02
+      },
+      {
+       "color": "#c4242a",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#ffffff",
+      "hsl": {
+       "h": 0,
+       "s": 0,
+       "l": 1
+      },
+      "fg": "#1c1d1f"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 22,
+     "inHero": 22,
+     "radius": "pill",
+     "height": 28,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Search Ctrl K",
+      "Pick one for me",
+      "Any type",
+      "Any difficulty",
+      "Any status"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 4,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "input.h-9.w-full → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 2,
+     "hairlineSamples": [
+      "header.sticky.top-0 1440px",
+      "footer.border-t.border-rule 1440px"
+     ],
+     "outlinedBoxes": 3,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 3,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": true,
+     "height": 57,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex sans"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 2262,
+    "margins": {
+     "left": 104,
+     "right": 193
+    },
+    "sections": [],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Practice",
+      "size": 24,
+      "top": 97,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 104,
+      "n": 2
+     },
+     {
+      "x": 1069,
+      "n": 2
+     }
+    ],
+    "leftBlocks": 4,
+    "bodySize": 14,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0.1,
+    "voidBox": {
+     "x": 1200,
+     "y": 360,
+     "w": 240,
+     "h": 540
+    }
+   },
+   "app": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "dark": false,
+    "ground": "#f7f8fa",
+    "sidebar": null,
+    "topbar": {
+     "h": 57
+    },
+    "canvas": {
+     "left": 104,
+     "right": 200
+    },
+    "hero": {
+     "text": "Practice",
+     "words": 1,
+     "chars": 8,
+     "lines": 1,
+     "size": 24,
+     "vw": 1.7,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.33,
+     "top": 97,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 3,
+     "firstScreen": 3,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 3,
+     "radii": [
+      [
+       8,
+       3
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 0,
+     "softShadows": 0,
+     "shadowSamples": [],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 33,
+     "leftAligned": 26,
+     "figures": 33,
+     "tabularShare": 1,
+     "kpiMax": 14
+    },
+    "rows": {
+     "count": 26,
+     "median": 65
+    },
+    "chartHues": 3,
+    "placeholders": [],
+    "type": {
+     "under13": 0,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      12,
+      14,
+      16,
+      17,
+      18,
+      24
+     ]
+    },
+    "title": {
+     "text": "Practice",
+     "size": 24,
+     "top": 97
+    },
+    "colourShare": 0.012
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 4,
+   "filled": [
+    0.26,
+    0.33,
+    0.72,
+    0.93
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 3488,
+     "screens": 3.4,
+     "words": 495,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 48,
+     "sections": 3,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Practice",
+     "words": 1,
+     "chars": 8,
+     "lines": 1,
+     "size": 24,
+     "vw": 3.1,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.33,
+     "top": 97,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Practice",
+     "words": 1,
+     "lines": 1,
+     "size": 24,
+     "font": "IBM Plex Sans"
+    },
+    "headings": [],
+    "headingSummary": {
+     "count": 0,
+     "maxLines": 0,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      14,
+      16,
+      17,
+      24
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": {
+      "font": "IBM Plex Sans",
+      "size": 14,
+      "leading": 1.43,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 5.9
+     },
+     "measureChars": 90,
+     "max": {
+      "size": 24,
+      "vw": 3.1,
+      "font": "IBM Plex Sans",
+      "text": "Practice"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.13,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f7f8fa",
+     "bodyBgHsl": {
+      "h": 220,
+      "s": 0.23,
+      "l": 0.97
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#ffffff",
+       "top": 2567,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#5c6068",
+       "share": 0.58
+      },
+      {
+       "color": "#1c1d1f",
+       "share": 0.37
+      },
+      {
+       "color": "#a35a00",
+       "share": 0.02
+      },
+      {
+       "color": "#12806a",
+       "share": 0.02
+      },
+      {
+       "color": "#c4242a",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#ffffff",
+      "hsl": {
+       "h": 0,
+       "s": 0,
+       "l": 1
+      },
+      "fg": "#1c1d1f"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 21,
+     "inHero": 21,
+     "radius": "pill",
+     "height": 28,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Pick one for me",
+      "Any type",
+      "Any difficulty",
+      "Any status",
+      "All topics"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 4,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "input.h-9.w-full → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 2,
+     "hairlineSamples": [
+      "header.sticky.top-0 768px",
+      "footer.border-t.border-rule 768px"
+     ],
+     "outlinedBoxes": 3,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 3,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": true,
+     "height": 57,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex sans"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 3488,
+    "margins": {
+     "left": 24,
+     "right": 48
+    },
+    "sections": [
+     {
+      "sel": "div.flex.flex-wrap",
+      "tag": "div",
+      "top": 97,
+      "height": 140,
+      "words": 23,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Practice",
+       "size": 24,
+       "tag": "h1"
+      },
+      "left": 24,
+      "right": 61,
+      "textLeft": 24,
+      "textRight": 61,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "div.mt-6.overflow-hidden",
+      "tag": "div",
+      "top": 469,
+      "height": 1768,
+      "words": 317,
+      "media": 0,
+      "middle": 28,
+      "heading": null,
+      "left": 85,
+      "right": 44,
+      "textLeft": 85,
+      "textRight": 44,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "aside.space-y-6.xl:sticky",
+      "tag": "aside",
+      "top": 2305,
+      "height": 1090,
+      "words": 31,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Solved",
+       "size": 16,
+       "tag": "h2"
+      },
+      "left": 45,
+      "right": 503,
+      "textLeft": 45,
+      "textRight": 503,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Practice",
+      "size": 24,
+      "top": 97,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 24,
+      "n": 2
+     },
+     {
+      "x": 45,
+      "n": 2
+     }
+    ],
+    "leftBlocks": 4,
+    "bodySize": 14,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "dark": false,
+    "ground": "#f7f8fa",
+    "sidebar": null,
+    "topbar": {
+     "h": 57
+    },
+    "canvas": {
+     "left": 24,
+     "right": 37
+    },
+    "hero": {
+     "text": "Practice",
+     "words": 1,
+     "chars": 8,
+     "lines": 1,
+     "size": 24,
+     "vw": 3.1,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.33,
+     "top": 97,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 3,
+     "firstScreen": 1,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 3,
+     "radii": [
+      [
+       8,
+       3
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 0,
+     "softShadows": 0,
+     "shadowSamples": [],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 33,
+     "leftAligned": 26,
+     "figures": 26,
+     "tabularShare": 1,
+     "kpiMax": 14
+    },
+    "rows": {
+     "count": 26,
+     "median": 65
+    },
+    "chartHues": 3,
+    "placeholders": [],
+    "type": {
+     "under13": 0,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      12,
+      14,
+      16,
+      17,
+      18,
+      24
+     ]
+    },
+    "title": {
+     "text": "Practice",
+     "size": 24,
+     "top": 97
+    },
+    "colourShare": 0.001
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 6,
+   "filled": [
+    0.39,
+    0.51,
+    0.53,
+    0.56,
+    0.87,
+    0.87
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 4277,
+     "screens": 5.1,
+     "words": 414,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 48,
+     "sections": 3,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Practice",
+     "words": 1,
+     "chars": 8,
+     "lines": 1,
+     "size": 24,
+     "vw": 6.2,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.33,
+     "top": 134,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Practice",
+     "words": 1,
+     "lines": 1,
+     "size": 24,
+     "font": "IBM Plex Sans"
+    },
+    "headings": [
+     {
+      "text": "Practice",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "IBM Plex Sans",
+      "weight": 600,
+      "tracking": -0.01,
+      "leading": 1.33,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 134,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      14,
+      16,
+      17,
+      24
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": {
+      "font": "IBM Plex Sans",
+      "size": 14,
+      "leading": 1.43,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 5.9
+     },
+     "measureChars": 45,
+     "max": {
+      "size": 24,
+      "vw": 6.2,
+      "font": "IBM Plex Sans",
+      "text": "Practice"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.15,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f7f8fa",
+     "bodyBgHsl": {
+      "h": 220,
+      "s": 0.23,
+      "l": 0.97
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#ffffff",
+       "top": 3364,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#5c6068",
+       "share": 0.58
+      },
+      {
+       "color": "#1c1d1f",
+       "share": 0.36
+      },
+      {
+       "color": "#a35a00",
+       "share": 0.03
+      },
+      {
+       "color": "#12806a",
+       "share": 0.02
+      },
+      {
+       "color": "#c4242a",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#ffffff",
+      "hsl": {
+       "h": 0,
+       "s": 0,
+       "l": 1
+      },
+      "fg": "#1c1d1f"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 21,
+     "inHero": 21,
+     "radius": "pill",
+     "height": 28,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Pick one for me",
+      "Any type",
+      "Any difficulty",
+      "Any status",
+      "All topics"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 4,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "input.h-9.w-full → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "button.flex.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 3,
+     "hairlineSamples": [
+      "header.sticky.top-0 390px",
+      "nav.flex.overflow-x-auto 390px",
+      "footer.border-t.border-rule 390px"
+     ],
+     "outlinedBoxes": 3,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 3,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": true,
+     "height": 102,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex sans"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 4277,
+    "margins": {
+     "left": 16,
+     "right": 29
+    },
+    "sections": [
+     {
+      "sel": "div.flex.flex-wrap",
+      "tag": "div",
+      "top": 134,
+      "height": 164,
+      "words": 23,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Practice",
+       "size": 24,
+       "tag": "h1"
+      },
+      "left": 16,
+      "right": 19,
+      "textLeft": 16,
+      "textRight": 19,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "div.mt-6.flex",
+      "tag": "div",
+      "top": 322,
+      "height": 132,
+      "words": 10,
+      "media": 0,
+      "middle": 0,
+      "heading": null,
+      "left": 16,
+      "right": 16,
+      "textLeft": 29,
+      "textRight": 78,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "ul.mt-4.flex",
+      "tag": "ul",
+      "top": 470,
+      "height": 208,
+      "words": 22,
+      "media": 0,
+      "middle": 0,
+      "heading": null,
+      "left": 16,
+      "right": 41,
+      "textLeft": 30,
+      "textRight": 55,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "div.mt-6.overflow-hidden",
+      "tag": "div",
+      "top": 702,
+      "height": 2332,
+      "words": 237,
+      "media": 0,
+      "middle": 29,
+      "heading": null,
+      "left": 77,
+      "right": 29,
+      "textLeft": 77,
+      "textRight": 29,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "aside.space-y-6.xl:sticky",
+      "tag": "aside",
+      "top": 3102,
+      "height": 1090,
+      "words": 31,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Solved",
+       "size": 16,
+       "tag": "h2"
+      },
+      "left": 37,
+      "right": 133,
+      "textLeft": 37,
+      "textRight": 133,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Practice",
+      "size": 24,
+      "top": 134,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 16,
+      "n": 2
+     },
+     {
+      "x": 37,
+      "n": 2
+     }
+    ],
+    "leftBlocks": 4,
+    "bodySize": 14,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "dark": false,
+    "ground": "#f7f8fa",
+    "sidebar": null,
+    "topbar": {
+     "h": 56
+    },
+    "canvas": {
+     "left": 16,
+     "right": 19
+    },
+    "hero": {
+     "text": "Practice",
+     "words": 1,
+     "chars": 8,
+     "lines": 1,
+     "size": 24,
+     "vw": 6.2,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.33,
+     "top": 134,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 3,
+     "firstScreen": 1,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 3,
+     "radii": [
+      [
+       8,
+       3
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 0,
+     "softShadows": 0,
+     "shadowSamples": [],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 33,
+     "leftAligned": 26,
+     "figures": 0,
+     "tabularShare": null,
+     "kpiMax": null
+    },
+    "rows": {
+     "count": 26,
+     "median": 85
+    },
+    "chartHues": 3,
+    "placeholders": [],
+    "type": {
+     "under13": 0,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      12,
+      14,
+      16,
+      17,
+      18,
+      24
+     ]
+    },
+    "title": {
+     "text": "Practice",
+     "size": 24,
+     "top": 134
+    },
+    "colourShare": 0.001
+   },
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "WARN",
+   "id": "unused-canvas",
+   "width": 1440,
+   "message": "The content stops 200px short of the right edge while it starts 104px from the sidebar.",
+   "fix": "Let the grid fill the canvas (columns in fr units), or centre a capped canvas with equal margins. A dead strip on one side reads as unfinished."
+  },
+  {
+   "level": "WARN",
+   "id": "numeric-align",
+   "width": 1440,
+   "message": "26 of 33 numeric table cells are left-aligned.",
+   "fix": "Right-align numbers, amounts and percentages (and their column headers) so the digits line up.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/after/practice/desktop-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/after/practice/desktop-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/after/practice/tablet-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/after/practice/tablet-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/after/practice/mobile-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/after/practice/mobile-page-01.jpg"
+   ],
+   "film": []
+  }
+ ]
+}

@@ -30,7 +30,7 @@ export function CodeEditor({
   }
 
   return (
-    <div className={cn("flex min-h-0 overflow-hidden bg-paper font-mono text-[0.84rem] leading-6", className)}>
+    <div className={cn("flex min-h-0 overflow-hidden bg-surface font-mono text-[0.84rem] leading-6", className)}>
       <div
         ref={gutter}
         aria-hidden

@@ -1,0 +1,1593 @@
+{
+ "url": "http://127.0.0.1:18191/roadmap",
+ "at": "2026-10-25T12:56:59.792Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 2,
+   "filled": [
+    0.42,
+    0.46
+   ],
+   "motion": {
+    "elements": 1,
+    "css": 1,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 1641,
+     "screens": 1.8,
+     "words": 319,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 42,
+     "sections": 1,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Roadmap",
+     "words": 1,
+     "chars": 7,
+     "lines": 1,
+     "size": 38,
+     "vw": 2.7,
+     "font": "Source Serif 4",
+     "weight": 400,
+     "tracking": 0,
+     "leading": 1.11,
+     "top": 98,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Roadmap",
+     "words": 1,
+     "lines": 1,
+     "size": 38.3,
+     "font": "Source Serif 4"
+    },
+    "headings": [
+     {
+      "text": "Roadmap",
+      "words": 1,
+      "chars": 7,
+      "lines": 1,
+      "size": 38.3,
+      "vw": 2.7,
+      "font": "Source Serif 4",
+      "weight": 400,
+      "tracking": 0,
+      "leading": 1.11,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.63,
+      "top": 98,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Overpass",
+       "share": 0.99,
+       "mono": false
+      },
+      {
+       "family": "Source Serif 4",
+       "share": 0.01,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      13,
+      15,
+      17,
+      19,
+      21,
+      26,
+      38
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": {
+      "font": "Overpass",
+      "size": 19.1,
+      "leading": 1.56,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 6.4
+     },
+     "measureChars": 77,
+     "max": {
+      "size": 38.3,
+      "vw": 2.7,
+      "font": "Source Serif 4",
+      "text": "Roadmap"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.01,
+     "centerShare": 0.36,
+     "smallText": 3
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#eef0e8",
+     "bodyBgHsl": {
+      "h": 75,
+      "s": 0.21,
+      "l": 0.93
+     },
+     "dark": false,
+     "sectionBgs": [],
+     "textColors": [
+      {
+       "color": "#4a5953",
+       "share": 0.66
+      },
+      {
+       "color": "#20302b",
+       "share": 0.33
+      },
+      {
+       "color": "#eef0e8",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#eef0e8",
+      "hsl": {
+       "h": 75,
+       "s": 0.21,
+       "l": 0.93
+      },
+      "fg": "#4a5953"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 2,
+     "inHero": 2,
+     "radius": 4,
+     "height": 34,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Search Ctrl K",
+      "Continue: Lab 3.4"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 1,
+     "shadowOverlay": 1,
+     "shadowSamples": [
+      "button.shrink-0.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 1,
+     "hairlineSamples": [
+      "footer.border-t.border-rule 1440px"
+     ],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": false,
+     "height": 55,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "overpass",
+     "source serif 4"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 1641,
+    "margins": {
+     "left": 76,
+     "right": 80
+    },
+    "sections": [
+     {
+      "sel": "li.relative",
+      "tag": "li",
+      "top": 289,
+      "height": 189,
+      "words": 13,
+      "media": 0,
+      "middle": 16,
+      "heading": {
+       "text": "Cloud networking basics",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 91,
+      "right": 879,
+      "textLeft": 91,
+      "textRight": 879,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "li.relative",
+      "tag": "li",
+      "top": 512,
+      "height": 230,
+      "words": 31,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Kubernetes Fundamentals",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 91,
+      "right": 706,
+      "textLeft": 91,
+      "textRight": 714,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "li.relative",
+      "tag": "li",
+      "top": 776,
+      "height": 215,
+      "words": 27,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Configuration and Workloads",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 91,
+      "right": 706,
+      "textLeft": 91,
+      "textRight": 714,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "li.relative",
+      "tag": "li",
+      "top": 1025,
+      "height": 256,
+      "words": 36,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Networking and Scheduling across Regions",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 91,
+      "right": 666,
+      "textLeft": 91,
+      "textRight": 666,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "li.relative",
+      "tag": "li",
+      "top": 1315,
+      "height": 235,
+      "words": 33,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Production Kubernetes",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 91,
+      "right": 487,
+      "textLeft": 91,
+      "textRight": 496,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Roadmap",
+      "size": 38,
+      "top": 98,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 57,
+      "n": 2
+     },
+     {
+      "x": 1032,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 3,
+    "bodySize": 15,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0.15,
+    "voidBox": {
+     "x": 780,
+     "y": 600,
+     "w": 660,
+     "h": 300
+    }
+   },
+   "app": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "dark": false,
+    "ground": "#eef0e8",
+    "sidebar": null,
+    "topbar": {
+     "h": 55
+    },
+    "canvas": {
+     "left": 57,
+     "right": 80
+    },
+    "hero": {
+     "text": "Roadmap",
+     "words": 1,
+     "chars": 7,
+     "lines": 1,
+     "size": 38,
+     "vw": 2.7,
+     "font": "Source Serif 4",
+     "weight": 400,
+     "tracking": 0,
+     "leading": 1.11,
+     "top": 98,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 6,
+     "firstScreen": 4,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 7,
+     "radii": [
+      [
+       4,
+       6
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "heavyBorders": 6,
+     "borderSamples": [
+      "#20302b on #c9cfc0 (8.67:1)",
+      "#20302b on #c9cfc0 (8.67:1)",
+      "#20302b on #c9cfc0 (8.67:1)"
+     ],
+     "heavyShadows": 1,
+     "softShadows": 0,
+     "shadowSamples": [
+      "rgb(32, 48, 43) 4px 4px 0px 0px"
+     ],
+     "glass": 0
+    },
+    "chips": {
+     "count": 4,
+     "hues": 1,
+     "samples": [
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      }
+     ]
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 7,
+     "tabularShare": 0,
+     "kpiMax": 12.75
+    },
+    "rows": null,
+    "chartHues": 0,
+    "placeholders": [],
+    "type": {
+     "under13": 0,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      13,
+      15,
+      17,
+      19,
+      21,
+      26,
+      38
+     ]
+    },
+    "title": {
+     "text": "Roadmap",
+     "size": 38,
+     "top": 98
+    },
+    "colourShare": 0
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.64,
+    0.61,
+    0.4
+   ],
+   "motion": {
+    "elements": 1,
+    "css": 1,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 2267,
+     "screens": 2.2,
+     "words": 319,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 42,
+     "sections": 1,
+     "horizontalOverflow": 218,
+     "overflowCulprits": [
+      "kbd.ml-auto.rounded-sm (+51px)",
+      "path (+93px)",
+      "span.ml-2.grid (+163px)"
+     ],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Roadmap",
+     "words": 1,
+     "chars": 7,
+     "lines": 1,
+     "size": 38,
+     "vw": 5,
+     "font": "Source Serif 4",
+     "weight": 400,
+     "tracking": 0,
+     "leading": 1.11,
+     "top": 98,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Roadmap",
+     "words": 1,
+     "lines": 1,
+     "size": 38.3,
+     "font": "Source Serif 4"
+    },
+    "headings": [
+     {
+      "text": "Roadmap",
+      "words": 1,
+      "chars": 7,
+      "lines": 1,
+      "size": 38.3,
+      "vw": 5,
+      "font": "Source Serif 4",
+      "weight": 400,
+      "tracking": 0,
+      "leading": 1.11,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.96,
+      "top": 98,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Overpass",
+       "share": 0.99,
+       "mono": false
+      },
+      {
+       "family": "Source Serif 4",
+       "share": 0.01,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      13,
+      15,
+      17,
+      19,
+      21,
+      26,
+      38
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": {
+      "font": "Overpass",
+      "size": 19.1,
+      "leading": 1.56,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 6.4
+     },
+     "measureChars": 77,
+     "max": {
+      "size": 38.3,
+      "vw": 5,
+      "font": "Source Serif 4",
+      "text": "Roadmap"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.01,
+     "centerShare": 0.36,
+     "smallText": 3
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#eef0e8",
+     "bodyBgHsl": {
+      "h": 75,
+      "s": 0.21,
+      "l": 0.93
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#eef0e8",
+       "top": 1654,
+       "hsl": {
+        "h": 75,
+        "s": 0.21,
+        "l": 0.93
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#4a5953",
+       "share": 0.66
+      },
+      {
+       "color": "#20302b",
+       "share": 0.33
+      },
+      {
+       "color": "#eef0e8",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#eef0e8",
+      "hsl": {
+       "h": 75,
+       "s": 0.21,
+       "l": 0.93
+      },
+      "fg": "#4a5953"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 2,
+     "inHero": 1,
+     "radius": 4,
+     "height": 34,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Search Ctrl K"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 2,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "button.shrink-0.items-center → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0",
+      "div.rounded-md.border-2 → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 1,
+     "hairlineSamples": [
+      "footer.border-t.border-rule 768px"
+     ],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": false,
+     "height": 55,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "overpass",
+     "source serif 4"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 2267,
+    "margins": {
+     "left": 36,
+     "right": 34
+    },
+    "sections": [
+     {
+      "sel": "section.min-w-0",
+      "tag": "section",
+      "top": 98,
+      "height": 1514,
+      "words": 173,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Cloud networking basics",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 17,
+      "right": 0,
+      "textLeft": 17,
+      "textRight": 3,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "aside.xl:sticky.xl:top-6",
+      "tag": "aside",
+      "top": 1654,
+      "height": 522,
+      "words": 58,
+      "media": 0,
+      "middle": 246,
+      "heading": {
+       "text": "Pods",
+       "size": 26,
+       "tag": "h2"
+      },
+      "left": 40,
+      "right": 40,
+      "textLeft": 40,
+      "textRight": 40,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Roadmap",
+      "size": 38,
+      "top": 98,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [
+     {
+      "text": "Multi-cluster",
+      "side": "right",
+      "px": 3
+     }
+    ],
+    "edges": [
+     {
+      "x": 17,
+      "n": 2
+     },
+     {
+      "x": 40,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 3,
+    "bodySize": 15,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "dark": false,
+    "ground": "#eef0e8",
+    "sidebar": null,
+    "topbar": {
+     "h": 55
+    },
+    "canvas": {
+     "left": 17,
+     "right": -118
+    },
+    "hero": {
+     "text": "Roadmap",
+     "words": 1,
+     "chars": 7,
+     "lines": 1,
+     "size": 38,
+     "vw": 5,
+     "font": "Source Serif 4",
+     "weight": 400,
+     "tracking": 0,
+     "leading": 1.11,
+     "top": 98,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 6,
+     "firstScreen": 3,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 7,
+     "radii": [
+      [
+       4,
+       6
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "heavyBorders": 6,
+     "borderSamples": [
+      "#20302b on #c9cfc0 (8.67:1)",
+      "#20302b on #c9cfc0 (8.67:1)",
+      "#20302b on #c9cfc0 (8.67:1)"
+     ],
+     "heavyShadows": 1,
+     "softShadows": 0,
+     "shadowSamples": [
+      "rgb(32, 48, 43) 4px 4px 0px 0px"
+     ],
+     "glass": 0
+    },
+    "chips": {
+     "count": 4,
+     "hues": 1,
+     "samples": [
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      }
+     ]
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 7,
+     "tabularShare": 0,
+     "kpiMax": 12.75
+    },
+    "rows": null,
+    "chartHues": 0,
+    "placeholders": [],
+    "type": {
+     "under13": 0,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      13,
+      15,
+      17,
+      19,
+      21,
+      26,
+      38
+     ]
+    },
+    "title": {
+     "text": "Roadmap",
+     "size": 38,
+     "top": 98
+    },
+    "colourShare": 0.001
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 5,
+   "filled": [
+    0.64,
+    0.81,
+    0.72,
+    0.66,
+    0.49
+   ],
+   "motion": {
+    "elements": 1,
+    "css": 1,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 3646,
+     "screens": 4.3,
+     "words": 315,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 42,
+     "sections": 1,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Roadmap",
+     "words": 1,
+     "chars": 7,
+     "lines": 1,
+     "size": 38,
+     "vw": 9.8,
+     "font": "Source Serif 4",
+     "weight": 400,
+     "tracking": 0,
+     "leading": 1.11,
+     "top": 137,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Roadmap",
+     "words": 1,
+     "lines": 1,
+     "size": 38.3,
+     "font": "Source Serif 4"
+    },
+    "headings": [
+     {
+      "text": "Roadmap",
+      "words": 1,
+      "chars": 7,
+      "lines": 1,
+      "size": 38.3,
+      "vw": 9.8,
+      "font": "Source Serif 4",
+      "weight": 400,
+      "tracking": 0,
+      "leading": 1.11,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.91,
+      "top": 137,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "Pods",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 25.5,
+      "vw": 6.5,
+      "font": "Source Serif 4",
+      "weight": 400,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.79,
+      "top": 3024,
+      "tag": "h2",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 2,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Overpass",
+       "share": 0.99,
+       "mono": false
+      },
+      {
+       "family": "Source Serif 4",
+       "share": 0.01,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      13,
+      15,
+      17,
+      19,
+      21,
+      26,
+      38
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": {
+      "font": "Overpass",
+      "size": 19.1,
+      "leading": 1.56,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 6.4
+     },
+     "measureChars": 37,
+     "max": {
+      "size": 38.3,
+      "vw": 9.8,
+      "font": "Source Serif 4",
+      "text": "Roadmap"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.01,
+     "centerShare": 0,
+     "smallText": 3
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#eef0e8",
+     "bodyBgHsl": {
+      "h": 75,
+      "s": 0.21,
+      "l": 0.93
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#c9cfc0",
+       "top": 747,
+       "hsl": {
+        "h": 84,
+        "s": 0.14,
+        "l": 0.78
+       }
+      },
+      {
+       "color": "#eef0e8",
+       "top": 2980,
+       "hsl": {
+        "h": 75,
+        "s": 0.21,
+        "l": 0.93
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#4a5953",
+       "share": 0.65
+      },
+      {
+       "color": "#20302b",
+       "share": 0.34
+      },
+      {
+       "color": "#eef0e8",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#20302b",
+      "hsl": {
+       "h": 161,
+       "s": 0.2,
+       "l": 0.16
+      },
+      "fg": "#eef0e8"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 1,
+     "inHero": 0,
+     "radius": 4,
+     "height": 38,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": []
+    },
+    "surfaces": {
+     "shadowStatic": 1,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "div.rounded-md.border-2 → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 2,
+     "hairlineSamples": [
+      "nav.flex.gap-1 390px",
+      "footer.border-t.border-rule 390px"
+     ],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": false,
+     "height": 94,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "overpass",
+     "source serif 4"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 3646,
+    "margins": {
+     "left": 21,
+     "right": 36
+    },
+    "sections": [
+     {
+      "sel": "section.min-w-0",
+      "tag": "section",
+      "top": 137,
+      "height": 2801,
+      "words": 173,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Cloud networking basics",
+       "size": 21,
+       "tag": "h2"
+      },
+      "left": 17,
+      "right": 36,
+      "textLeft": 17,
+      "textRight": 37,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "aside.xl:sticky.xl:top-6",
+      "tag": "aside",
+      "top": 2980,
+      "height": 576,
+      "words": 58,
+      "media": 0,
+      "middle": 9,
+      "heading": {
+       "text": "Pods",
+       "size": 26,
+       "tag": "h2"
+      },
+      "left": 40,
+      "right": 40,
+      "textLeft": 40,
+      "textRight": 40,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Roadmap",
+      "size": 38,
+      "top": 137,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 17,
+      "n": 2
+     },
+     {
+      "x": 40,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 3,
+    "bodySize": 15,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "dark": false,
+    "ground": "#eef0e8",
+    "sidebar": null,
+    "topbar": {
+     "h": 94
+    },
+    "canvas": {
+     "left": 17,
+     "right": 28
+    },
+    "hero": {
+     "text": "Roadmap",
+     "words": 1,
+     "chars": 7,
+     "lines": 1,
+     "size": 38,
+     "vw": 9.8,
+     "font": "Source Serif 4",
+     "weight": 400,
+     "tracking": 0,
+     "leading": 1.11,
+     "top": 137,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 6,
+     "firstScreen": 2,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 7,
+     "radii": [
+      [
+       4,
+       6
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "heavyBorders": 6,
+     "borderSamples": [
+      "#20302b on #c9cfc0 (8.67:1)",
+      "#20302b on #c9cfc0 (8.67:1)",
+      "#20302b on #c9cfc0 (8.67:1)"
+     ],
+     "heavyShadows": 1,
+     "softShadows": 0,
+     "shadowSamples": [
+      "rgb(32, 48, 43) 4px 4px 0px 0px"
+     ],
+     "glass": 0
+    },
+    "chips": {
+     "count": 4,
+     "hues": 1,
+     "samples": [
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      },
+      {
+       "hue": 141,
+       "size": 26,
+       "radius": "3.35544e+07px"
+      }
+     ]
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 7,
+     "tabularShare": 0,
+     "kpiMax": 12.75
+    },
+    "rows": null,
+    "chartHues": 0,
+    "placeholders": [],
+    "type": {
+     "under13": 0,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      13,
+      15,
+      17,
+      19,
+      21,
+      26,
+      38
+     ]
+    },
+    "title": {
+     "text": "Roadmap",
+     "size": 38,
+     "top": 137
+    },
+    "colourShare": 0.001
+   },
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "FAIL",
+   "id": "heavy-shadow",
+   "width": 1440,
+   "message": "1 panel shadow(s) heavy enough to read as floating: rgb(32, 48, 43) 4px 4px 0px 0px",
+   "fix": "Panels sit on the ground: separate them with a fill one step from the ground or a quiet 1px border. A shadow, if any, is under 8% black with a small blur. Real overlays (menus, dialogs, popovers) may float.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "heavy-borders",
+   "width": 1440,
+   "message": "6 panel borders are dark against their ground: #20302b on #c9cfc0 (8.67:1) | #20302b on #c9cfc0 (8.67:1) | #20302b on #c9cfc0 (8.67:1)",
+   "fix": "A panel border is a whisper: about 1.1–1.3:1 against its ground on a light screen (#e5e7eb–#ededed on white), and about 1.2–1.5:1 on a dark one (#1a1a1a on #000, #2e2e2e on #111). Darker lines turn the screen into a grid of boxes; keep the stronger line for controls.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "icon-chips",
+   "width": 1440,
+   "message": "4 icons sit in tinted squares or circles.",
+   "fix": "This is the commonest tell of a generated dashboard. Drop the tinted square: a KPI is a label and a number; an icon, if it helps, is plain and in the text colour.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "tabular",
+   "width": 1440,
+   "message": "Only 0% of the figures use tabular numerals.",
+   "fix": "Set font-variant-numeric: tabular-nums on tables, KPIs and anything that updates, so digits keep their width.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "app-title-size",
+   "width": 1440,
+   "message": "The h1 is 38px (\"Roadmap\").",
+   "fix": "An app screen is not a landing page: the title is 18-32px (20-24px on a phone).",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "overflow",
+   "width": 768,
+   "message": "Page scrolls sideways by 218px at 768px. Widest offenders: kbd.ml-auto.rounded-sm (+51px), path (+93px), span.ml-2.grid (+163px).",
+   "fix": "Constrain the element that is wider than the viewport (max-width: 100%, or overflow: clip on its section)."
+  },
+  {
+   "level": "FAIL",
+   "id": "edge-text",
+   "width": 768,
+   "message": "1 text block(s) sit within 16px of the screen edge: \"Multi-cluster\" (3px from the right)",
+   "fix": "Keep text inside the page margin (16–32px or more). Only display type deliberately bled past the edge may touch it."
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/before/roadmap/desktop-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/before/roadmap/desktop-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/before/roadmap/tablet-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/before/roadmap/tablet-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/before/roadmap/mobile-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/before/roadmap/mobile-page-01.jpg"
+   ],
+   "film": []
+  }
+ ]
+}

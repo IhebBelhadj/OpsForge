@@ -1,29 +1,27 @@
-/** A course's picture (design.md §1): its sections as stations on a track, in the mimic panel's style. Generated,
- * so every course has one; `lit` stations (passed sections) glow green once progress exists. */
+/** A course's picture (design.md §1): its sections as stations on a track, drawn on the dark band like a thumbnail.
+ * Generated, so every course has one; `lit` stations (passed sections) turn green once progress exists, and the
+ * next one is ember. */
 export function CourseArt({ sections, lit = 0, className }: { sections: number; lit?: number; className?: string }) {
   const n = Math.max(sections, 1);
   const w = 320;
-  const h = 120;
-  const pad = 36;
+  const h = 180;
+  const pad = 48;
   const step = n > 1 ? (w - 2 * pad) / (n - 1) : 0;
   const xs = Array.from({ length: n }, (_, i) => (n > 1 ? pad + i * step : w / 2));
+  const y = h / 2;
   return (
     <svg viewBox={`0 0 ${String(w)} ${String(h)}`} className={className} aria-hidden focusable="false">
-      <rect width={w} height={h} className="fill-enamel" />
-      <line x1={12} y1={h / 2} x2={w - 12} y2={h / 2} className="stroke-ink" strokeWidth={6} strokeLinecap="round" />
+      <rect width={w} height={h} className="fill-band" />
+      <line x1={0} y1={y} x2={w} y2={y} className="stroke-band-soft/30" strokeWidth={3} />
       {xs.map((x, i) => (
-        <g key={x}>
-          <circle
-            cx={x}
-            cy={h / 2}
-            r={11}
-            className={i < lit ? "fill-green stroke-ink" : "fill-lamp stroke-ink"}
-            strokeWidth={3}
-          />
-          <text x={x} y={h / 2 + 34} textAnchor="middle" className="fill-ink-soft font-sans text-[13px] font-semibold">
-            {i + 1}
-          </text>
-        </g>
+        <circle
+          key={x}
+          cx={x}
+          cy={y}
+          r={i === lit ? 11 : 8}
+          className={i < lit ? "fill-green" : i === lit ? "fill-ember" : "fill-band stroke-band-soft"}
+          strokeWidth={2.5}
+        />
       ))}
     </svg>
   );

@@ -1,15 +1,10 @@
-import { Lamp } from "@/components/lamp";
 import type { Difficulty } from "@/mock";
+import { cn } from "@/lib/utils";
 
-const lamp = { easy: "green", medium: "amber", hard: "red" } as const;
+const tone = { easy: "text-easy", medium: "text-medium", hard: "text-hard" } as const;
 const name = { easy: "Easy", medium: "Medium", hard: "Hard" } as const;
 
-/** LeetCode's difficulty label, in lamp colours (design.md §5b). */
-export function DifficultyLabel({ level }: { level: Difficulty }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-      <Lamp on={lamp[level]} />
-      {name[level]}
-    </span>
-  );
+/** LeetCode's difficulty label: the word in its own colour. */
+export function DifficultyLabel({ level, className }: { level: Difficulty; className?: string }) {
+  return <span className={cn("text-sm font-medium", tone[level], className)}>{name[level]}</span>;
 }

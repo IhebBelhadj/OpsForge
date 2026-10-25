@@ -81,8 +81,8 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
   }
 
   const description = (
-    <Tabs value={left} onValueChange={setLeft} className="flex h-full flex-col gap-0 bg-paper">
-      <TabsList variant="line" className="h-10 w-full justify-start rounded-none border-b-2 border-ink bg-enamel px-1">
+    <Tabs value={left} onValueChange={setLeft} className="flex h-full flex-col gap-0 bg-surface">
+      <TabsList variant="line" className="h-10 w-full justify-start rounded-none border-b border-rule bg-enamel px-1">
         <TabsTrigger value="description" className="flex-none">
           Description
         </TabsTrigger>
@@ -97,7 +97,7 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
         <p className="text-ink-soft">
           Challenge {number}, {duration(item.minutes)}
         </p>
-        <h1 id="item-title" className="mt-1 font-serif text-3xl leading-tight">
+        <h1 id="item-title" className="mt-1 text-2xl font-semibold tracking-[-0.01em]">
           {item.title}
         </h1>
         <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
@@ -106,13 +106,13 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
           <span className="text-ink-soft">Ready within {duration(Math.ceil(challenge.time_limit_s / 60))}</span>
         </p>
         <Markdown className="mt-5">{challenge.statement}</Markdown>
-        <h2 className="mt-6 font-extrabold">What the tests check</h2>
+        <h2 className="mt-6 font-semibold">What the tests check</h2>
         <ol className="mt-2 list-decimal space-y-1 pl-6">
           {challenge.tests.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ol>
-        <h2 className="mt-6 font-extrabold">Constraints</h2>
+        <h2 className="mt-6 font-semibold">Constraints</h2>
         <ul className="mt-2 list-disc space-y-1 pl-6 text-ink-soft">
           <li>Your files are applied into a fresh namespace, deleted afterwards.</li>
           <li>Requests at most 50m CPU and 32Mi memory per container.</li>
@@ -122,7 +122,7 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
         {accepted ? (
           <p>The reference manifest and why it works, with a diff against yours.</p>
         ) : (
-          <div className="grid place-items-center gap-3 rounded-md border-2 border-dashed border-rule p-8 text-center">
+          <div className="grid place-items-center gap-3 rounded-md border border-dashed border-control p-8 text-center">
             <Lock aria-hidden className="size-6 text-ink-soft" />
             <p className="font-semibold">Opens once your submission is accepted</p>
             <p className="max-w-[40ch] text-sm text-ink-soft">
@@ -190,8 +190,8 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
   );
 
   const results = (
-    <Tabs value={pane} onValueChange={setPane} className="flex h-full flex-col gap-0 bg-paper">
-      <div className="flex items-center justify-between border-b-2 border-ink bg-enamel pr-2">
+    <Tabs value={pane} onValueChange={setPane} className="flex h-full flex-col gap-0 bg-surface">
+      <div className="flex items-center justify-between border-b border-rule bg-enamel pr-2">
         <TabsList variant="line" className="h-10 rounded-none bg-transparent px-1">
           <TabsTrigger value="cases">Test cases</TabsTrigger>
           <TabsTrigger value="result">Result</TabsTrigger>
@@ -200,7 +200,7 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
           <Button
             variant="outline"
             size="sm"
-            className="bg-paper"
+            className="bg-surface"
             disabled={busy !== null}
             onClick={() => {
               act("run");
@@ -252,7 +252,7 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
           </p>
         ) : outcome.kind === "run" ? (
           <div>
-            <p className={cn("text-lg font-extrabold", outcome.ok ? "text-green" : "text-red")}>
+            <p className={cn("text-lg font-semibold", outcome.ok ? "text-green" : "text-red")}>
               {outcome.ok ? "Valid manifest" : "Invalid manifest"}
             </p>
             <pre className="mt-2 overflow-x-auto rounded-md bg-term-bg p-3 font-mono text-xs leading-5 text-term-fg">
@@ -261,7 +261,7 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
           </div>
         ) : (
           <div>
-            <p className={cn("text-xl font-extrabold", outcome.verdict === "Accepted" ? "text-green" : "text-red")}>
+            <p className={cn("text-xl font-semibold", outcome.verdict === "Accepted" ? "text-green" : "text-red")}>
               <span>{outcome.verdict}</span>
               {outcome.runtime ? (
                 <span className="ml-3 text-sm font-normal text-ink-soft">Ready in {outcome.runtime}</span>
@@ -295,13 +295,13 @@ export function ChallengeView({ item, number, next }: { item: Item; number: stri
         <ResizablePanel defaultSize="42%" minSize="25%">
           {description}
         </ResizablePanel>
-        <ResizableHandle withHandle className="bg-ink" />
+        <ResizableHandle withHandle className="bg-rule" />
         <ResizablePanel defaultSize="58%" minSize="30%">
           <ResizablePanelGroup orientation="vertical">
             <ResizablePanel defaultSize="62%" minSize="25%">
               {editor}
             </ResizablePanel>
-            <ResizableHandle withHandle className="bg-ink" />
+            <ResizableHandle withHandle className="bg-rule" />
             <ResizablePanel defaultSize="38%" minSize="15%">
               {results}
             </ResizablePanel>

@@ -20,10 +20,10 @@ export function LectureView({
   return (
     <div>
       <article aria-labelledby="item-title" className="mx-auto max-w-[70ch]">
-        <p className="text-sm font-semibold tracking-wide text-ink-soft uppercase">
+        <p className="text-sm text-ink-soft">
           Lecture {number} · {item.minutes} min
         </p>
-        <h1 id="item-title" className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">
+        <h1 id="item-title" className="mt-1 text-2xl font-semibold tracking-[-0.01em]">
           {item.title}
         </h1>
         <Markdown className="mt-6">{lecture.markdown}</Markdown>

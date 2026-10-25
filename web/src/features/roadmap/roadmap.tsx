@@ -35,7 +35,7 @@ export function Roadmap({ course }: { course?: string | undefined }) {
   return (
     <div className="grid gap-10 xl:grid-cols-[1fr_22rem]">
       <section aria-labelledby="roadmap" className="min-w-0">
-        <h1 id="roadmap" className="font-serif text-4xl">
+        <h1 id="roadmap" className="text-2xl font-semibold tracking-[-0.01em]">
           Roadmap
         </h1>
         <p className="mt-3 max-w-[60ch] text-lg text-ink-soft">
@@ -47,7 +47,7 @@ export function Roadmap({ course }: { course?: string | undefined }) {
             <Lamp on="green" /> Passed
           </li>
           <li className="flex items-center gap-2">
-            <Lamp on="amber" /> You are here
+            <Lamp on="amber" className="bg-ember" /> You are here
           </li>
           <li className="flex items-center gap-2">
             <Lamp on="white" /> Open
@@ -67,11 +67,11 @@ export function Roadmap({ course }: { course?: string | undefined }) {
                 <li key={line.course} className="relative">
                   {/* The trunk, down to the next line's junction, and this line's branch off it */}
                   {li < lines.length - 1 ? (
-                    <span aria-hidden className="absolute top-3 -bottom-11 -left-6 w-1.5 bg-ink" />
+                    <span aria-hidden className="absolute top-3.5 -bottom-11 -left-6 w-0.5 bg-control" />
                   ) : null}
-                  <span aria-hidden className="absolute top-3 -left-6 h-1.5 w-5 rounded-l-full bg-ink" />
+                  <span aria-hidden className="absolute top-3.5 -left-6 h-0.5 w-4 bg-control" />
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h2 className="text-xl font-extrabold">{line.title}</h2>
+                    <h2 className="text-lg font-semibold">{line.title}</h2>
                     <span className="text-sm text-ink-soft">
                       {levelName[line.level]}, {passed} of {count(line.stations.length, "station")} passed
                     </span>
@@ -79,7 +79,7 @@ export function Roadmap({ course }: { course?: string | undefined }) {
                   {locked && line.after.length ? (
                     <p className="mt-1 text-sm text-ink-soft">After {line.after.join(" and ")}</p>
                   ) : null}
-                  <div className="mt-3 rounded-md border-2 border-ink bg-enamel px-4 pt-5 pb-4 md:px-6">
+                  <div className="mt-3 rounded-lg border border-rule bg-surface px-4 pt-5 pb-4 md:px-6">
                     <LineMap
                       grid
                       line={line}
@@ -110,12 +110,12 @@ function StationPanel({ line, station, index }: { line: Line; station: Station; 
   const next = station.items.find((i) => !i.done);
   return (
     <aside aria-labelledby="station" aria-live="polite" className="xl:sticky xl:top-6 xl:self-start">
-      <div className="rounded-md border-2 border-ink bg-paper shadow-[4px_4px_0_var(--ink)]">
-        <div className="border-b-2 border-ink bg-enamel px-5 py-4">
+      <div className="rounded-lg border border-rule bg-surface">
+        <div className="border-b border-rule px-5 py-4">
           <p className="text-sm text-ink-soft">
             {line.title}, station {index + 1} of {line.stations.length}
           </p>
-          <h2 id="station" className="mt-1 font-serif text-2xl leading-tight">
+          <h2 id="station" className="mt-1 text-xl font-semibold">
             {station.title}
           </h2>
         </div>
@@ -123,7 +123,7 @@ function StationPanel({ line, station, index }: { line: Line; station: Station; 
           <ul aria-label="Topics" className="flex flex-wrap gap-1.5">
             {station.topics.map((t) => (
               <li key={t}>
-                <Badge variant="outline" className="border-ink/50 font-normal">
+                <Badge variant="outline" className="border-rule font-normal">
                   {t}
                 </Badge>
               </li>
@@ -156,7 +156,7 @@ function StationPanel({ line, station, index }: { line: Line; station: Station; 
             ))}
           </ol>
           {station.state === "locked" ? (
-            <p className="rounded-md border-2 border-dashed border-rule p-3 text-sm text-ink-soft">
+            <p className="rounded-md border border-dashed border-control p-3 text-sm text-ink-soft">
               Opens after {line.after.join(" and ")}. You can read its lectures any time.
             </p>
           ) : next ? (
@@ -166,7 +166,7 @@ function StationPanel({ line, station, index }: { line: Line; station: Station; 
               </Link>
             </Button>
           ) : (
-            <Button asChild variant="outline" className="w-full bg-paper">
+            <Button asChild variant="outline" className="w-full bg-surface">
               <Link to="/learn/$course/$item" params={{ course: "k8s-intro", item: "what-is-a-pod" }}>
                 Review this station
               </Link>

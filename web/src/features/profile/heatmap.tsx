@@ -7,12 +7,12 @@ const long = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
 
 function shade(minutes: number) {
   if (!minutes) return "bg-enamel-deep";
-  if (minutes < 25) return "bg-green/35";
-  if (minutes < 50) return "bg-green/65";
-  return "bg-green";
+  if (minutes < 25) return "bg-ember/35";
+  if (minutes < 50) return "bg-ember/65";
+  return "bg-ember";
 }
 
-/** LeetCode's year of submissions: one cell per day, weeks as columns, green by minutes practised. */
+/** LeetCode's year of submissions: one cell per day, weeks as columns, ember by minutes practised. */
 export function Heatmap({ days }: { days: { date: string; minutes: number }[] }) {
   // Pad the start so the first column begins on a Monday
   const first = new Date(days[0]?.date ?? 0);
@@ -41,7 +41,7 @@ export function Heatmap({ days }: { days: { date: string; minutes: number }[] })
             const label = start && new Date(start.date).getDate() <= 7 ? month.format(new Date(start.date)) : "";
             return (
               <div key={start?.date ?? i} className="grid grid-rows-[16px_repeat(7,13px)] gap-[3px]">
-                <span className="text-[10px] leading-none whitespace-nowrap text-ink-soft">{label}</span>
+                <span className="text-xs leading-none whitespace-nowrap text-ink-soft">{label}</span>
                 {w.map((d, j) =>
                   d ? (
                     <span

@@ -7,8 +7,8 @@ type Lamp = "off" | "green" | "red";
 
 const lampClass: Record<Lamp, string> = {
   off: "bg-lamp-off",
-  green: "bg-green shadow-[0_0_6px_var(--green)]",
-  red: "bg-red shadow-[0_0_6px_var(--red)]",
+  green: "bg-green",
+  red: "bg-red",
 };
 
 /** readyz, as a result either way: a 503 still carries the checks. Throws only when the platform does not answer. */
@@ -41,7 +41,7 @@ export function StatusLamp() {
       {...(detail ? { title: detail } : {})}
       className="inline-flex items-center gap-2 text-sm text-ink-soft"
     >
-      <span aria-hidden className={cn("size-2.5 rounded-full border border-ink/40", lampClass[lamp])} />
+      <span aria-hidden className={cn("size-2 rounded-full", lampClass[lamp])} />
       {label}
     </span>
   );

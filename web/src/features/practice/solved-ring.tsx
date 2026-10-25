@@ -12,8 +12,8 @@ export function SolvedRing() {
   const r = 52;
   const c = 2 * Math.PI * r;
   return (
-    <section aria-labelledby="solved" className="self-start rounded-md border-2 border-ink bg-enamel p-5">
-      <h2 id="solved" className="font-extrabold">
+    <section aria-labelledby="solved" className="self-start rounded-lg border border-rule bg-surface p-5">
+      <h2 id="solved" className="font-semibold">
         Solved
       </h2>
       <div className="mt-3 flex items-center gap-5">
@@ -39,7 +39,7 @@ export function SolvedRing() {
           <text
             x={64}
             y={64}
-            className="fill-ink font-sans text-[28px] font-extrabold"
+            className="fill-ink font-sans text-[28px] font-semibold"
             textAnchor="middle"
             dominantBaseline="central"
             transform="rotate(90 64 64)"
@@ -54,7 +54,7 @@ export function SolvedRing() {
                 <DifficultyLabel level={d} />
               </dt>
               <dd className="text-sm">
-                <span className="font-extrabold">{s[d].done}</span>
+                <span className="font-semibold">{s[d].done}</span>
                 <span className="text-ink-soft">/{s[d].total}</span>
               </dd>
             </div>

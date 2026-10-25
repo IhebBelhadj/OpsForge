@@ -53,7 +53,7 @@ export function Practice() {
       <section aria-labelledby="practice" className="min-w-0">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 id="practice" className="font-serif text-4xl">
+            <h1 id="practice" className="text-2xl font-semibold tracking-[-0.01em]">
               Practice
             </h1>
             <p className="mt-2 text-ink-soft">
@@ -62,7 +62,7 @@ export function Practice() {
           </div>
           <Button
             variant="outline"
-            className="bg-paper"
+            className="bg-surface"
             onClick={pick}
             disabled={!shown.some((p) => p.status !== "solved")}
           >
@@ -82,7 +82,7 @@ export function Practice() {
               onChange={(e) => {
                 setQuery(e.target.value);
               }}
-              className="bg-paper pl-9"
+              className="bg-surface pl-9"
             />
           </div>
           <Choice
@@ -120,7 +120,9 @@ export function Practice() {
                 }}
                 className={cn(
                   "rounded-full border-2 px-3 py-0.5 text-sm",
-                  topic === t ? "border-ink bg-ink text-paper" : "border-ink/30 bg-paper hover:border-ink",
+                  topic === t
+                    ? "border-ink bg-ink text-surface"
+                    : "border-rule bg-surface hover:border-control hover:bg-enamel",
                 )}
               >
                 {t ?? "All topics"}
@@ -129,12 +131,12 @@ export function Practice() {
           ))}
         </ul>
 
-        <div className="mt-6 overflow-hidden rounded-md border-2 border-ink">
+        <div className="mt-6 overflow-hidden rounded-lg border border-rule">
           <table className="w-full text-left">
             <caption className="sr-only">
               {shown.length} of {problems.length} shown
             </caption>
-            <thead className="border-b-2 border-ink bg-enamel text-sm">
+            <thead className="border-b border-rule text-sm text-ink-soft">
               <tr>
                 <th scope="col" className="w-12 px-3 py-2 font-semibold">
                   <span className="sr-only">Status</span>
@@ -148,7 +150,7 @@ export function Practice() {
                 <th scope="col" className="px-3 py-2 font-semibold">
                   Difficulty
                 </th>
-                <th scope="col" className="hidden px-3 py-2 font-semibold sm:table-cell">
+                <th scope="col" className="hidden px-3 py-2 text-right font-semibold sm:table-cell">
                   Time
                 </th>
                 <th scope="col" className="hidden px-3 py-2 text-right font-semibold lg:table-cell">
@@ -157,8 +159,8 @@ export function Practice() {
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
-              {shown.map((p, i) => (
-                <tr key={p.id} className={cn("relative hover:bg-enamel/60", i % 2 === 1 && "bg-enamel/25")}>
+              {shown.map((p) => (
+                <tr key={p.id} className="relative hover:bg-paper">
                   <td className="px-3 py-2.5">
                     <Status status={p.status} />
                   </td>
@@ -183,7 +185,9 @@ export function Practice() {
                   <td className="px-3 py-2.5">
                     <DifficultyLabel level={p.difficulty} />
                   </td>
-                  <td className="hidden px-3 py-2.5 text-sm text-ink-soft sm:table-cell">{duration(p.minutes)}</td>
+                  <td className="hidden px-3 py-2.5 text-right text-sm text-ink-soft sm:table-cell">
+                    {duration(p.minutes)}
+                  </td>
                   <td className="hidden px-3 py-2.5 text-right text-sm lg:table-cell">{p.best ?? "—"}</td>
                 </tr>
               ))}
@@ -232,7 +236,7 @@ function Choice<T extends string>({
         onChange(v as Filter<T>);
       }}
     >
-      <SelectTrigger aria-label={label} className="w-36 bg-paper">
+      <SelectTrigger aria-label={label} className="w-36 bg-surface">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

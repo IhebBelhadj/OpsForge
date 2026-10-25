@@ -165,7 +165,7 @@ reboot-survival check).
   New check/rule types: add to `labs.CHECKS`/`labs.RULES` (+ server handling for a new check). Schema changes: a new
   `lab/migrations/NNNN_*.sql`, never edit an applied one. The server answers only Host/Origin 127.0.0.1|localhost
   on its port (the terminal is a shell). Handler methods must not shadow `BaseRequestHandler` (`finish`, `handle`, `setup`).
-  The UI: tokens in `lab/web/app.css` `:root` (light + dark; carried into `web/src/styles/app.css` for Phase 11), Overpass / Source Serif 4 / JetBrains Mono (terminal only);
+  The Phase 10 UI: tokens in `lab/web/app.css` `:root` (light + dark), Overpass / Source Serif 4 / JetBrains Mono;
   colour = lamps only (white as topology.yml, amber changed live, red cut, green passed).
   A lab's teardown must leave `verify` green: anything that moves pods (a partition) must re-spread them (losing-a-site
   rolls every spread Deployment outside kube-system). Spread workloads need `matchLabelKeys: [pod-template-hash]`
@@ -213,6 +213,12 @@ reboot-survival check).
   request passes `hostGuard` (loopback names only, 421 otherwise) and the WebSocket upgrade checks Origin. Shells are
   hung up through `RegisterOnShutdown` (hijacked sockets are not waited for by `Shutdown`). When checking for leftover
   shells with `pgrep -f academy-bashrc`, mind that the pattern matches the checking shell itself.
+- Academy web look (2026-10-25, Udemy/LeetCode family): tokens in `web/src/styles/app.css` keep Phase 10's names with
+  new roles (`paper` ground #f7f8fa, `surface` white cards, `enamel` subtle fill, `ink`, `rule` 1px borders, `band` the
+  dark course title band) plus `ember` (#e8590c, the one hue: the learner's own progress, the current item, streak and
+  heatmaps) and `easy/medium/hard`. Chrome stays colourless, the primary button is near-black, cards are 1px `rule` with
+  no shadow; IBM Plex Sans everywhere, Source Serif 4 only for lecture prose, JetBrains Mono only for code. No tracked
+  uppercase labels, no zebra rows, no 2px ink borders or offset shadows.
 - Academy web pins: `typescript ~6.0` (TS 7 has no JS API for typescript-eslint), `eslint ^9` (jsx-a11y). The shadcn
   CLI may write a wrong `cn` import: check every `shadcn add`. MSW 3: `onUnhandledFrame`. The API client looks up
   `fetch` per call (MSW). Theme = `data-theme` on `<html>` (none = system); `dark:` utilities follow the same rule.

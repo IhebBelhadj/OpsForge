@@ -12,11 +12,11 @@ export function Settings() {
   const theme = useTheme();
   return (
     <div className="max-w-3xl">
-      <h1 className="font-serif text-4xl">Settings</h1>
+      <h1 className="text-2xl font-semibold tracking-[-0.01em]">Settings</h1>
       <p className="mt-2 text-ink-soft">Kept on this machine, for every course.</p>
 
       <Group title="Appearance">
-        <Row label="Theme" hint="Night shift is the dark panel; System follows your desktop.">
+        <Row label="Theme" hint="Night shift is the dark theme; System follows your desktop.">
           <RadioGroup
             value={theme}
             onValueChange={(v) => {
@@ -33,7 +33,7 @@ export function Settings() {
               ] as const
             ).map(([value, name]) => (
               <label key={value} className="flex items-center gap-2">
-                <RadioGroupItem value={value} className="border-ink" />
+                <RadioGroupItem value={value} className="border-control" />
                 {name}
               </label>
             ))}
@@ -76,12 +76,12 @@ export function Settings() {
 
       <Group title="Your data">
         <Row label="Progress" hint="Every attempt, pass, note and badge, as one JSON file.">
-          <Button variant="outline" className="bg-paper">
+          <Button variant="outline" className="bg-surface">
             Export progress
           </Button>
         </Row>
         <Row label="Start over" hint="Deletes your progress on this machine. Courses and labs stay.">
-          <Button variant="outline" className="border-red bg-paper text-red hover:bg-red hover:text-paper">
+          <Button variant="outline" className="border-red/40 bg-surface text-red hover:bg-red-soft hover:text-red">
             Delete my progress
           </Button>
         </Row>
@@ -93,7 +93,7 @@ export function Settings() {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-10">
-      <h2 className="border-b-2 border-ink pb-2 text-xl font-extrabold">{title}</h2>
+      <h2 className="border-b border-rule pb-2 text-xl font-semibold">{title}</h2>
       <div className="divide-y divide-rule">{children}</div>
     </section>
   );
@@ -131,7 +131,7 @@ function Pick({ label, values, initial, unit }: { label: string; values: string[
   const [value, setValue] = useState(initial);
   return (
     <Select value={value} onValueChange={setValue}>
-      <SelectTrigger aria-label={label} className="w-36 bg-paper">
+      <SelectTrigger aria-label={label} className="w-36 bg-surface">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -45,19 +45,19 @@ export function CommandPalette() {
       <Button
         variant="outline"
         size="sm"
-        className="hidden w-52 justify-start border-ink/40 bg-paper text-ink-soft md:inline-flex"
+        className="hidden w-64 justify-start rounded-full border-transparent bg-enamel font-normal text-ink-soft hover:bg-enamel-deep lg:inline-flex"
         onClick={() => {
           setOpen(true);
         }}
       >
         <Search aria-hidden />
         Search
-        <kbd className="ml-auto rounded-sm border border-rule px-1 font-sans text-xs">Ctrl K</kbd>
+        <kbd className="ml-auto rounded-sm bg-surface px-1.5 font-sans text-xs text-ink-soft">Ctrl K</kbd>
       </Button>
       <Button
         variant="ghost"
         size="icon"
-        className="md:hidden"
+        className="lg:hidden"
         aria-label="Search"
         onClick={() => {
           setOpen(true);
@@ -70,7 +70,7 @@ export function CommandPalette() {
         onOpenChange={setOpen}
         title="Search"
         description="Go to a page, a course or something to practise"
-        className="border-2 border-ink bg-paper"
+        className="bg-surface"
       >
         <CommandInput placeholder="Search courses, labs and challenges" />
         <CommandList>

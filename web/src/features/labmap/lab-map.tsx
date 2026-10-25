@@ -59,7 +59,7 @@ export function LabMap({ className }: { className?: string }) {
               className="fill-paper stroke-ink"
               strokeWidth={3}
             />
-            <text x={s.x - 56} y={s.y - 10} className="fill-ink font-sans text-[14px] font-extrabold">
+            <text x={s.x - 56} y={s.y - 10} className="fill-ink font-sans text-[14px] font-semibold">
               {s.name}
             </text>
             {s.nodes.map((n, i) => (

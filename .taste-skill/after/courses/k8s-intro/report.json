@@ -1,0 +1,1395 @@
+{
+ "url": "http://127.0.0.1:18191/courses/k8s-intro",
+ "at": "2026-10-25T13:09:25.911Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 2,
+   "filled": [
+    0.38,
+    0.34
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 1028,
+     "screens": 1.1,
+     "words": 125,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 14,
+     "sections": 4,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "chars": 23,
+     "lines": 1,
+     "size": 28,
+     "vw": 1.9,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.25,
+     "top": 117,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "lines": 1,
+     "size": 28,
+     "font": "IBM Plex Sans"
+    },
+    "headings": [
+     {
+      "text": "Kubernetes introduction",
+      "words": 2,
+      "chars": 23,
+      "lines": 1,
+      "size": 28,
+      "vw": 1.9,
+      "font": "IBM Plex Sans",
+      "weight": 600,
+      "tracking": -0.01,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.61,
+      "top": 117,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 0.98,
+       "mono": false
+      },
+      {
+       "family": "Source Serif 4",
+       "share": 0.02,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      12,
+      14,
+      15,
+      16,
+      17,
+      18,
+      28
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": null,
+     "measureChars": null,
+     "max": {
+      "size": 28,
+      "vw": 1.9,
+      "font": "IBM Plex Sans",
+      "text": "Kubernetes introduction"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.04,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f7f8fa",
+     "bodyBgHsl": {
+      "h": 220,
+      "s": 0.23,
+      "l": 0.97
+     },
+     "dark": false,
+     "sectionBgs": [],
+     "textColors": [
+      {
+       "color": "#1c1d1f",
+       "share": 0.39
+      },
+      {
+       "color": "#5c6068",
+       "share": 0.29
+      },
+      {
+       "color": "#c9cbd0",
+       "share": 0.24
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.06
+      },
+      {
+       "color": "#c2410c",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#f0f1f4",
+      "hsl": {
+       "h": 225,
+       "s": 0.15,
+       "l": 0.95
+      },
+      "fg": "#5c6068"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 3,
+     "inHero": 3,
+     "radius": "pill",
+     "height": 32,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Search Ctrl K",
+      "Start course",
+      "1 Pods 4 items · 33 min"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 1,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "div.-mt-8.bg-band → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 2,
+     "hairlineSamples": [
+      "header.sticky.top-0 1440px",
+      "footer.border-t.border-rule 1440px"
+     ],
+     "outlinedBoxes": 3,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 3,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 6,
+     "fixed": true,
+     "height": 57,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex sans",
+     "source serif 4"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 1028,
+    "margins": {
+     "left": 104,
+     "right": 104
+    },
+    "sections": [],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Kubernetes introduction",
+      "size": 28,
+      "top": 117,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 104,
+      "n": 4
+     },
+     {
+      "x": 125,
+      "n": 1
+     },
+     {
+      "x": 136,
+      "n": 1
+     },
+     {
+      "x": 721,
+      "n": 1
+     },
+     {
+      "x": 779,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 8,
+    "bodySize": 18,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0.2,
+    "voidBox": {
+     "x": 900,
+     "y": 420,
+     "w": 540,
+     "h": 480
+    }
+   },
+   "app": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "dark": false,
+    "ground": "#f7f8fa",
+    "sidebar": null,
+    "topbar": {
+     "h": 57
+    },
+    "canvas": {
+     "left": 104,
+     "right": 104
+    },
+    "hero": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "chars": 23,
+     "lines": 1,
+     "size": 28,
+     "vw": 1.9,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.25,
+     "top": 117,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 3,
+     "firstScreen": 3,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 4,
+     "radii": [
+      [
+       8,
+       3
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 1,
+     "softShadows": 0,
+     "shadowSamples": [
+      "rgb(28, 29, 31) 0px 0px 0px 1440px"
+     ],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 4,
+     "tabularShare": 1,
+     "kpiMax": 14
+    },
+    "rows": null,
+    "chartHues": 1,
+    "placeholders": [],
+    "type": {
+     "under13": 0.01,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      12,
+      14,
+      15,
+      16,
+      17,
+      18,
+      28
+     ]
+    },
+    "title": {
+     "text": "Kubernetes introduction",
+     "size": 28,
+     "top": 117
+    },
+    "colourShare": 0.001
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 2,
+   "filled": [
+    0.88,
+    0.58
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 1570,
+     "screens": 1.5,
+     "words": 122,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 14,
+     "sections": 4,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "chars": 23,
+     "lines": 1,
+     "size": 28,
+     "vw": 3.6,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.25,
+     "top": 117,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "lines": 1,
+     "size": 28,
+     "font": "IBM Plex Sans"
+    },
+    "headings": [
+     {
+      "text": "Kubernetes introduction",
+      "words": 2,
+      "chars": 23,
+      "lines": 1,
+      "size": 28,
+      "vw": 3.6,
+      "font": "IBM Plex Sans",
+      "weight": 600,
+      "tracking": -0.01,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 117,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 0.98,
+       "mono": false
+      },
+      {
+       "family": "Source Serif 4",
+       "share": 0.02,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      12,
+      14,
+      15,
+      16,
+      17,
+      18,
+      28
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": null,
+     "measureChars": null,
+     "max": {
+      "size": 28,
+      "vw": 3.6,
+      "font": "IBM Plex Sans",
+      "text": "Kubernetes introduction"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.02,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f7f8fa",
+     "bodyBgHsl": {
+      "h": 220,
+      "s": 0.23,
+      "l": 0.97
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#1c1d1f",
+       "top": 57,
+       "hsl": {
+        "h": 220,
+        "s": 0.05,
+        "l": 0.12
+       }
+      },
+      {
+       "color": "#ffffff",
+       "top": 264,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#1c1d1f",
+       "share": 0.4
+      },
+      {
+       "color": "#5c6068",
+       "share": 0.28
+      },
+      {
+       "color": "#c9cbd0",
+       "share": 0.25
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.06
+      },
+      {
+       "color": "#c2410c",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#1c1d1f",
+      "hsl": {
+       "h": 220,
+       "s": 0.05,
+       "l": 0.12
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 2,
+     "inHero": 1,
+     "radius": 6,
+     "height": 40,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Start course"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 1,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "div.-mt-8.bg-band → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 2,
+     "hairlineSamples": [
+      "header.sticky.top-0 768px",
+      "footer.border-t.border-rule 768px"
+     ],
+     "outlinedBoxes": 3,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 3,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [
+     {
+      "type": "svg",
+      "ratio": 0.37
+     }
+    ],
+    "nav": {
+     "links": 6,
+     "fixed": true,
+     "height": 57,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex sans",
+     "source serif 4"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 1570,
+    "margins": {
+     "left": 24,
+     "right": 24
+    },
+    "sections": [
+     {
+      "sel": "div.-mt-8.bg-band",
+      "tag": "div",
+      "top": 57,
+      "height": 749,
+      "words": 30,
+      "media": 1,
+      "middle": 0,
+      "heading": {
+       "text": "Kubernetes introduction",
+       "size": 28,
+       "tag": "h1"
+      },
+      "left": 24,
+      "right": 25,
+      "textLeft": 24,
+      "textRight": 321,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.mt-10.max-w-3xl",
+      "tag": "section",
+      "top": 982,
+      "height": 288,
+      "words": 42,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Course content",
+       "size": 18,
+       "tag": "h2"
+      },
+      "left": 24,
+      "right": 24,
+      "textLeft": 24,
+      "textRight": 24,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Kubernetes introduction",
+      "size": 28,
+      "top": 117,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 24,
+      "n": 4
+     },
+     {
+      "x": 45,
+      "n": 1
+     },
+     {
+      "x": 56,
+      "n": 1
+     },
+     {
+      "x": 593,
+      "n": 1
+     },
+     {
+      "x": 651,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 8,
+    "bodySize": 18,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "dark": false,
+    "ground": "#f7f8fa",
+    "sidebar": null,
+    "topbar": {
+     "h": 57
+    },
+    "canvas": {
+     "left": 24,
+     "right": 24
+    },
+    "hero": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "chars": 23,
+     "lines": 1,
+     "size": 28,
+     "vw": 3.6,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.25,
+     "top": 117,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 3,
+     "firstScreen": 2,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 4,
+     "radii": [
+      [
+       8,
+       3
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 1,
+     "softShadows": 0,
+     "shadowSamples": [
+      "rgb(28, 29, 31) 0px 0px 0px 1024px"
+     ],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 4,
+     "tabularShare": 1,
+     "kpiMax": 14
+    },
+    "rows": null,
+    "chartHues": 1,
+    "placeholders": [],
+    "type": {
+     "under13": 0.01,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      12,
+      14,
+      15,
+      16,
+      17,
+      18,
+      28
+     ]
+    },
+    "title": {
+     "text": "Kubernetes introduction",
+     "size": 28,
+     "top": 117
+    },
+    "colourShare": 0.004
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 2,
+   "filled": [
+    0.87,
+    0.56
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 1486,
+     "screens": 1.8,
+     "words": 121,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 14,
+     "sections": 4,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "chars": 23,
+     "lines": 1,
+     "size": 28,
+     "vw": 7.2,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.25,
+     "top": 162,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "lines": 1,
+     "size": 28,
+     "font": "IBM Plex Sans"
+    },
+    "headings": [
+     {
+      "text": "Kubernetes introduction",
+      "words": 2,
+      "chars": 23,
+      "lines": 1,
+      "size": 28,
+      "vw": 7.2,
+      "font": "IBM Plex Sans",
+      "weight": 600,
+      "tracking": -0.01,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 162,
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 0.98,
+       "mono": false
+      },
+      {
+       "family": "Source Serif 4",
+       "share": 0.02,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      12,
+      14,
+      15,
+      16,
+      17,
+      18,
+      28
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": null,
+     "measureChars": null,
+     "max": {
+      "size": 28,
+      "vw": 7.2,
+      "font": "IBM Plex Sans",
+      "text": "Kubernetes introduction"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.02,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f7f8fa",
+     "bodyBgHsl": {
+      "h": 220,
+      "s": 0.23,
+      "l": 0.97
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#1c1d1f",
+       "top": 102,
+       "hsl": {
+        "h": 220,
+        "s": 0.05,
+        "l": 0.12
+       }
+      },
+      {
+       "color": "#ffffff",
+       "top": 361,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#1c1d1f",
+       "share": 0.4
+      },
+      {
+       "color": "#5c6068",
+       "share": 0.27
+      },
+      {
+       "color": "#c9cbd0",
+       "share": 0.25
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.07
+      },
+      {
+       "color": "#c2410c",
+       "share": 0.01
+      }
+     ],
+     "button": {
+      "bg": "#1c1d1f",
+      "hsl": {
+       "h": 220,
+       "s": 0.05,
+       "l": 0.12
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 2,
+     "inHero": 1,
+     "radius": 6,
+     "height": 40,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Start course"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 1,
+     "shadowOverlay": 0,
+     "shadowSamples": [
+      "div.-mt-8.bg-band → rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+     ],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 3,
+     "hairlineSamples": [
+      "header.sticky.top-0 390px",
+      "nav.flex.overflow-x-auto 390px",
+      "footer.border-t.border-rule 390px"
+     ],
+     "outlinedBoxes": 3,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 3,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [
+     {
+      "type": "svg",
+      "ratio": 0.22
+     }
+    ],
+    "nav": {
+     "links": 6,
+     "fixed": true,
+     "height": 102,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex sans",
+     "source serif 4"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 1486,
+    "margins": {
+     "left": 16,
+     "right": 16
+    },
+    "sections": [
+     {
+      "sel": "div.-mt-8.bg-band",
+      "tag": "div",
+      "top": 102,
+      "height": 597,
+      "words": 30,
+      "media": 1,
+      "middle": 0,
+      "heading": {
+       "text": "Kubernetes introduction",
+       "size": 28,
+       "tag": "h1"
+      },
+      "left": 16,
+      "right": 17,
+      "textLeft": 16,
+      "textRight": 21,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.mt-8.max-w-3xl",
+      "tag": "section",
+      "top": 731,
+      "height": 135,
+      "words": 11,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "What you'll learn",
+       "size": 18,
+       "tag": "h2"
+      },
+      "left": 37,
+      "right": 190,
+      "textLeft": 37,
+      "textRight": 190,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.mt-10.max-w-3xl",
+      "tag": "section",
+      "top": 906,
+      "height": 288,
+      "words": 42,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Course content",
+       "size": 18,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 16,
+      "textLeft": 16,
+      "textRight": 16,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Kubernetes introduction",
+      "size": 28,
+      "top": 162,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 16,
+      "n": 4
+     },
+     {
+      "x": 37,
+      "n": 1
+     },
+     {
+      "x": 48,
+      "n": 1
+     },
+     {
+      "x": 223,
+      "n": 1
+     },
+     {
+      "x": 281,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 8,
+    "bodySize": 18,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "dark": false,
+    "ground": "#f7f8fa",
+    "sidebar": null,
+    "topbar": {
+     "h": 56
+    },
+    "canvas": {
+     "left": 16,
+     "right": 16
+    },
+    "hero": {
+     "text": "Kubernetes introduction",
+     "words": 2,
+     "chars": 23,
+     "lines": 1,
+     "size": 28,
+     "vw": 7.2,
+     "font": "IBM Plex Sans",
+     "weight": 600,
+     "tracking": -0.01,
+     "leading": 1.25,
+     "top": 162,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 3,
+     "firstScreen": 2,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 4,
+     "radii": [
+      [
+       8,
+       3
+      ],
+      [
+       0,
+       1
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 1,
+     "softShadows": 0,
+     "shadowSamples": [
+      "rgb(28, 29, 31) 0px 0px 0px 844px"
+     ],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 4,
+     "tabularShare": 1,
+     "kpiMax": 14
+    },
+    "rows": null,
+    "chartHues": 1,
+    "placeholders": [],
+    "type": {
+     "under13": 0.01,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      12,
+      14,
+      15,
+      16,
+      17,
+      18,
+      28
+     ]
+    },
+    "title": {
+     "text": "Kubernetes introduction",
+     "size": 28,
+     "top": 162
+    },
+    "colourShare": 0.004
+   },
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "FAIL",
+   "id": "heavy-shadow",
+   "width": 1440,
+   "message": "1 panel shadow(s) heavy enough to read as floating: rgb(28, 29, 31) 0px 0px 0px 1440px",
+   "fix": "Panels sit on the ground: separate them with a fill one step from the ground or a quiet 1px border. A shadow, if any, is under 8% black with a small blur. Real overlays (menus, dialogs, popovers) may float.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/after/courses/k8s-intro/desktop-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/after/courses/k8s-intro/desktop-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/after/courses/k8s-intro/tablet-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/after/courses/k8s-intro/tablet-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/home/iheb/projects/OpsForge/.taste-skill/after/courses/k8s-intro/mobile-fold.jpg",
+   "pages": [
+    "/home/iheb/projects/OpsForge/.taste-skill/after/courses/k8s-intro/mobile-page-01.jpg"
+   ],
+   "film": []
+  }
+ ]
+}

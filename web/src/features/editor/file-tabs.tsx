@@ -17,7 +17,7 @@ export function FileTabs({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-stretch border-b-2 border-ink bg-enamel">
+    <div className="flex items-stretch border-b border-rule bg-enamel">
       <div role="tablist" aria-label="Open files" className="flex min-w-0 overflow-x-auto">
         {files.map((f) => (
           <button
@@ -29,9 +29,9 @@ export function FileTabs({
               onPick(f);
             }}
             className={cn(
-              "flex shrink-0 items-center gap-2 border-r border-ink/30 px-3 py-1.5 font-mono text-xs",
+              "flex shrink-0 items-center gap-2 border-r border-rule px-3 py-1.5 font-mono text-xs",
               f === active
-                ? "-mb-0.5 border-b-2 border-b-paper bg-paper font-semibold"
+                ? "-mb-0.5 border-b-2 border-b-surface bg-surface font-semibold"
                 : "text-ink-soft hover:text-ink",
             )}
           >

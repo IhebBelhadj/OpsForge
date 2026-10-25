@@ -109,16 +109,16 @@ export function LabView({ item, number, next }: { item: Item; number: string; ne
   }
 
   const steps = (
-    <div className="h-full overflow-auto bg-paper">
+    <div className="h-full overflow-auto bg-surface">
       <div className="p-5 sm:p-6">
         <p className="text-ink-soft">
           Lab {number}, {duration(item.minutes)}
         </p>
-        <h1 id="item-title" className="mt-1 font-serif text-3xl leading-tight">
+        <h1 id="item-title" className="mt-1 text-2xl font-semibold tracking-[-0.01em]">
           {item.title}
         </h1>
         <p className="mt-2 text-ink-soft">{lab.summary}</p>
-        <details className="group mt-4 rounded-md border-2 border-ink/30" open={status === "idle"}>
+        <details className="group mt-4 rounded-lg border border-rule/30" open={status === "idle"}>
           <summary className="flex cursor-pointer items-center justify-between px-4 py-2 font-semibold">
             Briefing
             <ChevronDown aria-hidden className="size-4 transition-transform group-open:rotate-180" />
@@ -158,7 +158,7 @@ export function LabView({ item, number, next }: { item: Item; number: string; ne
 
   const side = (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col gap-0 bg-term-bg">
-      <div className="flex items-center justify-between gap-2 border-b-2 border-ink bg-enamel pr-3">
+      <div className="flex items-center justify-between gap-2 border-b border-rule bg-enamel pr-3">
         <TabsList variant="line" className="h-10 rounded-none bg-transparent px-1">
           <TabsTrigger value="terminal">Terminal</TabsTrigger>
           <TabsTrigger value="files">Files</TabsTrigger>
@@ -182,7 +182,7 @@ export function LabView({ item, number, next }: { item: Item; number: string; ne
       <TabsContent value="files" className="min-h-0">
         <Files files={lab.files} />
       </TabsContent>
-      <TabsContent value="map" className="min-h-0 overflow-auto bg-paper p-5">
+      <TabsContent value="map" className="min-h-0 overflow-auto bg-surface p-5">
         <LabMap />
       </TabsContent>
     </Tabs>
@@ -190,7 +190,7 @@ export function LabView({ item, number, next }: { item: Item; number: string; ne
 
   return (
     <section aria-labelledby="item-title" className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b-2 border-ink bg-paper px-4 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-rule bg-surface px-4 py-2 text-sm">
         <span className="flex items-center gap-2 font-semibold">
           <Lamp on={statusLamp[status]} />
           {statusName[status]}
@@ -205,13 +205,13 @@ export function LabView({ item, number, next }: { item: Item; number: string; ne
         </span>
         {status === "running" ? (
           <span className="ml-auto flex gap-2">
-            <Button variant="outline" size="sm" className="bg-paper" onClick={start}>
+            <Button variant="outline" size="sm" className="bg-surface" onClick={start}>
               <RotateCcw aria-hidden /> Reset lab
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="border-red bg-paper text-red hover:bg-red hover:text-paper"
+              className="border-red/40 bg-surface text-red hover:bg-red-soft hover:text-red"
               onClick={() => {
                 setConfirmAbandon(true);
               }}
@@ -225,26 +225,26 @@ export function LabView({ item, number, next }: { item: Item; number: string; ne
         <ResizablePanel defaultSize={mobile ? "55%" : "40%"} minSize="25%">
           {steps}
         </ResizablePanel>
-        <ResizableHandle withHandle className="bg-ink" />
+        <ResizableHandle withHandle className="bg-rule" />
         <ResizablePanel defaultSize={mobile ? "45%" : "60%"} minSize="25%">
           {side}
         </ResizablePanel>
       </ResizablePanelGroup>
 
       <Dialog open={confirmAbandon} onOpenChange={setConfirmAbandon}>
-        <DialogContent className="border-2 border-ink bg-paper">
-          <DialogTitle className="font-serif text-2xl font-normal">Abandon this lab?</DialogTitle>
+        <DialogContent className="border border-rule bg-surface">
+          <DialogTitle className="text-xl font-semibold font-normal">Abandon this lab?</DialogTitle>
           <DialogDescription className="text-ink-soft">
             The lab is torn down and every link healed. Steps you passed are not kept; you can start again any time.
           </DialogDescription>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" className="bg-paper">
+              <Button variant="outline" className="bg-surface">
                 Keep going
               </Button>
             </DialogClose>
             <Button
-              className="bg-red text-paper hover:bg-red/90"
+              className="bg-red text-surface hover:bg-red/90"
               onClick={() => {
                 setConfirmAbandon(false);
                 setStatus("idle");
@@ -266,7 +266,7 @@ function StartPanel({ lab, status, log, onStart }: { lab: Lab; status: Status; l
       <div className="w-full max-w-md">
         {status === "idle" ? (
           <>
-            <h2 className="font-serif text-2xl">Start the lab on your cluster</h2>
+            <h2 className="text-xl font-semibold">Start the lab on your cluster</h2>
             <p className="mt-2 text-sm opacity-80">
               Setup creates the namespace and applies the lab's starting state. Finishing or abandoning always tears it
               down and heals every link.
@@ -287,7 +287,7 @@ function StartPanel({ lab, status, log, onStart }: { lab: Lab; status: Status; l
           </>
         ) : (
           <>
-            <h2 className="flex items-center gap-2 font-serif text-2xl">
+            <h2 className="flex items-center gap-2 text-xl font-semibold">
               <Loader2 aria-hidden className="size-5 animate-spin motion-reduce:animate-none" /> Setting up
             </h2>
             <ol aria-live="polite" className="mt-4 space-y-1.5 font-mono text-sm">
@@ -342,21 +342,21 @@ function StepRow({
       {last ? null : (
         <span
           aria-hidden
-          className={cn("absolute top-8 bottom-0 left-[13px] w-1", state === "passed" ? "bg-green" : "bg-rule")}
+          className={cn("absolute top-8 bottom-0 left-[13px] w-0.5", state === "passed" ? "bg-green" : "bg-rule")}
         />
       )}
       <span
         className={cn(
-          "relative z-10 grid size-7 shrink-0 place-items-center rounded-full border-[3px] border-ink text-xs font-extrabold",
-          state === "passed" && "bg-green text-paper",
-          state === "current" && "station-current bg-amber",
-          state === "waiting" && "bg-lamp-off/40 text-ink-soft",
+          "relative z-10 grid size-7 shrink-0 place-items-center rounded-full border-2 text-xs font-semibold",
+          state === "passed" && "border-green bg-green text-white",
+          state === "current" && "station-current border-ember bg-ember text-white",
+          state === "waiting" && "border-control bg-surface text-ink-soft",
         )}
       >
         {state === "passed" ? <Check aria-hidden className="size-3.5" strokeWidth={3.5} /> : index + 1}
       </span>
       <div className="min-w-0 flex-1">
-        <h2 className={cn("pt-0.5 font-extrabold", state === "waiting" && "text-ink-soft")}>
+        <h2 className={cn("pt-0.5 font-semibold", state === "waiting" && "text-ink-soft")}>
           {step.title}
           <span className="sr-only">, {state === "current" ? "current step" : state}</span>
         </h2>
@@ -367,7 +367,7 @@ function StepRow({
               <RadioGroup value={choice} onValueChange={setChoice} aria-label="Your answer" className="mt-4 gap-2">
                 {quizChoices.map((c, i) => (
                   <label key={c} className="flex items-center gap-2">
-                    <RadioGroupItem value={String(i)} className="border-ink" /> {c}
+                    <RadioGroupItem value={String(i)} className="border-control" /> {c}
                   </label>
                 ))}
               </RadioGroup>
@@ -410,7 +410,7 @@ function StepRow({
 function CheckResult({ result }: { result: Checked }) {
   return (
     <div role="alert" className="mt-4 overflow-hidden rounded-md border-2 border-red">
-      <p className="bg-red px-3 py-1.5 text-sm font-semibold text-paper">Not yet: the lab does not match</p>
+      <p className="bg-red px-3 py-1.5 text-sm font-semibold text-surface">Not yet: the lab does not match</p>
       <table className="w-full text-sm">
         <thead className="text-left text-ink-soft">
           <tr>
@@ -451,27 +451,27 @@ function Debrief({
   debrief: string;
 }) {
   return (
-    <div role="status" className="mt-6 rounded-md border-2 border-ink bg-enamel p-5">
+    <div role="status" className="mt-6 rounded-lg border border-rule bg-enamel p-5">
       <p className="flex items-center gap-2 text-ink-soft">
         <Lamp on="green" /> Every step passed. The lab is torn down and the links healed.
       </p>
-      <h2 className="mt-1 font-serif text-3xl">Lab passed</h2>
+      <h2 className="mt-1 text-2xl font-semibold tracking-[-0.01em]">Lab passed</h2>
       <dl className="mt-4 grid grid-cols-3 gap-3">
         {[
           ["XP", `+${String(xp)}`],
           ["Time", "11 min"],
           ["Hints", String(hints)],
         ].map(([t, v]) => (
-          <div key={t} className="rounded-md border-2 border-ink bg-paper p-3">
+          <div key={t} className="rounded-lg border border-rule bg-surface p-3">
             <dt className="text-sm text-ink-soft">{t}</dt>
-            <dd className="text-xl font-extrabold">{v}</dd>
+            <dd className="text-xl font-semibold">{v}</dd>
           </div>
         ))}
       </dl>
       {debrief ? <Markdown className="mt-4">{debrief}</Markdown> : null}
       <div className="mt-5 flex flex-wrap gap-3">
         {next}
-        <Button variant="outline" className="bg-paper" onClick={onAgain}>
+        <Button variant="outline" className="bg-surface" onClick={onAgain}>
           <RotateCcw aria-hidden /> Run it again
         </Button>
       </div>

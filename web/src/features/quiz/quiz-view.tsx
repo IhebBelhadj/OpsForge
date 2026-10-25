@@ -30,7 +30,7 @@ export function QuizView({ item, number, next }: { item: Item; number: string; n
         <p className="text-ink-soft">
           Quiz {number}, {duration(item.minutes)}
         </p>
-        <h1 id="item-title" className="mt-1 font-serif text-3xl leading-tight sm:text-4xl">
+        <h1 id="item-title" className="mt-1 text-2xl font-semibold tracking-[-0.01em]">
           {item.title}
         </h1>
         <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -40,9 +40,9 @@ export function QuizView({ item, number, next }: { item: Item; number: string; n
             ["Time", quiz.time_limit_s ? duration(Math.ceil(quiz.time_limit_s / 60)) : "No limit"],
             ["XP", String(quiz.xp)],
           ].map(([term, value]) => (
-            <div key={term} className="rounded-md border-2 border-ink p-3">
+            <div key={term} className="rounded-lg border border-rule p-3">
               <dt className="text-sm text-ink-soft">{term}</dt>
-              <dd className="text-2xl font-extrabold">{value}</dd>
+              <dd className="text-2xl font-semibold">{value}</dd>
             </div>
           ))}
         </dl>
@@ -50,7 +50,7 @@ export function QuizView({ item, number, next }: { item: Item; number: string; n
           One question at a time; skip any and come back before you submit. Questions and choices are shuffled on every
           attempt, and the XP comes with the first pass.
         </p>
-        <div className="mt-4 rounded-md border-2 border-dashed border-rule p-4">
+        <div className="mt-4 rounded-md border border-dashed border-control p-4">
           <p className="font-semibold">Your attempts</p>
           <p className="text-sm text-ink-soft">Best 5 of 8 yesterday, not passed yet. Your best score is kept.</p>
         </div>
@@ -117,19 +117,19 @@ function Taking({
   return (
     <section aria-labelledby="quiz-title" className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id="quiz-title" className="font-serif text-2xl">
+        <h1 id="quiz-title" className="text-xl font-semibold">
           Quiz {number}: {title}
         </h1>
         {limit ? <Countdown limit={limit} started={started} /> : null}
       </div>
-      <div className="mt-4 overflow-hidden rounded-md border-2 border-ink">
+      <div className="mt-4 overflow-hidden rounded-lg border border-rule">
         <ResizablePanelGroup orientation={mobile ? "vertical" : "horizontal"} className="min-h-[28rem]">
-          <ResizablePanel defaultSize="55%" minSize="30%" className="bg-paper">
+          <ResizablePanel defaultSize="55%" minSize="30%" className="bg-surface">
             <div className="h-full overflow-auto p-5 sm:p-6">
               <p className="text-sm text-ink-soft">
                 Question {at + 1} of {quizQuestions.length}
               </p>
-              <h2 className="mt-2 font-serif text-xl leading-snug sm:text-2xl">{q.prompt}</h2>
+              <h2 className="mt-2 text-lg leading-snug font-semibold sm:text-xl">{q.prompt}</h2>
               {q.output ? (
                 <pre className="mt-5 overflow-x-auto rounded-md bg-term-bg p-4 font-mono text-[0.8rem] leading-6 text-term-fg">
                   {q.output}
@@ -137,7 +137,7 @@ function Taking({
               ) : null}
             </div>
           </ResizablePanel>
-          <ResizableHandle withHandle className="bg-ink" />
+          <ResizableHandle withHandle className="bg-rule" />
           <ResizablePanel defaultSize="45%" minSize="30%" className="bg-enamel">
             <div className="flex h-full flex-col p-5 sm:p-6">
               <p id="answer-label" className="font-semibold">
@@ -153,7 +153,7 @@ function Taking({
               <div className="mt-auto flex justify-between gap-2 pt-6">
                 <Button
                   variant="outline"
-                  className="bg-paper"
+                  className="bg-surface"
                   disabled={at === 0}
                   onClick={() => {
                     setAt(at - 1);
@@ -190,8 +190,8 @@ function Taking({
                     setAt(i);
                   }}
                   className={cn(
-                    "grid size-9 place-items-center rounded-md border-2 border-ink text-sm font-extrabold",
-                    done ? "bg-ink text-paper" : "bg-paper",
+                    "grid size-9 place-items-center rounded-lg border border-rule text-sm font-semibold",
+                    done ? "bg-ink text-surface" : "bg-surface",
                     i === at && "ring-3 ring-amber ring-offset-2 ring-offset-paper",
                   )}
                 >
@@ -222,8 +222,8 @@ function Taking({
 function Choices({ q, value, onChange }: { q: MockQuestion; value: number[]; onChange: (v: number[]) => void }) {
   const box = (on: boolean) =>
     cn(
-      "flex cursor-pointer items-start gap-3 rounded-md border-2 bg-paper p-3 leading-snug",
-      on ? "border-ink shadow-[3px_3px_0_var(--ink)]" : "border-ink/25 hover:border-ink/60",
+      "flex cursor-pointer items-start gap-3 rounded-lg border bg-surface p-3.5 leading-snug transition-colors",
+      on ? "border-ink bg-enamel/60" : "border-rule hover:border-control hover:bg-paper",
     );
   if (q.kind === "single")
     return (
@@ -237,7 +237,7 @@ function Choices({ q, value, onChange }: { q: MockQuestion; value: number[]; onC
       >
         {q.choices.map((c, i) => (
           <label key={c} className={box(value.includes(i))}>
-            <RadioGroupItem value={String(i)} className="mt-0.5 border-ink" />
+            <RadioGroupItem value={String(i)} className="mt-0.5 border-control" />
             {c}
           </label>
         ))}
@@ -252,7 +252,7 @@ function Choices({ q, value, onChange }: { q: MockQuestion; value: number[]; onC
             onCheckedChange={(on) => {
               onChange(on ? [...value, i].sort() : value.filter((v) => v !== i));
             }}
-            className="mt-0.5 border-ink"
+            className="mt-0.5 border-control"
           />
           {c}
         </label>
@@ -305,11 +305,11 @@ function Results({
   const passed = pct >= pass;
   return (
     <section aria-labelledby="result" className="mx-auto max-w-[75ch]">
-      <div className={cn("rounded-md border-2 border-ink p-5", passed ? "bg-enamel" : "bg-paper")}>
+      <div className={cn("rounded-lg border border-rule p-5", passed ? "bg-green-soft" : "bg-surface")}>
         <p className="flex items-center gap-2 text-ink-soft">
           <Lamp on={passed ? "green" : "red"} /> {title}
         </p>
-        <h1 id="result" className="mt-1 font-serif text-3xl">
+        <h1 id="result" className="mt-1 text-2xl font-semibold tracking-[-0.01em]">
           {passed ? "Passed" : "Not passed yet"}: {right} of {quizQuestions.length}
         </h1>
         <Progress
@@ -323,7 +323,7 @@ function Results({
           {passed ? `+${String(xp)} XP, your first pass.` : "Read the explanations, then try again."}
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button variant="outline" className="bg-paper" onClick={onRetake}>
+          <Button variant="outline" className="bg-surface" onClick={onRetake}>
             <RotateCcw aria-hidden /> Retake quiz
           </Button>
           {next}
@@ -335,7 +335,7 @@ function Results({
           const mine = answers[q.id] ?? [];
           const ok = same(mine, q.answer);
           return (
-            <li key={q.id} className="rounded-md border-2 border-ink/30 p-4">
+            <li key={q.id} className="rounded-lg border border-rule/30 p-4">
               <p className="flex gap-3">
                 {ok ? (
                   <Check aria-label="Right" className="mt-0.5 size-5 shrink-0 text-green" strokeWidth={3} />
@@ -360,7 +360,7 @@ function Results({
                   </div>
                 )}
               </dl>
-              <p className="mt-2 pl-8 font-serif leading-relaxed">{q.explain}</p>
+              <p className="mt-2 pl-8 leading-relaxed text-ink-soft">{q.explain}</p>
               {q.see && !ok ? (
                 <p className="mt-1 pl-8 text-sm">
                   <Link to="." className="underline underline-offset-4">

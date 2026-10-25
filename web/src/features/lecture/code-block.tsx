@@ -44,7 +44,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }) {
       <Button
         variant="outline"
         size="sm"
-        className="absolute top-2 right-2 h-7 gap-1 bg-paper px-2 text-xs"
+        className="absolute top-2 right-2 h-7 gap-1 bg-surface px-2 text-xs"
         onClick={() => void copy()}
         aria-label={copied ? "Copied" : "Copy code"}
       >

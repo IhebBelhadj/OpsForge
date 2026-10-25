@@ -19,7 +19,7 @@ export function Catalogue() {
   return (
     <section aria-labelledby="catalogue">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 id="catalogue" className="font-serif text-4xl">
+        <h1 id="catalogue" className="text-2xl font-semibold tracking-[-0.01em]">
           Courses
         </h1>
         {courses.data?.length ? (
@@ -33,7 +33,7 @@ export function Catalogue() {
                 setLevel(v as Level);
               }}
             >
-              <SelectTrigger aria-labelledby="level-label" className="w-40 bg-paper">
+              <SelectTrigger aria-labelledby="level-label" className="w-40 bg-surface">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -50,10 +50,13 @@ export function Catalogue() {
       </div>
 
       {courses.isPending ? (
-        <ul aria-label="Loading courses" className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <ul
+          aria-label="Loading courses"
+          className="mt-6 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        >
           {[0, 1, 2].map((i) => (
             <li key={i}>
-              <Skeleton className="h-64 rounded-md" />
+              <Skeleton className="aspect-[16/9] rounded-lg" />
             </li>
           ))}
         </ul>
@@ -70,7 +73,7 @@ export function Catalogue() {
         <>
           <h2 className="sr-only">All courses</h2>
           {shown.length ? (
-            <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="mt-6 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {shown.map((c) => (
                 <CourseCard key={c.id} course={c} />
               ))}

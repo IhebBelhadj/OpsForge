@@ -19,7 +19,7 @@ const schema = {
 const alertStyle: Record<Alert, { label: string; icon: ReactNode; className: string }> = {
   note: { label: "Note", icon: <Info />, className: "border-ink-soft" },
   tip: { label: "Tip", icon: <Lightbulb />, className: "border-green" },
-  important: { label: "Important", icon: <MessageSquareWarning />, className: "border-ink" },
+  important: { label: "Important", icon: <MessageSquareWarning />, className: "border-ink-soft" },
   warning: { label: "Warning", icon: <TriangleAlert />, className: "border-amber" },
   caution: { label: "Caution", icon: <OctagonAlert />, className: "border-red" },
 };

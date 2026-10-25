@@ -46,7 +46,7 @@ function Missing({ what, error }: { what: string; error: Error | "not-found" }) 
     <section className="mx-auto max-w-[70ch] p-6">
       {error === "not-found" || isNotFound(error) ? (
         <>
-          <h1 className="font-serif text-3xl">No such {what}</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.01em]">No such {what}</h1>
           <p className="mt-3 text-ink-soft">
             It is not in the catalogue, or was removed from the packs.{" "}
             <Link to="/courses" className="underline underline-offset-4">
@@ -106,11 +106,11 @@ function Loaded({ course, itemId }: { course: Course; itemId: string }) {
   return (
     <>
       <div className={cn("flex min-w-0 flex-1 flex-col", workspace && "h-svh")}>
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b-4 border-ink bg-enamel px-4 py-2">
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-rule bg-enamel px-4 py-2">
           <Link
             to="/courses/$course"
             params={{ course: course.id }}
-            className="flex min-w-0 items-center gap-1 font-extrabold"
+            className="flex min-w-0 items-center gap-1 font-semibold"
           >
             <ChevronLeft aria-hidden className="size-4 shrink-0" />
             <span className="truncate">{course.title}</span>
@@ -134,13 +134,13 @@ function Loaded({ course, itemId }: { course: Course; itemId: string }) {
         </main>
       </div>
       <Sidebar side="right">
-        <SidebarHeader id="course-content" className="border-b border-rule px-4 py-3 font-extrabold">
+        <SidebarHeader id="course-content" className="border-b border-rule px-4 py-3 font-semibold">
           Course content
         </SidebarHeader>
         <SidebarContent role="navigation" aria-labelledby="course-content">
           {course.sections.map((s, si) => (
             <SidebarGroup key={s.title}>
-              <SidebarGroupLabel className="text-sm font-extrabold text-ink">
+              <SidebarGroupLabel className="text-sm font-semibold text-ink">
                 {si + 1} &nbsp;{s.title}
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -184,14 +184,14 @@ function Step({ to, course, dir }: { to: Placed | undefined; course: string; dir
   const icon = dir === "prev" ? <ChevronLeft aria-hidden /> : <ChevronRight aria-hidden />;
   if (!to)
     return (
-      <Button variant="outline" size="sm" disabled className="bg-paper">
+      <Button variant="outline" size="sm" disabled className="bg-surface">
         {dir === "prev" ? icon : null}
         {label}
         {dir === "next" ? icon : null}
       </Button>
     );
   return (
-    <Button asChild variant="outline" size="sm" className="bg-paper">
+    <Button asChild variant="outline" size="sm" className="bg-surface">
       <Link
         to="/learn/$course/$item"
         params={{ course, item: to.item.id }}
@@ -209,7 +209,7 @@ function ContentToggle() {
   const { toggleSidebar, open, openMobile, isMobile } = useSidebar();
   const shown = isMobile ? openMobile : open;
   return (
-    <Button variant="outline" size="sm" className="bg-paper" onClick={toggleSidebar} aria-expanded={shown}>
+    <Button variant="outline" size="sm" className="bg-surface" onClick={toggleSidebar} aria-expanded={shown}>
       <ListTree aria-hidden />
       <span className="hidden sm:inline">Course content</span>
       <span className="sr-only sm:hidden">Course content</span>

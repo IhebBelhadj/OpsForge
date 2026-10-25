@@ -4,8 +4,8 @@ import { topicProgress } from "@/mock";
 /** AlgoMonster's pattern progress: each topic with how many of its labs and challenges are passed. */
 export function TopicProgress({ onPick }: { onPick?: (topic: string) => void }) {
   return (
-    <section aria-labelledby="by-topic" className="rounded-md border-2 border-ink bg-paper p-5">
-      <h2 id="by-topic" className="font-extrabold">
+    <section aria-labelledby="by-topic" className="rounded-lg border border-rule bg-surface p-5">
+      <h2 id="by-topic" className="font-semibold">
         By topic
       </h2>
       <ul className="mt-3 space-y-2.5">
@@ -31,7 +31,7 @@ export function TopicProgress({ onPick }: { onPick?: (topic: string) => void }) 
             </p>
             <Progress
               value={(t.done / t.total) * 100}
-              className="mt-1 h-1.5"
+              className="mt-1.5 h-1"
               aria-label={`${t.topic}: ${String(t.done)} of ${String(t.total)}`}
             />
           </li>
