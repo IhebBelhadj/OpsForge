@@ -62,6 +62,24 @@ type CourseSummary struct {
 	Needs, Requires                  []string
 	Layout, Badge                    *string
 	Items                            int // in all its sections
+	Sections                         int
+	Counts                           ItemCounts
+}
+
+// ItemCounts are a course's items per type.
+type ItemCounts struct{ Lecture, Quiz, Lab, Challenge int }
+
+func (c *ItemCounts) add(typ string) {
+	switch typ {
+	case ItemLecture:
+		c.Lecture++
+	case ItemQuiz:
+		c.Quiz++
+	case ItemLab:
+		c.Lab++
+	case ItemChallenge:
+		c.Challenge++
+	}
 }
 
 // Course is the course page: its summary, texts and sections.
@@ -196,10 +214,12 @@ func CourseView(e Entry) (Course, error) {
 		for _, it := range s.Items {
 			sec.Items = append(sec.Items, ItemRef{ID: it.ID, Type: it.Type, Title: it.Title, Minutes: it.Minutes,
 				Hash: it.ContentHash})
+			c.Counts.add(it.Type)
 		}
 		c.Items += len(sec.Items)
 		c.Sections = append(c.Sections, sec)
 	}
+	c.CourseSummary.Sections = len(c.Sections)
 	return c, nil
 }
 

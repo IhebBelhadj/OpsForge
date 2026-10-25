@@ -248,6 +248,14 @@ export interface components {
             badge: string | null;
             /** @description Items in all its sections */
             items: number;
+            section_count: number;
+            item_counts: components["schemas"]["ItemCounts"];
+        };
+        ItemCounts: {
+            lecture: number;
+            quiz: number;
+            lab: number;
+            challenge: number;
         };
         CourseList: {
             courses: components["schemas"]["CourseSummary"][];

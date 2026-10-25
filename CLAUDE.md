@@ -214,6 +214,16 @@ reboot-survival check).
   CLI may write a wrong `cn` import: check every `shadcn add`. MSW 3: `onUnhandledFrame`. The API client looks up
   `fetch` per call (MSW). Theme = `data-theme` on `<html>` (none = system); `dark:` utilities follow the same rule.
   A Go test that re-executes itself as a fake CLI sets `GORACE=atexit_sleep_ms=0` (else +1 s per call under -race).
+- Academy web screens (M2, `web/src/features/{catalog,course,player,lecture}`): routes `/`, `/courses/$course`,
+  `/learn/$course/$item` (the player brings its own chrome; the root shell steps aside for `/learn/`). The API client
+  (`src/api/client.ts`) opens the session itself (GET /me, else POST /sessions), adds `X-CSRF-Token` to changes and
+  repeats a read once after a 401; `queries.*` reject with `ProblemError` (not retried below 500). Lecture Markdown:
+  react-markdown + remark-gfm + rehype-sanitize (no raw HTML; `[!NOTE]` alerts via `data-alert`), Shiki through
+  `shiki/core` with the languages listed in `highlight.ts` (the full bundle adds 13 MB to the binary). Quiz, lab and
+  challenge items are read-only previews until their backends exist. Page tests render the whole route tree with
+  `renderRoute(path)` against MSW fixtures (`src/test/server.ts`, the demo course); `src/test/setup.ts` stubs what
+  jsdom lacks (matchMedia, pointer capture, scrollIntoView). The e2e fake toolchain compiles to
+  `academy/testdata/bundle.golden.json`. Phones (< 900 px): the course content is a drawer that closes on a choice.
 - Scenarios: `${node:<site>}`, `${server:<site>}`, `${cluster:<site>}` resolve per layout (never hard-code `b-w1`);
   `layout: stretched|multi-cluster` skips a scenario on the other layout.
 - Scenario files: step keys must not be YAML 1.1 booleans (`on`, `yes`, ...): `run` takes `host:`, not `on:`.

@@ -14,6 +14,8 @@ test("the shell loads and the platform lamp turns green", async ({ page }) => {
 test("a deep link is answered by the app, an unknown page by its not-found view", async ({ page }) => {
   const response = await page.goto("/learn/no-course/no-item");
   expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "No such course" })).toBeVisible();
+  await page.goto("/no/such/page");
   await expect(page.getByRole("heading", { name: "No such page" })).toBeVisible();
   await page.getByRole("link", { name: "Back to the courses" }).click();
   await expect(page).toHaveURL("/");

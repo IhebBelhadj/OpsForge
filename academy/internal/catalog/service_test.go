@@ -59,7 +59,8 @@ func TestCourses(t *testing.T) {
 	}
 	c := got[0]
 	if c.ID != "k8s-intro" || c.Pack != "demo" || c.Title != "Kubernetes introduction" || c.Level != "beginner" ||
-		c.Minutes != 33 || c.Items != 4 || c.Badge == nil || *c.Badge != "intro-done" || c.Layout != nil {
+		c.Minutes != 33 || c.Items != 4 || c.Sections != 1 ||
+		c.Counts != (catalog.ItemCounts{Lecture: 1, Quiz: 1, Lab: 1, Challenge: 1}) || c.Badge == nil || *c.Badge != "intro-done" || c.Layout != nil {
 		t.Fatalf("%+v", c)
 	}
 }

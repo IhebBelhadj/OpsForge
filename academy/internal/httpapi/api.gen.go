@@ -222,8 +222,9 @@ type Course struct {
 	ContentHash string  `json:"content_hash"`
 
 	// Description Markdown
-	Description string `json:"description"`
-	Id          string `json:"id"`
+	Description string     `json:"description"`
+	Id          string     `json:"id"`
+	ItemCounts  ItemCounts `json:"item_counts"`
 
 	// Items Items in all its sections
 	Items int `json:"items"`
@@ -240,10 +241,11 @@ type Course struct {
 	Requirements Strings `json:"requirements"`
 
 	// Requires Courses to complete first
-	Requires Strings   `json:"requires"`
-	Sections []Section `json:"sections"`
-	Subtitle string    `json:"subtitle"`
-	Title    string    `json:"title"`
+	Requires     Strings   `json:"requires"`
+	SectionCount int       `json:"section_count"`
+	Sections     []Section `json:"sections"`
+	Subtitle     string    `json:"subtitle"`
+	Title        string    `json:"title"`
 }
 
 // CourseLevel defines model for Course.Level.
@@ -257,8 +259,9 @@ type CourseList struct {
 // CourseSummary defines model for CourseSummary.
 type CourseSummary struct {
 	// Badge The badge completing it awards
-	Badge *string `json:"badge"`
-	Id    string  `json:"id"`
+	Badge      *string    `json:"badge"`
+	Id         string     `json:"id"`
+	ItemCounts ItemCounts `json:"item_counts"`
 
 	// Items Items in all its sections
 	Items int `json:"items"`
@@ -273,9 +276,10 @@ type CourseSummary struct {
 	Pack  string  `json:"pack"`
 
 	// Requires Courses to complete first
-	Requires Strings `json:"requires"`
-	Subtitle string  `json:"subtitle"`
-	Title    string  `json:"title"`
+	Requires     Strings `json:"requires"`
+	SectionCount int     `json:"section_count"`
+	Subtitle     string  `json:"subtitle"`
+	Title        string  `json:"title"`
 }
 
 // CourseSummaryLevel defines model for CourseSummary.Level.
@@ -328,6 +332,14 @@ type Item struct {
 	Section int      `json:"section"`
 	Title   string   `json:"title"`
 	Type    ItemType `json:"type"`
+}
+
+// ItemCounts defines model for ItemCounts.
+type ItemCounts struct {
+	Challenge int `json:"challenge"`
+	Lab       int `json:"lab"`
+	Lecture   int `json:"lecture"`
+	Quiz      int `json:"quiz"`
 }
 
 // ItemRef defines model for ItemRef.

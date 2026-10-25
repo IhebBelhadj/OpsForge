@@ -37,6 +37,24 @@ export default defineConfig(
     },
   },
   {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { ignoreRestSiblings: true, argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
+  {
+    // shadcn's code, copied in (frontend.md "borrow, don't build"): kept close to upstream so updates stay diffable
+    files: ["src/components/ui/**"],
+    rules: {
+      "@typescript-eslint/consistent-type-definitions": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
+      "@typescript-eslint/no-confusing-void-expression": "off",
+      "react-hooks/purity": "off",
+    },
+  },
+  {
     files: ["*.config.{js,ts}", "e2e/**"],
     languageOptions: { globals: globals.node },
   },

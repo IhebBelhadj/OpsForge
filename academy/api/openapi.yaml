@@ -264,7 +264,8 @@ components:
       description: The lab layout it needs; null for any
     CourseSummary:
       type: object
-      required: [id, pack, title, subtitle, level, minutes, needs, requires, layout, badge, items]
+      required: [id, pack, title, subtitle, level, minutes, needs, requires, layout, badge, items, section_count,
+                 item_counts]
       properties:
         id: { type: string }
         pack: { type: string }
@@ -277,6 +278,17 @@ components:
         layout: { $ref: "#/components/schemas/Layout" }
         badge: { type: [string, "null"], description: The badge completing it awards }
         items: { type: integer, description: Items in all its sections }
+        section_count: { type: integer }
+        item_counts: { $ref: "#/components/schemas/ItemCounts" }
+    ItemCounts:
+      type: object
+      required: [lecture, quiz, lab, challenge]
+      additionalProperties: false
+      properties:
+        lecture: { type: integer }
+        quiz: { type: integer }
+        lab: { type: integer }
+        challenge: { type: integer }
     CourseList:
       type: object
       required: [courses]

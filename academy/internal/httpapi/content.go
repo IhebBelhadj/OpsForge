@@ -86,7 +86,8 @@ func (s *server) GetCourse(ctx context.Context, req GetCourseRequestObject) (Get
 	sum := courseSummary(c.CourseSummary)
 	out := GetCourse200JSONResponse{Id: sum.Id, Pack: sum.Pack, Title: sum.Title, Subtitle: sum.Subtitle,
 		Level: CourseLevel(sum.Level), Minutes: sum.Minutes, Needs: sum.Needs, Requires: sum.Requires,
-		Layout: sum.Layout, Badge: sum.Badge, Items: sum.Items, Description: c.Description,
+		Layout: sum.Layout, Badge: sum.Badge, Items: sum.Items, SectionCount: sum.SectionCount,
+		ItemCounts: sum.ItemCounts, Description: c.Description,
 		Outcomes: strs(c.Outcomes), Requirements: strs(c.Requirements), ContentHash: c.Hash,
 		Sections: make([]Section, len(c.Sections))}
 	for i, sec := range c.Sections {
@@ -163,7 +164,9 @@ func labView(l *catalog.Lab) *LabView {
 func courseSummary(c catalog.CourseSummary) CourseSummary {
 	return CourseSummary{Id: c.ID, Pack: c.Pack, Title: c.Title, Subtitle: c.Subtitle,
 		Level: CourseSummaryLevel(c.Level), Minutes: c.Minutes, Needs: strs(c.Needs), Requires: strs(c.Requires),
-		Layout: layout(c.Layout), Badge: c.Badge, Items: c.Items}
+		Layout: layout(c.Layout), Badge: c.Badge, Items: c.Items, SectionCount: c.Sections,
+		ItemCounts: ItemCounts{Lecture: c.Counts.Lecture, Quiz: c.Counts.Quiz, Lab: c.Counts.Lab,
+			Challenge: c.Counts.Challenge}}
 }
 
 // strs is a list that is never null in JSON.

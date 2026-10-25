@@ -52,7 +52,8 @@ func TestCourseList(t *testing.T) {
 	b := signIn(t, apiServer(t, withCatalog(t)))
 	rec := get(t, b, "/api/v1/courses", "/api/v1/courses")
 	got := decode[httpapi.CourseList](t, rec.Body.Bytes())
-	if rec.Code != 200 || len(got.Courses) != 1 || got.Courses[0].Id != "k8s-intro" || got.Courses[0].Items != 4 {
+	if rec.Code != 200 || len(got.Courses) != 1 || got.Courses[0].Id != "k8s-intro" || got.Courses[0].Items != 4 ||
+		got.Courses[0].SectionCount != 1 || got.Courses[0].ItemCounts.Lab != 1 {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 }

@@ -1,4 +1,4 @@
-import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
+import { createRootRouteWithContext, Link, Outlet, useRouterState } from "@tanstack/react-router";
 
 import type { RouterContext } from "@/app/router";
 import { ThemeToggle } from "@/app/theme-toggle";
@@ -9,8 +9,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFound,
 });
 
-/** The app shell: a header rail, the page, a footer with the platform's lamp. */
+/** The app shell: a header rail, the page, a footer with the platform's lamp. The course player brings its own
+ * chrome (design.md §3), so it gets the whole window. */
 function Shell() {
+  const player = useRouterState({ select: (s) => s.location.pathname.startsWith("/learn/") });
+  if (player)
+    return (
+      <>
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-paper focus:p-2">
+          Skip to content
+        </a>
+        <Outlet />
+      </>
+    );
   return (
     <div className="flex min-h-svh flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:p-2">
