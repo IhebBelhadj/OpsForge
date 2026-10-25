@@ -11,8 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Plain scalars resolve as PyYAML's safe_load does (YAML 1.1, lab/labs.py read the packs with it until Academy
-// compiled them): yes/no/on/off are booleans, 0755 is octal, 1:30 is 90, a float needs a dot ("1e5" is a string).
+// Plain scalars resolve as PyYAML's safe_load does (YAML 1.1: Phase 10 and the Python compiler read the packs with
+// it): yes/no/on/off are booleans, 0755 is octal, 1:30 is 90, a float needs a dot ("1e5" is a string).
 // The values must stay the same as Python's, or content hashes would change and recorded passes turn stale.
 var (
 	yamlBool      = regexp.MustCompile(`^(?:yes|Yes|YES|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF)$`)

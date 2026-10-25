@@ -19,19 +19,18 @@ lint-yaml:
 	yamllint .
 
 lint-python:
-	python3 -m py_compile opsforge lab/render.py lab/scenario.py lab/labs.py lab/labsdb.py lab/labserver.py lab/academy.py
+	python3 -m py_compile opsforge lab/render.py lab/scenario.py lab/academy.py lab/apiserver.py
 
 lint-ansible:
 	@if [ -d ansible ]; then ansible-lint ansible; else echo "lint-ansible: no ansible/ yet, skipping"; fi
 
 validate:
 	./opsforge validate
-	./opsforge labs validate
 	cd academy && go run ./cmd/academy compile --root ..
 
 # Academy's pinned copy of the toolchain contract (academy/contract) must be OpsForge's (contract/) while both live in
 # this repository; after the split, contract-update copies a release instead.
-CONTRACT_FILES = toolchain.schema.json README.md golden
+CONTRACT_FILES = toolchain.schema.json openapi.yaml README.md golden
 
 contract-check:
 	@for f in $(CONTRACT_FILES); do diff -r contract/$$f academy/contract/$$f >/dev/null || { \

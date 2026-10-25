@@ -24,9 +24,9 @@ Two programs, one boundary:
 - **`academy`** (Go, new, `academy/`): the platform. Owns users, content as imported, progress, quizzes, badges,
   lab sessions, workspaces, terminals, the HTTP API and the web app. Knows nothing about Incus, netem or K3s
   internals.
-- **`opsforge`** (Python, existing): the lab. Owns topology, provisioning, faults, and now the **content toolchain**
-  (pack validation and compilation) and **check execution** (scenario steps, probes). It already has these
-  (`lab/labs.py`, `ScenarioRun`); keeping them in one place means scenarios and labs never diverge.
+- **`opsforge`** (Python, existing): the lab. Owns topology, provisioning, faults, and **check execution** (scenario
+  steps, probes: `ScenarioRun`) plus their validation (`api validate-steps`); keeping them in one place means
+  scenarios and labs never diverge. Packs are compiled by Academy (`internal/compiler`, since split step 2).
 
 The boundary is a **versioned JSON CLI contract** (below), not shared code or a shared database.
 
@@ -101,6 +101,11 @@ as done when its lab was passed).
 
 ## The lab toolchain contract (Go → Python)
 
+> **Moving to HTTP** (decided 2026-10-25, PLAN.md Phase 11 split steps 4-5): `opsforge api serve` serves the same
+> documents under `/v1/` (jobs for lab work, a WebSocket terminal and workspaces on the lab host, a bearer token), and
+> Academy's only adapter becomes an HTTP client (`internal/opsforgeapi`); the CLI form below stays for people and
+> scripts.
+
 `opsforge api <command> --json`, one JSON document on stdin, one on stdout, exit 0 on success, a problem document on
 stderr otherwise. OpsForge owns it (`contract/README.md`: schema, golden documents, versioning rules); Academy pins a
 copy (`academy/contract/`). Versioned by `contract: 1` (the major) in every document and the minor in `api version`:
@@ -131,9 +136,13 @@ know. The rows below past `heal` are planned additions (minor bumps).
 
 ## Data
 
-- **SQLite** (`.opsforge/academy.db`, WAL, foreign keys on) through **`modernc.org/sqlite`** (pure Go, no cgo).
-  One host, one writer, tiny data: SQLite is the right tool; SQL stays portable (no SQLite-only functions in
-  queries; JSON columns are text decoded in Go) so PostgreSQL is a driver + migration-dialect change.
+- **SQLite** (`.opsforge/academy.db`, WAL, foreign keys on) through **`modernc.org/sqlite`** (pure Go, no cgo)
+  until the repository split. SQL stays portable (no SQLite-only functions in queries; JSON columns are text decoded
+  in Go) so PostgreSQL is a driver + migration-dialect change.
+- **PostgreSQL next** (decided 2026-10-25, PLAN.md Phase 11 split step 7): a dedicated Docker container
+  (`academy-pg`, 127.0.0.1 only), relational with `jsonb` for documents (`content.doc`), `pgx/v5`, sqlc's
+  `postgresql` engine, goose's postgres dialect, `timestamptz`; tests on per-test databases cloned from a migrated
+  template. No document database, no ORM.
 - **sqlc** generates typed query methods from `academy/internal/<module>/sqlite/queries.sql`; no runtime ORM.
   Chosen over GORM/ent: explicit SQL, compile-time checked, no reflection, easy to review.
 - **goose** migrations in `academy/migrations/` (embedded), applied at start; never edited once released.
@@ -176,7 +185,7 @@ know. The rows below past `heal` are planned additions (minor bumps).
 
 - `academy serve` (default `127.0.0.1:8090`), `academy migrate-legacy` (`-legacy-db`, default `.opsforge/labs.db`;
   again imports only rows Phase 10 recorded since), `academy version`. Re-import: `POST /api/v1/admin/import`.
-  `opsforge serve` becomes a thin wrapper that builds/starts `academy` (one command for the user).
+  `academy compile [--json] [pack...]` checks the packs (authors, `make check`).
 - **Logs**: `log/slog` JSON (request id, module, attempt id). **Metrics**: Prometheus `/metrics` on a separate
   loopback port (request latency, check durations, toolchain errors), scrapeable by the lab's VictoriaMetrics.
 - **Health**: `/healthz` (process), `/readyz` (DB + toolchain contract version).
@@ -188,6 +197,5 @@ know. The rows below past `heal` are planned additions (minor bumps).
 
 - Multi-user: real authentication, per-user lab sessions queued on the single lab or one lab per user on a bigger
   host; the `identity` module and ownership checks already exist.
-- PostgreSQL: sqlc + goose dialect switch.
-- Splitting `labsession`/`challenge` into a lab-runner service next to the lab: `LabController` becomes a gRPC
-  client.
+- Splitting `labsession`/`challenge` into a lab-runner service next to the lab: decided instead as OpsForge's own HTTP
+  API (PLAN.md Phase 11 split step 4), with `LabController` an HTTP client.

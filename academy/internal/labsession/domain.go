@@ -2,7 +2,7 @@
 // the lab's setup, each step is checked in order (a probe observes the lab through the toolchain, a quiz or a
 // confirm is answered), hints cost XP, reset sets the lab up again, and finishing or abandoning always runs the
 // teardown and heals the links. One attempt runs per user, and one lab operation at a time on the one lab (they
-// share its links and cluster). Phase 10's rules (lab/labserver.py), on the toolchain contract.
+// share its links and cluster). Phase 10's rules (its Python server, since removed), on the toolchain contract.
 package labsession
 
 import (

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opsforge.lab/contract/toolchain.schema.json",
   "title": "OpsForge lab toolchain documents (contract 1)",
-  "description": "Inputs (stdin) and outputs (stdout) of `opsforge api run|probe|heal|validate-steps|version` (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
+  "description": "The documents of `opsforge api`: inputs (stdin, or HTTP request bodies) and outputs (stdout, or HTTP responses; contract/openapi.yaml) of run|probe|heal|validate-steps|version, and the HTTP API's jobs, problems and workspace listings (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
   "$defs": {
     "namespace": {
       "description": "A namespace the platform owns: lab-<attempt> for labs, ch-<attempt> for challenge submissions. Created before setup, deleted after teardown.",
@@ -124,6 +124,58 @@
             }
           }
         }
+      }
+    },
+    "problem": {
+      "description": "Why a call failed (RFC 9457 fields): on stderr from the CLI, as the body of an HTTP error (application/problem+json), or a failed job's `problem`.",
+      "type": "object",
+      "required": ["contract", "type", "title", "detail"],
+      "properties": {
+        "contract": { "const": 1 },
+        "type": { "type": "string", "pattern": "^/problems/[a-z-]+$" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+    "jobOutput": {
+      "description": "A run, probe or heal started over HTTP (POST /v1/runs|probes|heal): `log` grows while it runs; once done, `output` is the command's output document; failed: `problem` says why (not a failing step: that is the output's `error`).",
+      "type": "object",
+      "required": ["contract", "id", "kind", "status", "log", "output", "problem"],
+      "properties": {
+        "contract": { "const": 1 },
+        "id": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
+        "kind": { "enum": ["run", "probe", "heal"] },
+        "status": { "enum": ["running", "done", "failed"] },
+        "log": { "$ref": "#/$defs/log" },
+        "output": { "description": "runOutput, probeOutput or healOutput (by kind) once done, else null", "type": ["object", "null"] },
+        "problem": { "oneOf": [{ "$ref": "#/$defs/problem" }, { "type": "null" }] }
+      }
+    },
+    "filesOutput": {
+      "description": "A workspace's regular files (GET /v1/workspaces/{ws}/files), by path, and their total size.",
+      "type": "object",
+      "required": ["contract", "files", "bytes"],
+      "properties": {
+        "contract": { "const": 1 },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "size"],
+            "properties": { "path": { "type": "string" }, "size": { "type": "integer", "minimum": 0 } }
+          }
+        },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "moveInput": {
+      "type": "object",
+      "required": ["contract", "from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "contract": { "const": 1 },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 }
       }
     },
     "versionOutput": {

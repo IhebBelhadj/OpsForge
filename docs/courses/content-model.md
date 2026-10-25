@@ -223,7 +223,7 @@ operations   operations(id, user_id, kind, subject, status, result, error, creat
 - Badge rule types (registry `rewards.Rules`, each a small strategy type with its own tests): `labs_passed`,
   `lab_passed`, `curriculum_complete`, `xp` (Phase 10, M1). A course's `badge` is awarded when the course is completed,
   whatever the badge's rule. Later: `quiz_score` (quiz, min %), `quizzes_perfect` (min count), `challenges_accepted`
-  (min, difficulty), `streak_days` (min); each also needs its entry in `lab/labs.py` `RULES` (the compiler validates).
+  (min, difficulty), `streak_days` (min); each also needs its entry in `compiler.ruleTypes` (the compiler validates).
 - Every badge is evaluated against the whole history after each import and after each event that may earn one
   (retroactive awards, as in Phase 10). XP is not stored: best pass per lab + best attempt per quiz.
 

@@ -25,8 +25,7 @@ ROOT = Path(__file__).resolve().parent
 VERSION = "1.0.0-dev"
 sys.path.insert(0, str(ROOT / "lab"))
 import academy  # noqa: E402
-import labs  # noqa: E402
-import labsdb  # noqa: E402
+import apiserver  # noqa: E402
 import render  # noqa: E402
 import scenario  # noqa: E402
 
@@ -71,11 +70,6 @@ SKUPPER_NAMESPACE = "mesh"
 # `opsforge scenario`: definitions in the repo, results (JSON per run) in the controller state
 SCENARIOS = ROOT / "scenarios"
 RESULTS = STATE / "results"
-# Teaching labs (Phase 10): packs in the repo, learner progress in the controller state, the web interface's files
-LABS = ROOT / "labs"
-LABS_DB = STATE / "labs.db"
-WEB = ROOT / "lab" / "web"  # Phase 10 static UI, removed with lab/labserver.py in Phase 11 M2
-LABS_PORT = 8090
 # wan-core: live link state saved by `partition`, put back by `heal`
 PRE_FAULT = "/etc/opsforge/pre-fault.json"
 
@@ -1890,59 +1884,6 @@ def cmd_provision(args):
     return subprocess.run(["ansible-playbook", "site.yml", *args.ansible_args], cwd=ANSIBLE_DIR).returncode
 
 
-def load_packs(conn=None):
-    """[(path, pack document)] of every pack under labs/, raising LabError on the first invalid one."""
-    found = []
-    for path in labs.find_packs(LABS):
-        doc = labs.load_pack(path)
-        catalog = labsdb.catalog_ids(conn, doc["pack"].get("id")) if conn else None
-        if errs := labs.errors(doc, catalog):
-            raise LabError(f"{path.relative_to(ROOT)}: " + "; ".join(errs))
-        found.append((path, doc))
-    return found
-
-
-def import_packs(conn):
-    """Imports every pack and awards badges whose rules the history now meets; prints what changed."""
-    for path, doc in load_packs(conn):
-        try:
-            summary = labsdb.import_pack(conn, doc, path.relative_to(ROOT))
-        except ValueError as e:
-            raise LabError(f"{path.relative_to(ROOT)}: {e}") from None
-        changes = {k: v for k, v in summary["labs"].items() if v and k != "unchanged"}
-        detail = "; ".join(f"{k} {', '.join(v)}" for k, v in changes.items()) or "no change"
-        print(f"pack {doc['pack']['id']}: {len(doc['labs'])} labs, {len(doc['curricula'])} curricula ({detail})")
-    if awarded := labsdb.award_badges(conn, labsdb.local_user(conn)):
-        print(f"badges awarded from history: {', '.join(b['title'] for b in awarded)}")
-
-
-def cmd_labs(args):
-    """Teaching-lab packs: validate the files, import them into the database, or list the catalog."""
-    if args.action == "validate":
-        packs = load_packs()
-        print(f"{len(packs)} pack(s) valid: " + ", ".join(f"{d['pack']['id']} ({len(d['labs'])} labs)" for _, d in packs))
-        return 0
-    conn = labsdb.connect(LABS_DB)
-    if args.action == "import":
-        import_packs(conn)
-        return 0
-    user = labsdb.local_user(conn)
-    topo = load_valid_topology()
-    for cur in labsdb.catalog(conn, user):
-        print(f"{cur['title']}")
-        for i, level in enumerate(cur["levels"], 1):
-            print(f"  level {i}: {level['title']}" + ("" if level["unlocked"] else "  (locked)"))
-            for lab in level["labs"]:
-                status = {"passed": "passed", "running": "running", "new": "locked" if lab["locked"] else "open"}
-                needs = labs.unmet_needs(lab, topo)
-                print(f"    {lab['id']:<26} {status[lab['status']]:<8} {lab['xp']:>4} XP"
-                      + ("  (updated since you passed it)" if lab["stale"] else "")
-                      + (f"  [{'; '.join(needs)} on {TOPOLOGY.name}]" if needs else ""))
-    print(f"\n{labsdb.total_xp(conn, user)} XP, "
-          f"{sum(1 for b in labsdb.badges(conn, user) if b['awarded_at'])} badge(s) ({LABS_DB.relative_to(ROOT)})")
-    return 0
-
-
 def lab_state():
     """What the lab looks like now, for a mimic panel: instances, live links against topology.yml, faults.
     Never raises: problems go in `error` (and the lab counts as down when Incus cannot be asked)."""
@@ -2009,15 +1950,16 @@ def _message(e):
     return str(e).strip() or type(e).__name__
 
 
-def lab_run(steps, phase, stop=None, namespace=None):
+def lab_run(steps, phase, stop=None, namespace=None, lines=None):
     """Runs scenario steps on the lab: (metrics, log lines, error message or None). `stop(step, metrics)`, called
     after each step, ends the run early when it returns True. With a namespace, setup creates it first and teardown
-    deletes it last, even after a failing step (the next attempt starts clean)."""
+    deletes it last, even after a failing step (the next attempt starts clean). `lines`, when given, is the log
+    list to append to as the run goes (an HTTP job shows it while running)."""
+    lines = [] if lines is None else lines
     try:
         topo = load_valid_topology()
     except (LabError, OSError):
-        return {}, [], f"{TOPOLOGY.name} is invalid"
-    lines = []
+        return {}, lines, f"{TOPOLOGY.name} is invalid"
 
     class Run(ScenarioRun):
         def log(self, _phase, text):
@@ -2060,7 +2002,7 @@ def lab_namespace(run, phase, namespace, create):
             raise LabError(f"namespace {namespace} on {c['server']}: {(res.stderr or res.stdout).strip()}")
 
 
-def lab_probe(arg, namespace=None):
+def lab_probe(arg, namespace=None, lines=None):
     """Runs a probe check. It stops at the first named step whose expectations fail, so a check on an unchanged
     lab answers at once instead of sitting through every later wait_until."""
     expectations = scenario.expectations(arg)
@@ -2069,7 +2011,7 @@ def lab_probe(arg, namespace=None):
         mine = [(m, c) for m, c in expectations if m.split(".")[0] == step.get("name")]
         return any(not scenario.check(m, c, metrics)[0] for m, c in mine)
 
-    metrics, lines, error = lab_run(arg["steps"], "check", stop=failed, namespace=namespace)
+    metrics, lines, error = lab_run(arg["steps"], "check", stop=failed, namespace=namespace, lines=lines)
     results = []
     for metric, condition in expectations:
         ok, value, _ = scenario.check(metric, condition, metrics)
@@ -2079,12 +2021,13 @@ def lab_probe(arg, namespace=None):
             "error": error}
 
 
-def api_input(kind):
-    """The command's input document from stdin, checked against toolchain.schema.json."""
+def api_input(kind, text=None):
+    """The command's input document (`text`: an HTTP request body; default: stdin), checked against
+    toolchain.schema.json."""
     try:
-        doc = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        raise Problem("bad-input", "Bad input", f"stdin is not one JSON document: {e}") from None
+        doc = json.loads(sys.stdin.read() if text is None else text)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise Problem("bad-input", "Bad input", f"the input is not one JSON document: {e}") from None
     if isinstance(doc, dict) and doc.get("contract") != academy.CONTRACT:
         raise Problem("contract-mismatch", "Contract mismatch",
                       f"input is contract {doc.get('contract')}, this toolchain speaks {academy.CONTRACT}")
@@ -2093,15 +2036,15 @@ def api_input(kind):
     return doc
 
 
-def api_run(doc):
+def api_run(doc, lines=None):
     """`opsforge api run`: a lab's setup or teardown steps."""
-    metrics, lines, error = lab_run(doc["steps"], doc["phase"], namespace=doc.get("namespace"))
+    metrics, lines, error = lab_run(doc["steps"], doc["phase"], namespace=doc.get("namespace"), lines=lines)
     return {"contract": academy.CONTRACT, "metrics": metrics, "log": lines, "error": error}
 
 
-def api_probe(doc):
+def api_probe(doc, lines=None):
     """`opsforge api probe`: a probe check (passed, one result per expectation)."""
-    return {"contract": academy.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"))}
+    return {"contract": academy.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"), lines=lines)}
 
 
 def api_heal():
@@ -2114,9 +2057,26 @@ def api_validate_steps(doc):
     return {"contract": academy.CONTRACT, "errors": academy.step_errors(doc["sets"])}
 
 
+def cmd_api_serve(args):
+    """`opsforge api serve`: the HTTP API (lab/apiserver.py) until SIGINT/SIGTERM."""
+    if bool(args.tls_cert) != bool(args.tls_key):
+        raise LabError("--tls-cert and --tls-key go together")
+    try:
+        loopback = ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        loopback = args.host == "localhost"
+    if not loopback and not args.tls_cert:
+        raise LabError(f"{args.host} is not a loopback address: serve it with --tls-cert/--tls-key (the API opens "
+                       "shells on this host), or keep 127.0.0.1 and reach it through an SSH tunnel")
+    apiserver.serve(sys.modules[__name__], args.host, args.port, args.tls_cert, args.tls_key)
+    return 0
+
+
 def cmd_api(args):
     """OpsForge's machine interface (contract/README.md), which OpsForge Academy calls: one document on stdout, exit
-    0; a problem document on stderr and exit 1 otherwise."""
+    0; a problem document on stderr and exit 1 otherwise. `serve` serves the same documents over HTTP."""
+    if args.action == "serve":
+        return cmd_api_serve(args)
     try:
         if args.action == "state":
             doc = api_state()
@@ -2163,17 +2123,6 @@ def cmd_api(args):
               + (", fault active" if doc["fault"] else "") + (f" ({doc['error']})" if doc["error"] else ""))
         return 0
     print(f"opsforge {doc['opsforge']}, contract {doc['contract']}.{doc['minor']}")
-    return 0
-
-
-def cmd_serve(args):
-    """The teaching-lab web interface on 127.0.0.1 (lab/labserver.py); imports the packs first."""
-    import labserver
-
-    conn = labsdb.connect(LABS_DB)
-    import_packs(conn)
-    conn.close()
-    labserver.serve(sys.modules[__name__], args.port, LABS_DB, ROOT, WEB)
     return 0
 
 
@@ -2286,16 +2235,15 @@ def main():
     p.add_argument("name", nargs="?", help="scenario (omit, or --list, to list them)")
     p.add_argument("--list", action="store_true", help="list the scenarios")
     p.set_defaults(func=cmd_scenario)
-    p = sub.add_parser("labs", help="teaching-lab packs in labs/: validate, import into the database, list progress")
-    p.add_argument("action", nargs="?", default="list", choices=("list", "import", "validate"))
-    p.set_defaults(func=cmd_labs)
-    p = sub.add_parser("serve", help="the teaching-lab web interface on 127.0.0.1 (browser terminal included)")
-    p.add_argument("--port", type=int, default=LABS_PORT, help=f"port (default {LABS_PORT})")
-    p.set_defaults(func=cmd_serve)
     p = sub.add_parser("api", help="the machine interface (contract/README.md): lab state, run and probe steps, heal, "
-                       "validate steps, version")
-    p.add_argument("action", choices=("state", "run", "probe", "heal", "validate-steps", "version"),
+                       "validate steps, version; `serve` serves it over HTTP (contract/openapi.yaml)")
+    p.add_argument("action", choices=("state", "run", "probe", "heal", "validate-steps", "version", "serve"),
                    help="run, probe and validate-steps read their input document on stdin")
+    p.add_argument("--host", default="127.0.0.1", help="serve: address to bind (default 127.0.0.1; others need TLS)")
+    p.add_argument("--port", type=int, default=apiserver.DEFAULT_PORT,
+                   help=f"serve: port (default {apiserver.DEFAULT_PORT})")
+    p.add_argument("--tls-cert", type=Path, help="serve: TLS certificate (PEM), with --tls-key")
+    p.add_argument("--tls-key", type=Path, help="serve: TLS private key (PEM)")
     p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
     p.set_defaults(func=cmd_api)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take

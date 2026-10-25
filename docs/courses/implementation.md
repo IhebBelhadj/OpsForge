@@ -19,8 +19,8 @@ labs/                            content packs (courses, labs, quizzes, challeng
 docs/courses/                    this plan
 ```
 
-`lab/labserver.py`, `lab/labsdb.py` and the current `web/` (Phase 10 static UI) are deleted in M2 after parity;
-`lab/labs.py` stays (validation and compile).
+Phase 10's server, database code and static UI (`lab/labserver.py`, `lab/labsdb.py`, `lab/labs.py`, `lab/web/`)
+were deleted in the repository split (step 3, 2026-10-25), before parity: Academy compiles the packs itself.
 
 ## Spikes (before the milestone that needs them; each ends with a note in PLAN.md)
 
@@ -72,7 +72,6 @@ toolchain behind the contract.
   view (Killercoda layout, terminal tab, lab map with Animated Beam), badges, command palette, settings.
 - The two Phase 10 curricula converted into courses (*Cloud networking basics*, a first *Kubernetes Fundamentals*
   draft holding the three existing cluster labs), with their first lectures and quizzes.
-- Delete `lab/labserver.py`, `lab/labsdb.py`, the old `web/`; `opsforge serve` starts `academy`.
 - **Done when:** every Phase 10 lab is passed end to end in the new UI on the live lab; Playwright journeys green
   on the fake lab; Lighthouse ≥ 90/100 on catalogue and course page; nothing of the Phase 10 server remains.
 

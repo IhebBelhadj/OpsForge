@@ -8,13 +8,13 @@ network conditions, with a minimal RAM footprint.
 Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each behaves like its own machine
 (network stack, systemd, SSH) while sharing the host kernel, so a multi-site cluster idles at well under 2 GB.
 
-> **Status:** Phase 10 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
+> **Status:** Phase 11 of [the plan](docs/PLAN.md): sites, gateways, a shaped WAN core, Ansible provisioning over
 > SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, or one cluster per site linked by
 > Skupper (`topologies/multi-cluster.yml`), WAN-aware monitoring (VictoriaMetrics + Grafana, site-pair probes),
 > scripted fault-injection scenarios, optional CI/CD (Gitea Actions, a registry and Flux GitOps across the WAN),
-> geo-aware DNS (`www.global.lab` resolves to the nearest healthy site's ingress) and guided teaching labs for cloud
-> networking and Kubernetes: `./opsforge serve`, then http://127.0.0.1:8090/ (a live map of the lab, a browser
-> terminal, levels and badges).
+> geo-aware DNS (`www.global.lab` resolves to the nearest healthy site's ingress), and a machine interface
+> (`opsforge api`, [contract/](contract/README.md)) that OpsForge Academy's guided courses and labs (`academy/`, moving to
+> its own repository) drive the lab through.
 
 ## Requirements
 

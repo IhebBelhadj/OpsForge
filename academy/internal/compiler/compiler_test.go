@@ -265,7 +265,7 @@ func TestCompiledItemsCarryDefaultsAndDurations(t *testing.T) {
 	}
 }
 
-// Content hashes are Python's (lab/labs.py content_hash): Phase 10 and the Python compiler recorded them, and a
+// Content hashes are Python's (Phase 10's content_hash): Phase 10 and the Python compiler recorded them, and a
 // pass whose hash differs from the lab's is flagged as stale. These values were computed by Python.
 func TestContentHashesArePythons(t *testing.T) {
 	for _, c := range []struct {

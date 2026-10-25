@@ -56,7 +56,7 @@ an advanced level**, entirely on the OpsForge lab.
 | 9 | Courses replace Phase 10's curricula/levels; labs stay reusable units; Phase 10's progress is migrated | content-model.md |
 | 10 | Layouts from Udemy/LeetCode/Killercoda, identity from Phase 10 (tokens, type, mimic panel); no logos or brand colours copied | design.md |
 | 11 | **Tests first** for every service and endpoint; every lab verified live before it ships | testing.md |
-| 12 | The Phase 10 stdlib server (`lab/labserver.py`, `lab/labsdb.py`, `web/`) is removed once the platform reaches parity (M2), not kept as legacy | implementation.md |
+| 12 | The Phase 10 stdlib server (`lab/labserver.py`, `lab/labsdb.py`, `web/`) is removed, not kept as legacy: done in the repository split (2026-10-25), before M2's parity, at the user's choice | implementation.md |
 
 ## Size
 

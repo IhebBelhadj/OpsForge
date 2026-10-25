@@ -10,7 +10,7 @@ import (
 	"github.com/IhebBelhadj/opsforge/academy/internal/labsession"
 )
 
-// TestPassXPMatchesPhase10 holds labs.pass_xp's values (python3 lab/labs.py), half-to-even rounding included
+// TestPassXPMatchesPhase10 holds Phase 10 pass_xp's values (Python's round), half-to-even rounding included
 // (25 × 0.9 = 22.5 → 22).
 func TestPassXPMatchesPhase10(t *testing.T) {
 	for _, tc := range []struct {

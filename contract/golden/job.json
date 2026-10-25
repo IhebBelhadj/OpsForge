@@ -1,0 +1,26 @@
+{
+  "contract": 1,
+  "id": "0123456789abcdef",
+  "kind": "run",
+  "log": [
+    "  0.0s  run cmd=echo 42  -> x",
+    "  0.0s      exit=0, seconds=0, value=42",
+    "  0.0s  sleep 1s"
+  ],
+  "output": {
+    "contract": 1,
+    "error": null,
+    "log": [
+      "  0.0s  run cmd=echo 42  -> x",
+      "  0.0s      exit=0, seconds=0, value=42",
+      "  0.0s  sleep 1s"
+    ],
+    "metrics": {
+      "x.exit": 0,
+      "x.seconds": 0.0,
+      "x.value": 42.0
+    }
+  },
+  "problem": null,
+  "status": "done"
+}

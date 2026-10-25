@@ -69,8 +69,8 @@ type Rule interface {
 	Earned(h History) bool
 }
 
-// Rules are the rule types by name (lab/labs.py RULES, which validates them at compile): each decodes its own
-// parameters. A new type is a new entry here and in labs.RULES.
+// Rules are the rule types by name (internal/compiler ruleTypes validates them at compile): each decodes its own
+// parameters. A new type is a new entry here and in compiler.ruleTypes.
 var Rules = map[string]func(json.RawMessage) (Rule, error){
 	"labs_passed":         decode[labsPassed],
 	"lab_passed":          decode[labPassed],

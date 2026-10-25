@@ -71,7 +71,7 @@ func (p *problems) messages(stepErrs map[int][]string) []string {
 	return out
 }
 
-// Defaults of the pack formats (lab/labs.py, docs/courses/content-model.md).
+// Defaults of the pack formats (as Phase 10 had them; docs/courses/content-model.md).
 const (
 	defaultHintPenalty = 0.1
 	defaultXP          = 100
@@ -208,7 +208,7 @@ func known(rule map[string]any, key string, ids map[string]bool) []string {
 	return []string{fmt.Sprintf("unknown %s %s", key, pyRepr(v))}
 }
 
-// packErrors checks Phase 10's part of a pack (lab/labs.py errors): the schema, then cross-references within the
+// packErrors checks Phase 10's part of a pack (labs, curricula, badges): the schema, then cross-references within the
 // pack and to the labs and curricula of the other packs compiled with it.
 func packErrors(pk *loaded, otherLabs, otherCurricula map[string]bool, p *problems) {
 	if errs := schemaErrors(labpackSchema(), pk.doc); len(errs) > 0 {
