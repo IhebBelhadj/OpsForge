@@ -715,7 +715,7 @@ def render_ssh_config(topo, identity, known_hosts, control_dir):
         f"\tUserKnownHostsFile {known_hosts}",
         "\tStrictHostKeyChecking yes",
         "\tControlMaster auto",
-        f"\tControlPath {control_dir}/cm-%C",
+        f"\tControlPath {control_dir}/cm-%n",  # the alias: %C (a 40-char hash) overflows the 108-byte socket path
         "\tControlPersist 60s",
     ]
     return "\n".join(lines) + "\n"

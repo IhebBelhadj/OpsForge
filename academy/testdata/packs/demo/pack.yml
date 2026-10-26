@@ -1,6 +1,0 @@
-id: demo
-title: Demo pack
-version: 1
-author: OpsForge tests
-description: The golden fixture of the course compiler (one course with every item type).
-hint_penalty: 0.1

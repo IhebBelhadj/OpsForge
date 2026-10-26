@@ -16,7 +16,7 @@ import yaml
 
 import apiserver
 from conftest import ROOT, cli
-from test_academy import contract_doc, echo, golden, timeless
+from test_api import contract_doc, echo, golden, timeless
 
 OPENAPI = yaml.safe_load((ROOT / "contract" / "openapi.yaml").read_text())
 

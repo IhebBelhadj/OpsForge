@@ -358,7 +358,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @property
     def contract(self):
-        return self.server.cli.academy.CONTRACT
+        return self.server.cli.contract.CONTRACT
 
     def send_doc(self, status, doc, content_type="application/json"):
         data = doc if isinstance(doc, bytes) else json.dumps(doc).encode()
@@ -436,7 +436,7 @@ class Handler(BaseHTTPRequestHandler):
     # Routes
     def version(self, _query):
         cli = self.server.cli
-        self.send_doc(200, {"contract": cli.academy.CONTRACT, "minor": cli.academy.CONTRACT_MINOR,
+        self.send_doc(200, {"contract": cli.contract.CONTRACT, "minor": cli.contract.CONTRACT_MINOR,
                             "opsforge": cli.VERSION})
 
     def state(self, _query):

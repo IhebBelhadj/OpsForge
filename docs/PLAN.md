@@ -763,6 +763,21 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
   Decided 2026-10-25: the new repo is `opsforge-academy` (github.dev.com/IhebBelhadj/opsforge-academy, Go module
   `github.com/IhebBelhadj/opsforge-academy`); the course compiler is **ported to Go** (Academy is one language, the
   bundle becomes in-process data); the toolchain commands become `opsforge api <cmd>`.
+  **Boundary (decided 2026-10-26).** Two standalone projects with nothing shared but the contract:
+  - **OpsForge** owns everything that touches the lab: the CLI, `lab/`, `topology.yml` + `topologies/`, `ansible/`,
+    `scenarios/`, the scenario step language and its execution, `.opsforge/` (keys, state, workspaces), the host
+    scripts, and `contract/`. It **opens an API** (REST + WebSocket, `opsforge api serve`) and knows nothing about
+    courses, learners, XP or Academy's database.
+  - **OpsForge Academy** is a learning platform that stands on its own (users, courses, lectures, quizzes, progress,
+    rewards, its web app, its database, its content). From OpsForge it needs one thing: **somewhere to run what the
+    learner does**. For each lab or challenge it asks OpsForge for a **sandbox** sized by the course's requirements
+    (step 7), works only inside it (files, terminal, checks) and deletes it at the end. It never reads OpsForge's
+    files, never runs its CLI, never shares a disk with it: a URL and a token.
+  - Course content (lab and challenge packs, with their setup/teardown/probe steps) is Academy's: the steps are data
+    in OpsForge's step language, sent in sandbox requests and checked by `validate-steps`, like SQL sent to a
+    database. OpsForge's own `scenarios/` stay OpsForge's.
+  - Files used by both today are split, never shared: each repo gets its own Makefile, CI workflow, README,
+    CLAUDE.md, `.gitignore`, `.yamllint` and CHANGELOG (step 6's table).
   Steps, in this repo first (each leaves `make check` green):
   1. **Contract v1 for two repos** (done 2026-10-25, see "Versioning" below): `opsforge academy …` → `opsforge api
      …` (`--json` kept: without it the commands print for humans); OpsForge owns `contract/` (`toolchain.schema.json`
@@ -835,11 +850,65 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      failure rerouted in ~11 s; Losing a site NotReady after 50 s, pods moved after 61 s more, Ready 58 s after
      `heal`), 790 XP and 6/6 badges, import twice = no change, an edit flags exactly its pass, a late badge awarded
      from history. `verify` green afterwards. Academy 51 MiB RSS, `opsforge api serve` 40 MiB.
-  6. **Move** `academy/`, `web/`, `labs/` (content), `docs/courses/` with `git filter-repo` (history kept) into the new
-     repo; split CI, Makefile, README, CLAUDE.md; CHANGELOG.md in both; tag OpsForge `v1.0.0` (contract 1.0 frozen),
-     Academy `v0.1.0`. From here the two evolve separately: OpsForge changes the contract by minors (or a major),
-     Academy updates its pinned copy (`make contract-update V=x.y.z`) when it wants an addition.
-  7. **PostgreSQL** (decided 2026-10-25; the first change in the Academy repo, before M2 adds tables): Academy is
+  6. **Move** (done 2026-10-26): `/home/iheb/projects/OpsForge/` is now a plain folder holding two checkouts:
+     `opsforge/` (this repository, history kept, `.opsforge/` and the live lab moved with it) and `opsforge-academy/`
+     (a new repository, `git init` with one initial commit, as asked: the history of `academy/`, `web/`,
+     `labs/` and `docs/courses/` up to the move stays here). Academy's Go module is
+     `github.com/IhebBelhadj/opsforge-academy/academy` (`go.mod` stays in `academy/`); its docs are `docs/` (this
+     plan's `docs/courses/`); its Makefile finds OpsForge through `OPSFORGE_DIR` (default `../opsforge`) only for
+     the real-API tests, the pack compile and `contract-update`; its CI checks OpsForge out next to it. OpsForge's
+     `lab/academy.py` became `lab/contract.py` and `tests/test_academy.py` `tests/test_api.py`. Found on the way: the
+     deeper checkout pushed the SSH ControlMaster socket (`cm-%C`, a 40-character hash) past the 108-byte Unix socket
+     limit; `render` now uses `cm-%n` (the host alias). **Tags wait for step 7**: OpsForge `v1.0.0` (contract 1.0
+     frozen) and Academy `v0.1.0` once sandboxes are in. From then on the two evolve separately: OpsForge changes the
+     contract by minors (or a major), Academy updates its pinned copy (`make contract-update`, from a checkout of the
+     release) when it wants an addition. Measured: `make check` green in both (OpsForge: 150 pytest; Academy: Go
+     tests incl. the real-API ones, web 38, gen-check), Academy `make e2e` 16/16.
+     What goes where (nothing stays shared):
+
+     | OpsForge | OpsForge Academy |
+     |---|---|
+     | `opsforge`, `lab/` (`academy.py` renamed `contract.py`), `ansible/`, `topology.yml`, `topologies/`, `scenarios/` | `academy/` (Go platform, its pinned `contract/` copy), `web/`, `labs/` (content packs) |
+     | `contract/` (owner: schema, `openapi.yaml`, golden documents) | `docs/courses/` → `docs/` (its plan; Phase 11's milestones continue there) |
+     | `tests/` (`test_academy.py` renamed `test_api.py`), `scripts/host-setup.sh`, `k3s-spike.sh`, `lab/host/` | `scripts/with-opsforge-api.sh` (real-API tests against an OpsForge checkout or release named by `OPSFORGE_DIR`; skipped without one) |
+     | Makefile: shellcheck, yamllint, py_compile, ansible-lint, topology validation, pytest, contract golden check | Makefile: `academy`, `academy-test`/`-lint`/`-validate`, `web-check`, `gen`/`gen-check`, `e2e`, `contract-update`/`-check`, `academy compile` of the packs, yamllint of `labs/` |
+     | CI: the `python` job | CI: `go`, `web`, `generated`, `e2e`, and a nightly contract job against OpsForge `master` |
+     | `docs/PLAN.md` (Phase 11 keeps the API side and points to Academy for the rest), README, CLAUDE.md | its own README (the OpsForge range it supports), CLAUDE.md, `.gitignore` |
+     | `.opsforge/` (incl. Phase 10's `labs.db`, read once by `academy migrate-legacy --legacy-db`) | Academy's data folder (`$XDG_DATA_HOME/opsforge-academy`) |
+  7. **Sandboxes** (decided 2026-10-26, before the tags so contract 1.0 is frozen with them; still minor 0: nothing is
+     released, so replacing routes is free). OpsForge's side first (contract, API, tests), then Academy's in its repo. Today Academy assembles an attempt from loose parts (a namespace name it
+     picks, a workspace, setup/probe/teardown jobs, a terminal on a workspace) and must remember to clean each up.
+     They become one OpsForge resource, the **sandbox**: an isolated place on the lab, made for one lab or challenge
+     attempt, that OpsForge creates, holds and always cleans up.
+     - `POST /v1/sandboxes` (`sandboxInput`: `{contract, kind: lab|challenge, label, requires, files, setup, teardown,
+       expires_after?}`) → 202 + job; its output is the sandbox. `requires` comes from the course: `layout`
+       (stretched / multi-cluster), `needs` (roles, sites, a `ci` node…), `faults: true` when setup may break links,
+       `cluster_changes` (outside the namespace, undone by teardown). OpsForge checks them against the running
+       topology and refuses with 409 `/problems/unmet-requirements` naming what is missing (`unmet_needs` moves
+       here from Academy). Setup creates the namespace on every cluster (`sb-<id>`, labelled
+       `app.kubernetes.io/managed-by=opsforge`), the workspace with `files`, then runs `setup`.
+     - The sandbox document: `{contract, id, kind, label, status: creating|ready|failed|deleting, namespace,
+       workspace, layout, placeholders (the topology's + `${ns}`), setup: runOutput, created_at, expires_at}`.
+     - Everything else hangs under it: `GET /v1/sandboxes[/{id}]`; `/v1/sandboxes/{id}/files/...` (replaces
+       `/v1/workspaces`); `GET /v1/sandboxes/{id}/terminal` (replaces `/v1/terminal`: bash in the workspace,
+       `kubectl`'s default namespace the sandbox's); `POST /v1/sandboxes/{id}/probes` and `/actions` (jobs; a
+       challenge's actions; faults refused); `POST /v1/sandboxes/{id}/reset` (teardown + setup); `DELETE
+       /v1/sandboxes/{id}` (job: `teardown`, the namespace, `heal` when it had faults, the workspace). The loose
+       `/v1/runs`, `/v1/probes`, `/v1/workspaces`, `/v1/terminal` and the `namespace` inputs go; `heal`,
+       `state`, `version`, `validate-steps` stay.
+     - OpsForge keeps sandboxes in `.opsforge/sandboxes/<id>.json` with their teardown, so cleanup never depends on
+       Academy remembering it: they survive an API restart, `expires_after` (default 24 h without a call) deletes an
+       abandoned one, and `opsforge api sandbox list|delete` lets the lab's owner clean up by hand. One sandbox
+       with `faults` at a time (409 `/problems/lab-busy`, the lab is one cluster); others may coexist later
+       (challenges only observe).
+     - Academy: `labsession`/`challenge` take one `Sandboxes` port (create, reset, probe, actions, delete) instead
+       of `LabController.Run/Probe` + `workspace.FileStore` + `terminal.Spawner` on names it chose; an attempt stores
+       the sandbox id (`attempts.namespace`/`workspace` → `sandbox`, in step 8's baseline). Content keeps
+       `namespace: auto` (= the sandbox's namespace, `${ns}`).
+     - Tests first on both sides: `tests/test_apiserver.py` (create/refuse on requirements, cleanup after a failed
+       setup, restart, expiry, files and terminal confined to the sandbox), golden `sandbox.json`; `opsforgefake`
+       gains sandboxes; the six-lab run passes again through sandboxes.
+  8. **PostgreSQL** (decided 2026-10-25; in the Academy repo after step 7, before M2 adds tables): Academy is
      becoming a service of its own (the lab may move to another machine), so its database becomes PostgreSQL in a
      dedicated Docker container `academy-pg` (Docker: already on the host, no pacman while the host is mid-upgrade,
      and outside Incus so `opsforge down` never touches it; 127.0.0.1 only, named volume, small `shared_buffers`,
@@ -857,7 +926,8 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      **Done when:** `make check`/CI green on Postgres only (no SQLite left), the six-lab run passes again, import
      twice = no write, `migrate-legacy` gives the same XP and badges as on SQLite (800 XP, 6/6 on the live data).
   - **Done when:** each repo's `make check` and CI are green on its own; Academy against tagged OpsForge `v1.0.0`
-    (over its API) passes the six-lab run on the live lab; OpsForge clones and runs with no Go/Node toolchain.
+    (over its API, one sandbox per attempt, none left afterwards) passes the six-lab run on the live lab; OpsForge
+    clones and runs with no Go/Node toolchain; Academy clones and runs (against the fake API) with no Python/Incus.
 
   **Versioning after the split.**
   - *Toolchain contract* (the one boundary between the repos): `contract: <major>` in every document, `minor` and the

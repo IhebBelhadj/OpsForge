@@ -28,8 +28,20 @@ lab through it; any other tool may.
 | | `GET /v1/terminal` | WebSocket: `{"t":"i","d"}`, `{"t":"r","cols","rows"}` | the shell's output (binary frames) |
 
 The documents are `$defs` of [`toolchain.schema.json`](toolchain.schema.json) (`problem` included); [`golden/`](golden/)
-holds what this release returns for fixed inputs (written by `tests/test_academy.py` and `tests/test_apiserver.py`,
+holds what this release returns for fixed inputs (written by `tests/test_api.py` and `tests/test_apiserver.py`,
 `OPSFORGE_UPDATE_GOLDEN=1` to rewrite them).
+
+## Planned before 1.0.0: sandboxes
+
+Decided 2026-10-26 (`docs/PLAN.md` Phase 11, split step 7), still minor 0 because nothing is released. A **sandbox**
+is the one place a client's lab work happens: `POST /v1/sandboxes` with `{kind: lab|challenge, label, requires:
+{layout?, needs?, faults?, cluster_changes?}, files, setup, teardown, expires_after?}` creates (as a job) a namespace
+`sb-<id>` on every cluster, a workspace with `files`, and runs `setup`; 409 `/problems/unmet-requirements` when the
+running lab cannot host it. Its files, terminal, probes, actions and reset live under `/v1/sandboxes/{id}/`;
+`DELETE` runs the stored `teardown`, removes the namespace, heals if it had faults and deletes the workspace.
+OpsForge keeps sandboxes in `.opsforge/sandboxes/` so they survive a restart; an idle one expires. They replace
+`/v1/runs`, `/v1/probes`, `/v1/workspaces`, `/v1/terminal` and the `namespace` inputs; `version`, `state`, `heal`,
+`validate-steps` and jobs stay.
 
 ## Versions
 

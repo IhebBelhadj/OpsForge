@@ -12,9 +12,11 @@ Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each be
 > SSH, a WireGuard + OSPF mesh between sites, a K3s cluster stretched across them, or one cluster per site linked by
 > Skupper (`topologies/multi-cluster.yml`), WAN-aware monitoring (VictoriaMetrics + Grafana, site-pair probes),
 > scripted fault-injection scenarios, optional CI/CD (Gitea Actions, a registry and Flux GitOps across the WAN),
-> geo-aware DNS (`www.global.lab` resolves to the nearest healthy site's ingress), and a machine interface
-> (`opsforge api`, [contract/](contract/README.md)) that OpsForge Academy's guided courses and labs (`academy/`, moving to
-> its own repository) drive the lab through.
+> geo-aware DNS (`www.global.lab` resolves to the nearest healthy site's ingress), and an HTTP + WebSocket API
+> (`opsforge api serve`, [contract/](contract/README.md)) for tools built on top of the lab.
+
+**OpsForge Academy**, the learning platform built on this lab (courses, quizzes, guided labs, challenges), is its own
+repository (`opsforge-academy`): it needs only this API's URL and token, never this checkout.
 
 ## Requirements
 
@@ -145,7 +147,7 @@ sudo pacman -Syu && sudo reboot
 ## Development
 
 ```bash
-make check   # shellcheck, yamllint, Python syntax, ansible-lint, topology validation
+make check   # shellcheck, yamllint, Python syntax, ansible-lint, topology validation, pytest (no Go or Node needed)
 ```
 
 See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap.

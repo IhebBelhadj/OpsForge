@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent
 # The OpsForge release (semver), reported by `opsforge api version`
 VERSION = "1.0.0-dev"
 sys.path.insert(0, str(ROOT / "lab"))
-import academy  # noqa: E402
+import contract  # noqa: E402
 import apiserver  # noqa: E402
 import render  # noqa: E402
 import scenario  # noqa: E402
@@ -1933,12 +1933,12 @@ class Problem(Exception):
 
     def __init__(self, slug, title, detail):
         super().__init__(detail)
-        self.doc = {"contract": academy.CONTRACT, "type": f"/problems/{slug}", "title": title, "detail": detail}
+        self.doc = {"contract": contract.CONTRACT, "type": f"/problems/{slug}", "title": title, "detail": detail}
 
 
 def api_state():
     """`opsforge api state`: lab_state() as a contract document."""
-    return {"contract": academy.CONTRACT, **lab_state()}
+    return {"contract": contract.CONTRACT, **lab_state()}
 
 
 # A step that cannot run ends the run with its message; anything else is a bug and raises
@@ -1969,7 +1969,7 @@ def lab_run(steps, phase, stop=None, namespace=None, lines=None):
     try:
         if namespace and phase == "setup":
             lab_namespace(run, phase, namespace, create=True)
-        for step in academy.with_namespace(steps or [], namespace):
+        for step in contract.with_namespace(steps or [], namespace):
             run.step(phase, step)
             if stop and stop(step, run.metrics):
                 break
@@ -2028,10 +2028,10 @@ def api_input(kind, text=None):
         doc = json.loads(sys.stdin.read() if text is None else text)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         raise Problem("bad-input", "Bad input", f"the input is not one JSON document: {e}") from None
-    if isinstance(doc, dict) and doc.get("contract") != academy.CONTRACT:
+    if isinstance(doc, dict) and doc.get("contract") != contract.CONTRACT:
         raise Problem("contract-mismatch", "Contract mismatch",
-                      f"input is contract {doc.get('contract')}, this toolchain speaks {academy.CONTRACT}")
-    if errs := academy.input_errors(kind, doc):
+                      f"input is contract {doc.get('contract')}, this toolchain speaks {contract.CONTRACT}")
+    if errs := contract.input_errors(kind, doc):
         raise Problem("bad-input", "Bad input", "; ".join(errs))
     return doc
 
@@ -2039,22 +2039,22 @@ def api_input(kind, text=None):
 def api_run(doc, lines=None):
     """`opsforge api run`: a lab's setup or teardown steps."""
     metrics, lines, error = lab_run(doc["steps"], doc["phase"], namespace=doc.get("namespace"), lines=lines)
-    return {"contract": academy.CONTRACT, "metrics": metrics, "log": lines, "error": error}
+    return {"contract": contract.CONTRACT, "metrics": metrics, "log": lines, "error": error}
 
 
 def api_probe(doc, lines=None):
     """`opsforge api probe`: a probe check (passed, one result per expectation)."""
-    return {"contract": academy.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"), lines=lines)}
+    return {"contract": contract.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"), lines=lines)}
 
 
 def api_heal():
     """`opsforge api heal`: every link back to its state from before the first fault."""
-    return {"contract": academy.CONTRACT, "healed": heal_links()}
+    return {"contract": contract.CONTRACT, "healed": heal_links()}
 
 
 def api_validate_steps(doc):
     """`opsforge api validate-steps`: why sets of scenario steps (a lab's setup, a check's probe) would not run."""
-    return {"contract": academy.CONTRACT, "errors": academy.step_errors(doc["sets"])}
+    return {"contract": contract.CONTRACT, "errors": contract.step_errors(doc["sets"])}
 
 
 def cmd_api_serve(args):
@@ -2089,7 +2089,7 @@ def cmd_api(args):
         elif args.action == "validate-steps":
             doc = api_validate_steps(api_input("stepsInput"))
         else:
-            doc = {"contract": academy.CONTRACT, "minor": academy.CONTRACT_MINOR, "opsforge": VERSION}
+            doc = {"contract": contract.CONTRACT, "minor": contract.CONTRACT_MINOR, "opsforge": VERSION}
     except Problem as e:
         problem = e.doc
     except LabError as e:
@@ -2245,7 +2245,7 @@ def main():
     p.add_argument("--tls-cert", type=Path, help="serve: TLS certificate (PEM), with --tls-key")
     p.add_argument("--tls-key", type=Path, help="serve: TLS private key (PEM)")
     p.add_argument("--data", type=Path, help="serve: token, workspaces and shell history here (default .opsforge/)")
-    p.add_argument("--json", action="store_true", help="print the contract document (what academy reads)")
+    p.add_argument("--json", action="store_true", help="print the contract document (what OpsForge Academy reads)")
     p.set_defaults(func=cmd_api)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take
     # the unknown ones
