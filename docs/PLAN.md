@@ -929,7 +929,17 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
        is finished by deleting that sandbox when it comes back (the client sees 404 and fails the attempt); steps
        run in the workspace with `opsforge` on the PATH (`lab/bin`), so packs write `opsforge ...`, not
        `./opsforge` (Academy's packs move with its adapter); namespace label `opsforge.lab/sandbox=<id>` besides
-       `managed-by=opsforge-api`. Next: Academy's side (its repo), then the six labs live through sandboxes.
+       `managed-by=opsforge-api`.
+     - **Academy's side done (2026-10-26, its repo):** `labsession` on one `Sandboxes` port (`opsforgeapi.Sandboxes`:
+       `Create` → refusals at once, `Await`, `Probe`, `Reset`, `Delete`); the attempt's workspace is its sandbox (files
+       and terminal under `/v1/sandboxes/{id}/`); its fake OpsForge serves sandboxes; packs write `opsforge ...`. Every
+       lab's sandbox requires `faults`: several labs have the learner break links in the terminal (`opsforge
+       partition`, `degrade`), which no setup step shows, and Phase 10 healed after every lab. Academy does not sweep
+       orphan sandboxes (OpsForge may serve other clients): they expire.
+     - **Acceptance met 2026-10-26 (stretched, live):** the six core labs played through Academy's API, every command
+       typed into the attempt's terminal, Academy talking only HTTP to `opsforge api serve`: all passed (16, 8, 24, 5,
+       20, 127 s), one sandbox per attempt, none and no namespace left after any, `verify` green; Academy 26 MiB RSS,
+       the API 43 MiB. Next: tag OpsForge `v1.0.0` (contract 1.0 frozen), then Academy `v0.1.0`.
   8. **PostgreSQL** (decided 2026-10-25; in the Academy repo after step 7, before M2 adds tables): Academy is
      becoming a service of its own (the lab may move to another machine), so its database becomes PostgreSQL in a
      dedicated Docker container `academy-pg` (Docker: already on the host, no pacman while the host is mid-upgrade,

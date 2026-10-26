@@ -8,9 +8,9 @@ structural changes; it has the phases, acceptance criteria and design decisions.
 OpsForge Academy moved to its own repository, `opsforge-academy`). OpsForge owns everything lab-side (topology,
 scenarios, the step language, `.opsforge/`) and serves the API; Academy is a standalone learning platform that reaches
 OpsForge only through it (a URL and a token), possibly from another machine; nothing here may read or assume an
-Academy checkout. **Step 7, sandboxes: OpsForge's side done** (2026-10-26: an API resource per lab/challenge
-attempt, sized by the course's requirements, always cleaned up by OpsForge; `lab/sandboxes.py`); next Academy moves
-onto them (its repo), the six-lab run through sandboxes, then tag `v1.0.0` (contract 1.0 frozen).
+Academy checkout. **Step 7, sandboxes: done** (2026-10-26: an API resource per lab/challenge attempt, sized by the
+course's requirements, always cleaned up by OpsForge; `lab/sandboxes.py`; Academy runs every attempt in one and the
+six core labs passed live through them). **Next:** tag `v1.0.0` (contract 1.0 frozen).
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML (now Academy's `labs/`: curricula → levels →
 labs with probe/quiz/confirm checks, badges); all 6 core labs pass on the live stretched lab and leave `verify` green.
 Its Python server and UI were removed in Phase 11's split step 3 (2026-10-25) and the packs moved to Academy; the
