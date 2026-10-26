@@ -10,7 +10,8 @@ scenarios, the step language, `.opsforge/`) and serves the API; Academy is a sta
 OpsForge only through it (a URL and a token), possibly from another machine; nothing here may read or assume an
 Academy checkout. **Step 7, sandboxes: done** (2026-10-26: an API resource per lab/challenge attempt, sized by the
 course's requirements, always cleaned up by OpsForge; `lab/sandboxes.py`; Academy runs every attempt in one and the
-six core labs passed live through them). **Next:** tag `v1.0.0` (contract 1.0 frozen).
+six core labs passed live through them). **Released `v1.0.0`** (2026-10-26, `VERSION`): contract 1.0 is frozen;
+changes to it are minors (additions: `CONTRACT_MINOR` + a row in contract/README.md) or a major.
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML (now Academy's `labs/`: curricula → levels →
 labs with probe/quiz/confirm checks, badges); all 6 core labs pass on the live stretched lab and leave `verify` green.
 Its Python server and UI were removed in Phase 11's split step 3 (2026-10-25) and the packs moved to Academy; the
@@ -160,7 +161,7 @@ reboot-survival check).
   golden: `OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/`).
   Its client is OpsForge Academy (repo `opsforge-academy`, possibly on another machine), which
   pins a copy fetched from this repository's git and must never need this checkout: anything it needs is a contract change. Additive = bump
-  `CONTRACT_MINOR` + a row in contract/README.md's table; breaking = major (free until `v1.0.0`). Inputs strict,
+  `CONTRACT_MINOR` + a row in contract/README.md's table; breaking = major (`v1.0.0` is released: a new major). Inputs strict,
   outputs open; `api version` = `{contract, minor, opsforge}` (`VERSION` in `opsforge`). `validate-steps` is how
   Academy's compiler checks pack steps. Lab steps arrive as data (Academy's packs): checks only observe
   (`scenario.FAULT_STEPS` refused in probes and actions, and in a sandbox's setup unless it declares

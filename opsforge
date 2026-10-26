@@ -23,7 +23,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 # The OpsForge release (semver), reported by `opsforge api version`
-VERSION = "1.0.0-dev"
+VERSION = "1.0.0"
 sys.path.insert(0, str(ROOT / "lab"))
 import contract  # noqa: E402
 import apiserver  # noqa: E402

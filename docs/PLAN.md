@@ -939,7 +939,8 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      - **Acceptance met 2026-10-26 (stretched, live):** the six core labs played through Academy's API, every command
        typed into the attempt's terminal, Academy talking only HTTP to `opsforge api serve`: all passed (16, 8, 24, 5,
        20, 127 s), one sandbox per attempt, none and no namespace left after any, `verify` green; Academy 26 MiB RSS,
-       the API 43 MiB. Next: tag OpsForge `v1.0.0` (contract 1.0 frozen), then Academy `v0.1.0`.
+       the API 43 MiB. **Released:** OpsForge `v1.0.0` (2026-10-26, contract 1.0 frozen), then Academy `v0.1.0` pinned
+       to it. Next: step 8 (PostgreSQL, in the Academy repo).
   8. **PostgreSQL** (decided 2026-10-25; in the Academy repo after step 7, before M2 adds tables): Academy is
      becoming a service of its own (the lab may move to another machine), so its database becomes PostgreSQL in a
      dedicated Docker container `academy-pg` (Docker: already on the host, no pacman while the host is mid-upgrade,

@@ -5,6 +5,11 @@ OpsForge follows semantic versioning from `v1.0.0`; the API contract's versions 
 
 ## Unreleased
 
+## 1.0.0 (2026-10-26)
+
+The first release: the lab (Phases 0-10, docs/PLAN.md) and its API, contract 1.0 (`contract/README.md`), whose
+client OpsForge Academy pins this tag. From here the contract changes by minors (additions) or a major.
+
 - **Sandboxes (2026-10-26, split step 7, OpsForge's side):** a client's lab work happens in a sandbox, one per
   lab or challenge attempt: `POST /v1/sandboxes` (requirements checked against the running lab: 409
   `lab-down`/`unmet-requirements`), its files, terminal, probes, actions and reset under `/v1/sandboxes/{id}/`,
