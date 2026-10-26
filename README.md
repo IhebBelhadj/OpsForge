@@ -16,7 +16,10 @@ Nodes are [Incus](https://linuxcontainers.org/incus/) system containers: each be
 > (`opsforge api serve`, [contract/](contract/README.md)) for tools built on top of the lab.
 
 **OpsForge Academy**, the learning platform built on this lab (courses, quizzes, guided labs, challenges), is its own
-repository (`opsforge-academy`): it needs only this API's URL and token, never this checkout.
+repository (`opsforge-academy`): it needs only this API's URL and token, never this checkout, and may run on
+another machine (`opsforge api serve --host <addr> --tls-cert ... --tls-key ...`: off loopback the API requires TLS;
+or keep it on loopback behind an SSH tunnel). The token opens shells on this host as the user running the API:
+treat it like that user's password.
 
 ## Requirements
 

@@ -861,8 +861,8 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      deeper checkout pushed the SSH ControlMaster socket (`cm-%C`, a 40-character hash) past the 108-byte Unix socket
      limit; `render` now uses `cm-%n` (the host alias). **Tags wait for step 7**: OpsForge `v1.0.0` (contract 1.0
      frozen) and Academy `v0.1.0` once sandboxes are in. From then on the two evolve separately: OpsForge changes the
-     contract by minors (or a major), Academy updates its pinned copy (`make contract-update`, from a checkout of the
-     release) when it wants an addition. Measured: `make check` green in both (OpsForge: 150 pytest; Academy: Go
+     contract by minors (or a major), Academy updates its pinned copy (`make contract-update OPSFORGE_REF=<tag>`,
+     fetched from this repository's git) when it wants an addition. Measured: `make check` green in both (OpsForge: 150 pytest; Academy: Go
      tests incl. the real-API ones, web 38, gen-check), Academy `make e2e` 16/16.
      What goes where (nothing stays shared):
 
@@ -870,11 +870,21 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      |---|---|
      | `opsforge`, `lab/` (`academy.py` renamed `contract.py`), `ansible/`, `topology.yml`, `topologies/`, `scenarios/` | `academy/` (Go platform, its pinned `contract/` copy), `web/`, `labs/` (content packs) |
      | `contract/` (owner: schema, `openapi.yaml`, golden documents) | `docs/courses/` → `docs/` (its plan; Phase 11's milestones continue there) |
-     | `tests/` (`test_academy.py` renamed `test_api.py`), `scripts/host-setup.sh`, `k3s-spike.sh`, `lab/host/` | `scripts/with-opsforge-api.sh` (real-API tests against an OpsForge checkout or release named by `OPSFORGE_DIR`; skipped without one) |
+     | `tests/` (`test_academy.py` renamed `test_api.py`), `scripts/host-setup.sh`, `k3s-spike.sh`, `lab/host/` | `scripts/with-opsforge.sh`, `scripts/contract.sh` (see "Disconnected" below) |
      | Makefile: shellcheck, yamllint, py_compile, ansible-lint, topology validation, pytest, contract golden check | Makefile: `academy`, `academy-test`/`-lint`/`-validate`, `web-check`, `gen`/`gen-check`, `e2e`, `contract-update`/`-check`, `academy compile` of the packs, yamllint of `labs/` |
      | CI: the `python` job | CI: `go`, `web`, `generated`, `e2e`, and a nightly contract job against OpsForge `master` |
      | `docs/PLAN.md` (Phase 11 keeps the API side and points to Academy for the rest), README, CLAUDE.md | its own README (the OpsForge range it supports), CLAUDE.md, `.gitignore` |
-     | `.opsforge/` (incl. Phase 10's `labs.db`, read once by `academy migrate-legacy --legacy-db`) | Academy's data folder (`$XDG_DATA_HOME/opsforge-academy`) |
+     | `.opsforge/` (incl. Phase 10's `labs.db`, read once by `academy migrate-legacy --legacy-db` from a copy) | Academy's data folder (`$XDG_DATA_HOME/opsforge-academy`) |
+
+     **Disconnected** (2026-10-26, at the user's request: "they only communicate through APIs and they can live in
+     separate machines"): Academy's build no longer reads `../opsforge` either. `OPSFORGE_DIR` and
+     `with-opsforge-api.sh` are gone; the real-API tests and the pack compile use the API named by
+     `ACADEMY_OPSFORGE_URL`/`_TOKEN_FILE`/`_CA_FILE`, on any machine (without: the tests skip and the compile runs
+     against Academy's fake, warning that steps are unchecked); `contract-update` fetches `contract/` from this
+     repository's git (`OPSFORGE_REPO`, `OPSFORGE_REF`) and `PINNED` records commit and checksum (`contract-check`
+     offline); Academy's CI starts this API as a service outside its checkout. New Academy flag `--opsforge-ca-file`
+     (trust a self-signed `--tls-cert`, for calls and terminal WebSockets). Here: the namespaces lab work creates are
+     labelled `app.kubernetes.io/managed-by=opsforge-api` (was `opsforge-academy`: OpsForge names no client).
   7. **Sandboxes** (decided 2026-10-26, before the tags so contract 1.0 is frozen with them; still minor 0: nothing is
      released, so replacing routes is free). OpsForge's side first (contract, API, tests), then Academy's in its repo. Today Academy assembles an attempt from loose parts (a namespace name it
      picks, a workspace, setup/probe/teardown jobs, a terminal on a workspace) and must remember to clean each up.

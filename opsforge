@@ -1943,7 +1943,7 @@ def api_state():
 
 # A step that cannot run ends the run with its message; anything else is a bug and raises
 RUN_ERRORS = (LabError, subprocess.CalledProcessError, ValueError)
-ACADEMY_LABEL = "app.kubernetes.io/managed-by=opsforge-academy"
+API_LABEL = "app.kubernetes.io/managed-by=opsforge-api"
 
 
 def _message(e):
@@ -1986,7 +1986,7 @@ def lab_run(steps, phase, stop=None, namespace=None, lines=None):
 
 
 def lab_namespace(run, phase, namespace, create):
-    """Creates (labelled as the Academy's) or deletes `namespace` on every K3s cluster."""
+    """Creates (labelled as made through the API) or deletes `namespace` on every K3s cluster."""
     clusters = render.k3s_clusters(run.topo)
     if not clusters:
         raise LabError(f"namespace {namespace} needs a K3s cluster")
@@ -1994,7 +1994,7 @@ def lab_namespace(run, phase, namespace, create):
         run.log(phase, f"{'create' if create else 'delete'} namespace {namespace} on {c['server']}")
         if create:
             cmd = (f"k3s kubectl get namespace {namespace} >/dev/null 2>&1 || k3s kubectl create namespace {namespace}"
-                   f" && k3s kubectl label --overwrite namespace {namespace} {ACADEMY_LABEL}")
+                   f" && k3s kubectl label --overwrite namespace {namespace} {API_LABEL}")
         else:
             cmd = f"k3s kubectl delete namespace {namespace} --ignore-not-found --timeout=120s"
         res = run_in(c["server"], "sh", "-c", cmd)

@@ -5,9 +5,10 @@ multi-region) on one Linux host, with realistic WAN conditions and minimal RAM. 
 structural changes; it has the phases, acceptance criteria and design decisions.
 
 **Now: Phase 11's split** (docs/PLAN.md Phase 11, "Split into two repositories"): steps 1-6 done (2026-10-26:
-OpsForge Academy moved to its own repository, `../opsforge-academy`). OpsForge owns everything lab-side (topology,
+OpsForge Academy moved to its own repository, `opsforge-academy`). OpsForge owns everything lab-side (topology,
 scenarios, the step language, `.opsforge/`) and serves the API; Academy is a standalone learning platform that reaches
-OpsForge only through it (a URL and a token). **Next: step 7, sandboxes** (an API resource per lab/challenge attempt,
+OpsForge only through it (a URL and a token), possibly from another machine; nothing here may read or assume an
+Academy checkout. **Next: step 7, sandboxes** (an API resource per lab/challenge attempt,
 sized by the course's requirements, always cleaned up by OpsForge), then tag `v1.0.0` (contract 1.0 frozen).
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML (now Academy's `labs/`: curricula → levels →
 labs with probe/quiz/confirm checks, badges); all 6 core labs pass on the live stretched lab and leave `verify` green.
@@ -155,14 +156,14 @@ reboot-survival check).
   `openapi.yaml`, `golden/` written by pytest: `OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/test_api.py
   tests/test_apiserver.py`, review the diff; rules in `contract/README.md`), served by `opsforge api serve` and as
   `opsforge api <cmd> --json` (`lab/contract.py`: `CONTRACT`, `CONTRACT_MINOR`, input checks, `${ns}`, `step_errors`).
-  Its client is OpsForge Academy (repo `opsforge-academy`, a sibling checkout `../opsforge-academy` on this host), which
-  keeps a pinned copy and must never need this checkout: anything it needs is a contract change. Additive = bump
+  Its client is OpsForge Academy (repo `opsforge-academy`, possibly on another machine), which
+  pins a copy fetched from this repository's git and must never need this checkout: anything it needs is a contract change. Additive = bump
   `CONTRACT_MINOR` + a row in contract/README.md's table; breaking = major (free until `v1.0.0`). Inputs strict,
   outputs open; `api version` = `{contract, minor, opsforge}` (`VERSION` in `opsforge`). `validate-steps` is how
   Academy's compiler checks pack steps. Lab steps arrive as data (Academy's packs): checks only observe
   (`scenario.FAULT_STEPS` refused in probes), faults only in setup, finishing always runs teardown + heal, and a
   teardown must leave `verify` green. A `namespace` is `lab-*`/`ch-*` (created on every cluster, labelled
-  `app.kubernetes.io/managed-by=opsforge-academy`, deleted by teardown) until sandboxes replace it (PLAN.md Phase 11
+  `app.kubernetes.io/managed-by=opsforge-api`, deleted by teardown) until sandboxes replace it (PLAN.md Phase 11
   split step 7). Golden: `run.golden`, `probe.{passed,failed}`, `heal`, `job` (timings zeroed).
 - OpsForge HTTP API (`lab/apiserver.py`, split step 4): every route is in `contract/openapi.yaml` and
   `apiserver.ROUTES` (a test compares them, and the token requirement); bodies are `toolchain.schema.json` documents
@@ -206,5 +207,6 @@ make check            # lint + topology validation (needs host-setup's dev tools
 ./opsforge scenario ci-rollout # Phase 7: a push builds, pushes and rolls out to every site
 export OPSFORGE_TOPOLOGY=topologies/multi-cluster.yml   # Phase 8: down, up, provision, verify, then:
 ./opsforge scenario cluster-failover   # the serving cluster is lost; the service survives
-./opsforge api serve   # Phase 11: OpsForge's API on 127.0.0.1:8091 (token .opsforge/api-token); Academy: ../opsforge-academy
+./opsforge api serve   # Phase 11: OpsForge's API on 127.0.0.1:8091 (token .opsforge/api-token)
+#   for a client on another machine: --host <addr> --tls-cert lab.pem --tls-key lab.key (TLS required off loopback)
 ```
