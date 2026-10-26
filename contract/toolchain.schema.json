@@ -2,18 +2,147 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opsforge.lab/contract/toolchain.schema.json",
   "title": "OpsForge lab toolchain documents (contract 1)",
-  "description": "The documents of `opsforge api`: inputs (stdin, or HTTP request bodies) and outputs (stdout, or HTTP responses; contract/openapi.yaml) of run|probe|heal|validate-steps|version, and the HTTP API's jobs, problems and workspace listings (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the document's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
+  "description": "The documents of `opsforge api`: inputs (stdin, or HTTP request bodies) and outputs (stdout, or HTTP responses; contract/openapi.yaml) of run|probe|heal|validate-steps|version and sandbox, and the HTTP API's sandboxes, jobs, problems and file listings (contract/README.md). Steps are scenario steps (lab/scenario.py); their placeholders are resolved by the toolchain, `${ns}` with the sandbox's namespace. Inputs are strict. Outputs may gain fields in a minor version: readers ignore the ones they do not know (OpsForge's golden documents pin exactly what it prints).",
   "$defs": {
-    "namespace": {
-      "description": "A namespace the platform owns: lab-<attempt> for labs, ch-<attempt> for challenge submissions. Created before setup, deleted after teardown.",
-      "type": "string",
-      "pattern": "^(lab|ch)-[a-z0-9]{1,24}$"
-    },
     "steps": { "type": "array", "items": { "type": "object", "minProperties": 1 } },
-    "log": { "description": "Human-readable lines, each starting with the seconds since the run began.", "type": "array", "items": { "type": "string" } },
-    "error": { "description": "Why the run stopped early (a failing step, a missing node); null when every step ran.", "type": ["string", "null"] },
+    "log": {
+      "description": "Human-readable lines, each starting with the seconds since the run began.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "error": {
+      "description": "Why the run stopped early (a failing step, a missing node); null when every step ran.",
+      "type": ["string", "null"]
+    },
     "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
-    "condition": { "description": "<op> <value>, e.g. \">= base.p50_ms * 2\" (lab/scenario.py)", "type": "string", "pattern": "^\\s*(<=|>=|==|!=|<|>)" },
+    "condition": {
+      "description": "<op> <value>, e.g. \">= base.p50_ms * 2\" (lab/scenario.py)",
+      "type": "string",
+      "pattern": "^\\s*(<=|>=|==|!=|<|>)"
+    },
+    "sandboxId": { "type": "string", "pattern": "^[a-f0-9]{8}$" },
+    "requires": {
+      "description": "What the sandbox needs from the running lab (a course's requirements). OpsForge checks them before creating it: 409 /problems/unmet-requirements names what is missing.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layout": { "description": "The lab's layout (state's `layout`)", "enum": ["stretched", "multi-cluster"] },
+        "needs": {
+          "description": "vpn: interconnect vpn; k3s: a K3s cluster; monitoring, ci: those nodes",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["vpn", "k3s", "monitoring", "ci"] }
+        },
+        "faults": {
+          "description": "setup breaks links (partition, degrade, ...): deleting the sandbox heals the lab, and no other sandbox may exist meanwhile",
+          "type": "boolean"
+        },
+        "cluster_changes": {
+          "description": "setup changes the cluster outside the sandbox's namespace (teardown undoes it): no other sandbox may exist meanwhile",
+          "type": "boolean"
+        }
+      }
+    },
+    "sandboxInput": {
+      "description": "POST /v1/sandboxes: one lab or challenge attempt. Created as a job: the workspace with `files`, the namespace (namespace: true), then `setup`; a failing setup is cleaned up at once (teardown, namespace, heal) and the sandbox is `failed`. Deleting it runs `teardown`, deletes the namespace, heals when `requires.faults` and deletes the workspace.",
+      "type": "object",
+      "required": ["contract", "kind", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "contract": { "const": 1 },
+        "kind": { "enum": ["lab", "challenge"] },
+        "label": {
+          "description": "What it is for, shown to the lab's owner (e.g. lab nodes-and-regions, attempt 7)",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "requires": { "$ref": "#/$defs/requires" },
+        "namespace": {
+          "description": "true: a namespace sb-<id> on every K3s cluster (needs k3s), ${ns} in steps, the default namespace of `opsforge kubectl` in the sandbox",
+          "type": "boolean"
+        },
+        "files": {
+          "description": "The workspace's first files: relative path -> UTF-8 content (the workspace limits apply)",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "setup": { "$ref": "#/$defs/steps" },
+        "teardown": { "$ref": "#/$defs/steps" },
+        "expires_after": {
+          "description": "Seconds without a call after which OpsForge deletes the sandbox (default 86400)",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 604800
+        }
+      }
+    },
+    "sandboxOutput": {
+      "description": "A sandbox. Steps run on the lab host in its workspace, with `opsforge` on the PATH and its namespace as `opsforge kubectl`'s default.",
+      "type": "object",
+      "required": [
+        "contract",
+        "id",
+        "kind",
+        "label",
+        "status",
+        "namespace",
+        "layout",
+        "placeholders",
+        "requires",
+        "setup",
+        "teardown",
+        "created_at",
+        "expires_at"
+      ],
+      "properties": {
+        "contract": { "const": 1 },
+        "id": { "$ref": "#/$defs/sandboxId" },
+        "kind": { "enum": ["lab", "challenge"] },
+        "label": { "type": "string" },
+        "status": {
+          "description": "creating, then ready or failed (setup failed: already cleaned up); resetting; deleting; deleted (only in the delete job's output)",
+          "enum": ["creating", "ready", "failed", "resetting", "deleting", "deleted"]
+        },
+        "namespace": { "type": ["string", "null"], "pattern": "^sb-[a-f0-9]{8}$" },
+        "layout": { "enum": ["stretched", "multi-cluster", null] },
+        "placeholders": {
+          "description": "The lab's placeholders (state's) plus ${ns}: for the client's texts",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "requires": { "$ref": "#/$defs/requires" },
+        "setup": {
+          "description": "The last setup's runOutput, null before it ends",
+          "oneOf": [{ "$ref": "#/$defs/runOutput" }, { "type": "null" }]
+        },
+        "teardown": {
+          "description": "The teardown's runOutput (after a failed setup, or in the delete job's output), else null",
+          "oneOf": [{ "$ref": "#/$defs/runOutput" }, { "type": "null" }]
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "expires_at": {
+          "description": "When OpsForge deletes it unless a call comes first",
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "sandboxesOutput": {
+      "type": "object",
+      "required": ["contract", "sandboxes"],
+      "properties": {
+        "contract": { "const": 1 },
+        "sandboxes": { "type": "array", "items": { "$ref": "#/$defs/sandboxOutput" } }
+      }
+    },
+    "actionInput": {
+      "description": "POST /v1/sandboxes/{id}/actions: steps run in the sandbox (a challenge's test action); fault steps refused. Output: runOutput.",
+      "type": "object",
+      "required": ["contract", "steps"],
+      "additionalProperties": false,
+      "properties": { "contract": { "const": 1 }, "steps": { "$ref": "#/$defs/steps" } }
+    },
     "runInput": {
       "type": "object",
       "required": ["contract", "phase", "steps"],
@@ -21,9 +150,9 @@
       "properties": {
         "contract": { "const": 1 },
         "phase": { "enum": ["setup", "teardown"] },
-        "steps": { "$ref": "#/$defs/steps" },
-        "namespace": { "$ref": "#/$defs/namespace" }
-      }
+        "steps": { "$ref": "#/$defs/steps" }
+      },
+      "description": "`opsforge api run` (the CLI only, for authors): a phase's steps, outside any sandbox."
     },
     "runOutput": {
       "type": "object",
@@ -46,11 +175,14 @@
           "type": "object",
           "minProperties": 1,
           "additionalProperties": {
-            "oneOf": [{ "$ref": "#/$defs/condition" }, { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } }]
+            "oneOf": [
+              { "$ref": "#/$defs/condition" },
+              { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } }
+            ]
           }
-        },
-        "namespace": { "$ref": "#/$defs/namespace" }
-      }
+        }
+      },
+      "description": "A probe check: steps that only observe the lab (fault steps refused in a sandbox) and what passing means. `opsforge api probe`, or POST /v1/sandboxes/{id}/probes."
     },
     "probeOutput": {
       "type": "object",
@@ -101,7 +233,10 @@
             "properties": {
               "steps": { "type": "array" },
               "expect": { "type": "object" },
-              "faults": { "description": "false: fault steps (partition, degrade, ...) are refused, as in a check that only observes the lab", "type": "boolean" }
+              "faults": {
+                "description": "false: fault steps (partition, degrade, ...) are refused, as in a check that only observes the lab",
+                "type": "boolean"
+              }
             }
           }
         }
@@ -134,25 +269,34 @@
         "contract": { "const": 1 },
         "type": { "type": "string", "pattern": "^/problems/[a-z-]+$" },
         "title": { "type": "string" },
-        "detail": { "type": "string" }
+        "detail": { "type": "string" },
+        "unmet": {
+          "description": "With /problems/unmet-requirements: what the running lab lacks, one entry each",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "jobOutput": {
-      "description": "A run, probe or heal started over HTTP (POST /v1/runs|probes|heal): `log` grows while it runs; once done, `output` is the command's output document; failed: `problem` says why (not a failing step: that is the output's `error`).",
+      "description": "Lab work started over HTTP (a sandbox's create, reset, probe, action or delete, or heal): `log` grows while it runs; once done, `output` is its output document (sandboxOutput for create, reset and delete, probeOutput for probe, runOutput for action, healOutput for heal); failed: `problem` says why (not a failing step: that is the output's `error`). One lab job at a time.",
       "type": "object",
-      "required": ["contract", "id", "kind", "status", "log", "output", "problem"],
+      "required": ["contract", "id", "kind", "sandbox", "status", "log", "output", "problem"],
       "properties": {
         "contract": { "const": 1 },
         "id": { "type": "string", "pattern": "^[a-f0-9]{16}$" },
-        "kind": { "enum": ["run", "probe", "heal"] },
+        "kind": { "enum": ["create", "reset", "probe", "action", "delete", "heal"] },
+        "sandbox": {
+          "description": "The sandbox it works on (known from the 202 on), null for heal",
+          "oneOf": [{ "$ref": "#/$defs/sandboxId" }, { "type": "null" }]
+        },
         "status": { "enum": ["running", "done", "failed"] },
         "log": { "$ref": "#/$defs/log" },
-        "output": { "description": "runOutput, probeOutput or healOutput (by kind) once done, else null", "type": ["object", "null"] },
+        "output": { "description": "The output document once done, else null", "type": ["object", "null"] },
         "problem": { "oneOf": [{ "$ref": "#/$defs/problem" }, { "type": "null" }] }
       }
     },
     "filesOutput": {
-      "description": "A workspace's regular files (GET /v1/workspaces/{ws}/files), by path, and their total size.",
+      "description": "A sandbox's workspace: its regular files (GET /v1/sandboxes/{id}/files), by path, and their total size.",
       "type": "object",
       "required": ["contract", "files", "bytes"],
       "properties": {
@@ -183,7 +327,11 @@
       "required": ["contract", "minor", "opsforge"],
       "properties": {
         "contract": { "const": 1 },
-        "minor": { "description": "Additive revisions of this major: a caller gates what it sends on it", "type": "integer", "minimum": 0 },
+        "minor": {
+          "description": "Additive revisions of this major: a caller gates what it sends on it",
+          "type": "integer",
+          "minimum": 0
+        },
         "opsforge": { "description": "The OpsForge release (semver)", "type": "string" }
       }
     }

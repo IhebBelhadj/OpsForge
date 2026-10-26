@@ -918,6 +918,18 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      - Tests first on both sides: `tests/test_apiserver.py` (create/refuse on requirements, cleanup after a failed
        setup, restart, expiry, files and terminal confined to the sandbox), golden `sandbox.json`; `opsforgefake`
        gains sandboxes; the six-lab run passes again through sandboxes.
+     - **OpsForge's side done (2026-10-26):** `lab/sandboxes.py` (records, state machine, requirements, expiry),
+       the CLI's `sandbox_up`/`sandbox_down`/`sandbox_probe`/`sandbox_action`, the routes in `apiserver.ROUTES` and
+       `openapi.yaml`, `opsforge api sandbox list|delete`; 18 tests in `tests/test_sandboxes.py` plus the moved
+       file/terminal/job tests (170 in all), golden `sandbox.json`. Decided on the way: the namespace is asked for
+       (`namespace: true`, Academy's `namespace: auto`), not always made; the document has no `workspace` path (the
+       files and terminal are routes); statuses add `resetting` and `deleted` (the delete job's output); setup and
+       teardown may hold fault steps only with `requires.faults` (so delete knows to heal); `files` are UTF-8 texts;
+       `cluster_changes` is a boolean (Academy keeps its texts for the learner); lab work a killed API left halfway
+       is finished by deleting that sandbox when it comes back (the client sees 404 and fails the attempt); steps
+       run in the workspace with `opsforge` on the PATH (`lab/bin`), so packs write `opsforge ...`, not
+       `./opsforge` (Academy's packs move with its adapter); namespace label `opsforge.lab/sandbox=<id>` besides
+       `managed-by=opsforge-api`. Next: Academy's side (its repo), then the six labs live through sandboxes.
   8. **PostgreSQL** (decided 2026-10-25; in the Academy repo after step 7, before M2 adds tables): Academy is
      becoming a service of its own (the lab may move to another machine), so its database becomes PostgreSQL in a
      dedicated Docker container `academy-pg` (Docker: already on the host, no pacman while the host is mid-upgrade,

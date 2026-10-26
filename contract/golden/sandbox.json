@@ -1,0 +1,55 @@
+{
+  "contract": 1,
+  "created_at": "2026-10-26T12:00:00Z",
+  "expires_at": "2026-10-27T12:00:00Z",
+  "id": "0123abcd",
+  "kind": "lab",
+  "label": "lab nodes-and-regions, attempt 7",
+  "layout": "stretched",
+  "namespace": "sb-0123abcd",
+  "placeholders": {
+    "${cluster:a}": "lab",
+    "${cluster:b}": "lab",
+    "${cluster:c}": "lab",
+    "${ip:a-cp1}": "10.10.0.11",
+    "${ip:a-gw}": "10.10.0.1",
+    "${ip:b-gw}": "10.20.0.1",
+    "${ip:b-w1}": "10.20.0.11",
+    "${ip:c-gw}": "10.30.0.1",
+    "${ip:c-w1}": "10.30.0.11",
+    "${ip:ci}": "10.10.0.12",
+    "${ip:mon}": "10.20.0.12",
+    "${node:a}": "a-cp1",
+    "${node:b}": "b-w1",
+    "${node:c}": "c-w1",
+    "${ns}": "sb-0123abcd",
+    "${public:a}": "203.0.113.10",
+    "${public:b}": "203.0.113.20",
+    "${public:c}": "203.0.113.30",
+    "${server:a}": "a-cp1",
+    "${server:b}": "a-cp1",
+    "${server:c}": "a-cp1"
+  },
+  "requires": {
+    "needs": [
+      "k3s"
+    ]
+  },
+  "setup": {
+    "contract": 1,
+    "error": null,
+    "log": [
+      "  0.0s  create namespace sb-0123abcd on a-cp1",
+      "  0.0s  run cmd=test -f deploy.yaml && command -v opsforge >/dev/null && echo 1  -> here",
+      "  0.0s      exit=0, seconds=0, value=1",
+      "  0.0s  run cmd=echo -n sb-0123abcd > ns.txt"
+    ],
+    "metrics": {
+      "here.exit": 0,
+      "here.seconds": 0.0,
+      "here.value": 1.0
+    }
+  },
+  "status": "ready",
+  "teardown": null
+}

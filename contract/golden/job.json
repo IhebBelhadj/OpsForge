@@ -1,7 +1,7 @@
 {
   "contract": 1,
   "id": "0123456789abcdef",
-  "kind": "run",
+  "kind": "action",
   "log": [
     "  0.0s  run cmd=echo 42  -> x",
     "  0.0s      exit=0, seconds=0, value=42",
@@ -22,5 +22,6 @@
     }
   },
   "problem": null,
+  "sandbox": "0123abcd",
   "status": "done"
 }

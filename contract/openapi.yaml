@@ -4,7 +4,8 @@ info:
   version: "1.0"
   description: >-
     `opsforge api serve` (lab/apiserver.py): the documents of toolchain.schema.json over HTTP, so a client (OpsForge
-    Academy) drives the lab without this checkout or this machine. Contract 1 (the major is in the path and in every
+    Academy) drives the lab without this checkout or this machine. A client's lab work happens in sandboxes: one per
+    attempt, created from its requirements, cleaned up by OpsForge. Contract 1 (the major is in the path and in every
     document's `contract`), minor 0: see README.md for the versioning rules. Every call but `GET /v1/version` needs
     the bearer token of `.opsforge/api-token`; requests carrying an Origin header (browsers) are refused with 403,
     and on a loopback address a Host other than it gets 421. Errors are problem documents
@@ -53,38 +54,10 @@ paths:
               schema: { $ref: "./toolchain.schema.json#/$defs/stepsOutput" }
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
-  /v1/runs:
-    post:
-      operationId: startRun
-      summary: Runs a lab's setup or teardown steps as a job
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "./toolchain.schema.json#/$defs/runInput" }
-      responses:
-        "202": { $ref: "#/components/responses/JobStarted" }
-        "400": { $ref: "#/components/responses/Problem" }
-        "401": { $ref: "#/components/responses/Problem" }
-        "409": { $ref: "#/components/responses/Problem" }
-  /v1/probes:
-    post:
-      operationId: startProbe
-      summary: Runs a probe check as a job
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "./toolchain.schema.json#/$defs/probeInput" }
-      responses:
-        "202": { $ref: "#/components/responses/JobStarted" }
-        "400": { $ref: "#/components/responses/Problem" }
-        "401": { $ref: "#/components/responses/Problem" }
-        "409": { $ref: "#/components/responses/Problem" }
   /v1/heal:
     post:
       operationId: startHeal
-      summary: Puts every link back to its state from before the first fault, as a job
+      summary: Puts every link back to its state from before the first fault, as a job (the lab owner's escape hatch)
       responses:
         "202": { $ref: "#/components/responses/JobStarted" }
         "401": { $ref: "#/components/responses/Problem" }
@@ -104,26 +77,105 @@ paths:
               schema: { $ref: "./toolchain.schema.json#/$defs/jobOutput" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
-  /v1/workspaces/{ws}:
-    parameters:
-      - $ref: "#/components/parameters/Workspace"
-    put:
-      operationId: createWorkspace
-      summary: Makes an empty workspace (`.opsforge/workspaces/<ws>/`)
+  /v1/sandboxes:
+    get:
+      operationId: listSandboxes
+      summary: The sandboxes alive (and failed ones not deleted yet)
       responses:
-        "201": { description: Created }
+        "200":
+          description: The sandboxes, oldest first
+          content:
+            application/json:
+              schema: { $ref: "./toolchain.schema.json#/$defs/sandboxesOutput" }
+        "401": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createSandbox
+      summary: >-
+        Creates a sandbox for one lab or challenge attempt, as a job (the job's `sandbox` is its id from the 202 on;
+        its output is the sandbox, `ready` or `failed`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "./toolchain.schema.json#/$defs/sandboxInput" }
+      responses:
+        "202": { $ref: "#/components/responses/JobStarted" }
+        "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "409": { $ref: "#/components/responses/Problem" }
-    delete:
-      operationId: deleteWorkspace
-      summary: Deletes a workspace and everything in it
+        "413": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}:
+    parameters:
+      - $ref: "#/components/parameters/Sandbox"
+    get:
+      operationId: getSandbox
+      summary: A sandbox (a call keeps it from expiring)
       responses:
-        "204": { description: Deleted }
+        "200":
+          description: The sandbox
+          content:
+            application/json:
+              schema: { $ref: "./toolchain.schema.json#/$defs/sandboxOutput" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
-  /v1/workspaces/{ws}/files:
+    delete:
+      operationId: deleteSandbox
+      summary: >-
+        Deletes a sandbox, as a job: its terminals hung up, `teardown`, its namespace, `heal` when it had faults, its
+        workspace (output: the sandbox, `deleted`, with the teardown's output)
+      responses:
+        "202": { $ref: "#/components/responses/JobStarted" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}/reset:
     parameters:
-      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/Sandbox"
+    post:
+      operationId: resetSandbox
+      summary: Runs `teardown` then `setup` again, as a job (the workspace is kept; output the sandbox)
+      responses:
+        "202": { $ref: "#/components/responses/JobStarted" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}/probes:
+    parameters:
+      - $ref: "#/components/parameters/Sandbox"
+    post:
+      operationId: startProbe
+      summary: Runs a probe check in a ready sandbox, as a job (fault steps refused; output probeOutput)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "./toolchain.schema.json#/$defs/probeInput" }
+      responses:
+        "202": { $ref: "#/components/responses/JobStarted" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}/actions:
+    parameters:
+      - $ref: "#/components/parameters/Sandbox"
+    post:
+      operationId: startAction
+      summary: Runs steps in a ready sandbox as a job (a challenge's test action; faults refused; output runOutput)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "./toolchain.schema.json#/$defs/actionInput" }
+      responses:
+        "202": { $ref: "#/components/responses/JobStarted" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}/files:
+    parameters:
+      - $ref: "#/components/parameters/Sandbox"
     get:
       operationId: listFiles
       summary: The workspace's regular files, by path (links and other files are not listed)
@@ -135,9 +187,10 @@ paths:
               schema: { $ref: "./toolchain.schema.json#/$defs/filesOutput" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
-  /v1/workspaces/{ws}/files/{path}:
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}/files/{path}:
     parameters:
-      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/Sandbox"
       - name: path
         in: path
         required: true
@@ -157,6 +210,7 @@ paths:
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
     put:
       operationId: writeFile
       summary: Replaces (or creates, with its folders) a file; at most 1 MiB, 10 MiB per workspace
@@ -170,6 +224,7 @@ paths:
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
         "413": { $ref: "#/components/responses/Problem" }
     delete:
       operationId: deleteFile
@@ -179,9 +234,10 @@ paths:
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
-  /v1/workspaces/{ws}/moves:
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/sandboxes/{sandbox}/moves:
     parameters:
-      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/Sandbox"
     post:
       operationId: moveFile
       summary: Moves a file (creating the target's folders); 409 if the target exists
@@ -196,16 +252,17 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
         "409": { $ref: "#/components/responses/Problem" }
-  /v1/terminal:
+  /v1/sandboxes/{sandbox}/terminal:
+    parameters:
+      - $ref: "#/components/parameters/Sandbox"
     get:
       operationId: openTerminal
       summary: >-
-        A shell on the lab host over a WebSocket (bash on a pty, `opsforge` as a function, started in the workspace
-        when given). Client frames are text JSON `{"t": "i", "d": input}` or `{"t": "r", "cols", "rows"}`; server
-        frames are the binary output; the server closes with 1000 when the shell exits, and closing the socket hangs
-        the shell up.
+        A shell in the sandbox over a WebSocket: bash on a pty on the lab host, started in its workspace, `opsforge`
+        as a function, its namespace as `opsforge kubectl`'s default. Client frames are text JSON `{"t": "i", "d":
+        input}` or `{"t": "r", "cols", "rows"}`; server frames are the binary output; the server closes with 1000 when
+        the shell exits (or the sandbox is deleted), and closing the socket hangs the shell up.
       parameters:
-        - { name: workspace, in: query, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$" } }
         - { name: cols, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 80 } }
         - { name: rows, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 24 } }
       responses:
@@ -213,6 +270,7 @@ paths:
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
 components:
   securitySchemes:
     token:
@@ -220,16 +278,18 @@ components:
       scheme: bearer
       description: The content of `.opsforge/api-token` (made on the first `opsforge api serve`, mode 0600)
   parameters:
-    Workspace:
-      name: ws
+    Sandbox:
+      name: sandbox
       in: path
       required: true
-      schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$" }
+      schema: { type: string, pattern: "^[a-f0-9]{8}$" }
   responses:
     Problem:
       description: >-
         A problem: 400 bad input or path, 401 no or wrong token, 403 a browser's request, 404 not found, 409 busy lab
-        or existing target, 413 too large, 421 wrong Host, 500 internal
+        (lab-busy), lab down (lab-down), unmet requirements (unmet-requirements, with `unmet`), a sandbox not in the
+        state the call needs (sandbox-state) or an existing target (exists), 413 too large, 421 wrong Host, 500
+        internal
       content:
         application/problem+json:
           schema: { $ref: "./toolchain.schema.json#/$defs/problem" }

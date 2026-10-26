@@ -117,8 +117,8 @@ def echo(name, value):
 
 def test_with_namespace_fills_the_placeholder_everywhere():
     steps = [{"run": {"cmd": "kubectl -n ${ns} get pods", "host": "host"}}, {"sleep": "1s"}]
-    assert contract.with_namespace(steps, "lab-7") == [{"run": {"cmd": "kubectl -n lab-7 get pods", "host": "host"}},
-                                                      {"sleep": "1s"}]
+    assert contract.with_namespace(steps, "sb-0123abcd") == [
+        {"run": {"cmd": "kubectl -n sb-0123abcd get pods", "host": "host"}}, {"sleep": "1s"}]
     assert contract.with_namespace(steps[1:], None) == steps[1:]
     with pytest.raises(ValueError, match=r"\$\{ns\}"):
         contract.with_namespace(steps, None)
@@ -126,7 +126,10 @@ def test_with_namespace_fills_the_placeholder_everywhere():
 
 @pytest.mark.parametrize("kind, doc, message", [
     ("runInput", {"contract": 1, "phase": "check", "steps": []}, "phase"),
-    ("runInput", {"contract": 1, "phase": "setup", "steps": [], "namespace": "kube-system"}, "namespace"),
+    ("runInput", {"contract": 1, "phase": "setup", "steps": [], "namespace": "lab-7"}, "namespace"),
+    ("sandboxInput", {"contract": 1, "kind": "lab", "label": "x", "requires": {"needs": ["gpu"]}}, "gpu"),
+    ("sandboxInput", {"contract": 1, "kind": "exam", "label": "x"}, "exam"),
+    ("actionInput", {"contract": 1, "steps": [], "expect": {}}, "expect"),
     ("runInput", {"contract": 1, "phase": "setup", "steps": [], "attempt": 3}, "attempt"),
     ("probeInput", {"contract": 1, "steps": [echo("a", 1)], "expect": {}}, "expect"),
 ])
@@ -163,35 +166,6 @@ def test_probe_stops_at_the_first_failing_named_step():
     assert [(r["metric"], r["got"], r["passed"], r["checked"]) for r in doc["results"]] == [
         ("a.value", 1, False, True), ("b.value", None, False, False)]
     golden("probe.failed.json", timeless(doc))
-
-
-@pytest.fixture
-def kube(monkeypatch):
-    """Records the commands run in instances; namespaces are made with `k3s kubectl` on each cluster's server."""
-    calls = []
-
-    def run_in(name, *cmd):
-        calls.append((name, " ".join(cmd)))
-        return subprocess.CompletedProcess(cmd, 0, "", "")
-
-    monkeypatch.setattr(cli, "run_in", run_in)
-    return calls
-
-
-def test_setup_creates_the_namespace_first_and_teardown_deletes_it_last(kube):
-    marker = {"run": {"host": "a-gw", "cmd": "step -n ${ns}"}}
-    assert cli.api_run({"contract": 1, "phase": "setup", "steps": [marker], "namespace": "lab-7"})["error"] is None
-    assert cli.api_run({"contract": 1, "phase": "teardown", "steps": [marker], "namespace": "lab-7"})["error"] is None
-    cmds = [c for _, c in kube]
-    assert "create namespace lab-7" in cmds[0] and "step -n lab-7" in cmds[1]
-    assert "step -n lab-7" in cmds[2] and "delete namespace lab-7" in cmds[3] and len(cmds) == 4
-    assert kube[0][0] == cli.render.k3s_clusters(cli.load_valid_topology())["lab"]["server"]
-
-
-def test_teardown_deletes_the_namespace_even_after_a_failing_step(kube):
-    doc = cli.api_run({"contract": 1, "phase": "teardown", "steps": [{"run": {"cmd": "echo ${node:zz}"}}],
-                           "namespace": "lab-7"})
-    assert "zz" in doc["error"] and "delete namespace lab-7" in kube[-1][1]
 
 
 def test_heal(monkeypatch):

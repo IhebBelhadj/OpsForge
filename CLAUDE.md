@@ -8,8 +8,9 @@ structural changes; it has the phases, acceptance criteria and design decisions.
 OpsForge Academy moved to its own repository, `opsforge-academy`). OpsForge owns everything lab-side (topology,
 scenarios, the step language, `.opsforge/`) and serves the API; Academy is a standalone learning platform that reaches
 OpsForge only through it (a URL and a token), possibly from another machine; nothing here may read or assume an
-Academy checkout. **Next: step 7, sandboxes** (an API resource per lab/challenge attempt,
-sized by the course's requirements, always cleaned up by OpsForge), then tag `v1.0.0` (contract 1.0 frozen).
+Academy checkout. **Step 7, sandboxes: OpsForge's side done** (2026-10-26: an API resource per lab/challenge
+attempt, sized by the course's requirements, always cleaned up by OpsForge; `lab/sandboxes.py`); next Academy moves
+onto them (its repo), the six-lab run through sandboxes, then tag `v1.0.0` (contract 1.0 frozen).
 Current status: **Phase 10 done** (2026-10-24): teaching labs. Packs of YAML (now Academy's `labs/`: curricula → levels →
 labs with probe/quiz/confirm checks, badges); all 6 core labs pass on the live stretched lab and leave `verify` green.
 Its Python server and UI were removed in Phase 11's split step 3 (2026-10-25) and the packs moved to Academy; the
@@ -155,20 +156,34 @@ reboot-survival check).
 - API contract (Phase 11): OpsForge's machine interface is `contract/` (owner: `toolchain.schema.json`,
   `openapi.yaml`, `golden/` written by pytest: `OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/test_api.py
   tests/test_apiserver.py`, review the diff; rules in `contract/README.md`), served by `opsforge api serve` and as
-  `opsforge api <cmd> --json` (`lab/contract.py`: `CONTRACT`, `CONTRACT_MINOR`, input checks, `${ns}`, `step_errors`).
+  `opsforge api <cmd> --json` (`lab/contract.py`: `CONTRACT`, `CONTRACT_MINOR`, input checks, `${ns}`, `step_errors`;
+  golden: `OPSFORGE_UPDATE_GOLDEN=1 python3 -m pytest tests/`).
   Its client is OpsForge Academy (repo `opsforge-academy`, possibly on another machine), which
   pins a copy fetched from this repository's git and must never need this checkout: anything it needs is a contract change. Additive = bump
   `CONTRACT_MINOR` + a row in contract/README.md's table; breaking = major (free until `v1.0.0`). Inputs strict,
   outputs open; `api version` = `{contract, minor, opsforge}` (`VERSION` in `opsforge`). `validate-steps` is how
   Academy's compiler checks pack steps. Lab steps arrive as data (Academy's packs): checks only observe
-  (`scenario.FAULT_STEPS` refused in probes), faults only in setup, finishing always runs teardown + heal, and a
-  teardown must leave `verify` green. A `namespace` is `lab-*`/`ch-*` (created on every cluster, labelled
-  `app.kubernetes.io/managed-by=opsforge-api`, deleted by teardown) until sandboxes replace it (PLAN.md Phase 11
-  split step 7). Golden: `run.golden`, `probe.{passed,failed}`, `heal`, `job` (timings zeroed).
-- OpsForge HTTP API (`lab/apiserver.py`, split step 4): every route is in `contract/openapi.yaml` and
+  (`scenario.FAULT_STEPS` refused in probes and actions, and in a sandbox's setup unless it declares
+  `requires.faults`), finishing always runs teardown + heal, and a teardown must leave `verify` green. Golden:
+  `run.golden`, `probe.{passed,failed}`, `heal`, `job`, `sandbox` (timings, ids and times fixed).
+- Sandboxes (`lab/sandboxes.py`, split step 7): a client's lab work only happens in one. `Sandboxes` holds the
+  records (`<data>/sandboxes/<id>.json`, steps included) and the state machine (creating → ready|failed; resetting;
+  deleting; `dirty` = its lab side may exist); the lab side is the CLI's `sandbox_up`/`sandbox_down`/`sandbox_probe`/
+  `sandbox_action` over `lab_run(place=...)` (a place = `{sandbox, namespace, workdir}`). Requirements are checked
+  by `sandboxes.unmet` against `lab_facts()` (needs: vpn = `interconnect: vpn`, k3s = a cluster, monitoring/ci =
+  those roles). A failed setup is cleaned up at once; delete hangs up the sandbox's terminals (`opened`/`closed`
+  pgids), runs teardown, deletes `sb-<id>` (labelled `managed-by=opsforge-api` and `opsforge.lab/sandbox=<id>`),
+  heals when `requires.faults`, removes the workspace and the record. Faults or cluster_changes = runs alone.
+  Records that were creating/resetting/deleting when the API died load as deleting with `used=0`: the next `reap()`
+  deletes them. `serve` locks `<data>/sandboxes/.serving`; `opsforge api sandbox delete` refuses while it is held.
+  Host steps (all, scenarios too) have `lab/bin` (`opsforge` symlink) on the PATH; in a sandbox they run in its
+  workspace with `OPSFORGE_NAMESPACE` set, which `cmd_kubectl` turns into a default `--namespace` (later `-n`/`-A`
+  win, checked live). Tests: `tests/test_sandboxes.py` (the `lab` fixture of test_apiserver fakes lab_facts,
+  run_in and heal_links; `sandboxes.now` is the clock).
+- OpsForge HTTP API (`lab/apiserver.py`, split steps 4 and 7): every route is in `contract/openapi.yaml` and
   `apiserver.ROUTES` (a test compares them, and the token requirement); bodies are `toolchain.schema.json` documents
   (inputs through `api_input`, so CLI and HTTP refuse the same things). Lab work is a job (one at a time; `lab_run`'s
-  `lines` is the live log). Workspace paths are opened component by component with `O_NOFOLLOW` from the
+  `lines` is the live log; a job carries its `sandbox`). `ApiError.extra` adds problem fields. Workspace paths are opened component by component with `O_NOFOLLOW` from the
   workspace's folder (Python has no `os.Root`): never `open(base / path)`. The terminal spawns bash with `subprocess`
   + `setsid --ctty` (never `pty.fork` in the threaded server). Every route but `/v1/version` needs the token; requests
   with an Origin are refused. Tests: `tests/test_apiserver.py` (real server in a thread, `STATE` in tmp_path).

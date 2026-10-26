@@ -1,8 +1,8 @@
-"""`opsforge api serve` (docs/PLAN.md Phase 11, split step 4): OpsForge's machine interface over HTTP, so a client
-(OpsForge Academy) never needs this checkout or this machine. contract/openapi.yaml maps the documents of
+"""`opsforge api serve` (docs/PLAN.md Phase 11, split steps 4 and 7): OpsForge's machine interface over HTTP, so a
+client (OpsForge Academy) never needs this checkout or this machine. contract/openapi.yaml maps the documents of
 contract/toolchain.schema.json to routes under /v1/. Stdlib only: a threading HTTP server, lab work as jobs (a setup or
-a probe waits minutes for the cluster), the learners' workspaces under .opsforge/workspaces/ and a WebSocket terminal
-on a pty (Phase 10's wire format) started in one of them.
+a probe waits minutes for the cluster), and the clients' sandboxes (lab/sandboxes.py): each with its workspace under
+<data>/workspaces/, where its steps run and its WebSocket terminal (a pty, Phase 10's wire format) starts.
 
 Every call but GET /v1/version needs the bearer token of .opsforge/api-token: the terminal is a shell on this host.
 Requests from browsers (any Origin header) are refused, and on a loopback address the Host must name it (DNS
@@ -34,6 +34,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+import sandboxes
+
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_PORT = 8091
 MAX_BODY = 2 << 20  # a request body (a file is at most MAX_FILE)
@@ -52,6 +54,7 @@ class ApiError(Exception):
     def __init__(self, status, slug, title, detail):
         super().__init__(detail)
         self.status, self.slug, self.title, self.detail = status, slug, title, detail
+        self.extra = {}  # more problem fields (unmet-requirements: `unmet`)
 
 
 def not_found(detail):
@@ -254,15 +257,15 @@ class Workspaces:
 
 
 class Job:
-    def __init__(self, kind):
-        self.id, self.kind = secrets.token_hex(8), kind
+    def __init__(self, kind, sandbox=None):
+        self.id, self.kind, self.sandbox = secrets.token_hex(8), kind, sandbox
         self.status, self.log, self.output, self.problem = "running", [], None, None
         self.finished_at = None
         self.done = threading.Event()
 
     def doc(self, contract):
-        return {"contract": contract, "id": self.id, "kind": self.kind, "status": self.status, "log": list(self.log),
-                "output": self.output, "problem": self.problem}
+        return {"contract": contract, "id": self.id, "kind": self.kind, "sandbox": self.sandbox, "status": self.status,
+                "log": list(self.log), "output": self.output, "problem": self.problem}
 
 
 class Jobs:
@@ -272,7 +275,7 @@ class Jobs:
         self.lock = threading.Lock()
         self.running = None
 
-    def start(self, kind, work):
+    def start(self, kind, work, sandbox=None):
         """Starts `work(lines)` (returns the output document) as a job; ApiError 409 while another one runs."""
         with self.lock:
             if self.running and not self.running.done.is_set():
@@ -280,7 +283,7 @@ class Jobs:
                                f"{self.running.kind} job {self.running.id} is running; one lab job at a time")
             now = time.monotonic()
             self.jobs = {i: j for i, j in self.jobs.items() if not j.finished_at or now - j.finished_at < JOB_KEEP}
-            job = self.running = Job(kind)
+            job = self.running = Job(kind, sandbox)
             self.jobs[job.id] = job
         threading.Thread(target=self._run, args=(job, work), daemon=True).start()
         return job
@@ -322,10 +325,11 @@ class Server(ThreadingHTTPServer):
         if not isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, TimeoutError)):
             super().handle_error(request, client_address)
 
-    def __init__(self, address, cli, token, workspaces, rcfile):
+    def __init__(self, address, cli, token, data, rcfile):
         super().__init__(address, Handler)
-        self.cli, self.token = cli, token
-        self.jobs, self.workspaces, self.rcfile = Jobs(cli), workspaces, rcfile
+        self.cli, self.token, self.rcfile = cli, token, rcfile
+        self.jobs, self.workspaces = Jobs(cli), Workspaces(data / "workspaces")
+        self.sandboxes = sandboxes.Sandboxes(cli, data, self.workspaces, self.jobs)
         host = address[0]
         try:
             loopback = ipaddress.ip_address(host).is_loopback
@@ -371,7 +375,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_problem(self, e):
         self.send_doc(e.status, {"contract": self.contract, "type": f"/problems/{e.slug}", "title": e.title,
-                                 "detail": e.detail}, "application/problem+json")
+                                 "detail": e.detail, **e.extra}, "application/problem+json")
 
     def body(self):
         try:
@@ -445,8 +449,7 @@ class Handler(BaseHTTPRequestHandler):
     def validate_steps(self, _query):
         self.send_doc(200, self.server.cli.api_validate_steps(self.json_input("stepsInput")))
 
-    def start(self, kind, work):
-        job = self.server.jobs.start(kind, work)
+    def start(self, job):
         self.send_response(202)
         data = json.dumps(job.doc(self.contract)).encode()
         self.send_header("Content-Type", "application/json")
@@ -455,16 +458,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def run(self, _query):
-        doc = self.json_input("runInput")
-        self.start("run", lambda lines: self.server.cli.api_run(doc, lines=lines))
-
-    def probe(self, _query):
-        doc = self.json_input("probeInput")
-        self.start("probe", lambda lines: self.server.cli.api_probe(doc, lines=lines))
-
     def heal(self, _query):
-        self.start("heal", lambda _lines: self.server.cli.api_heal())
+        self.start(self.server.jobs.start("heal", lambda _lines: self.server.cli.api_heal()))
 
     def job(self, query, job_id):
         try:
@@ -473,44 +468,65 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "bad-input", "Bad input", "wait is a number of seconds") from None
         self.send_doc(200, self.server.jobs.get(job_id, max(wait, 0)).doc(self.contract))
 
-    def workspace_create(self, _query, ws):
-        self.server.workspaces.create(ws)
-        self.send_response(201)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+    # Sandboxes
 
-    def workspace_delete(self, _query, ws):
-        self.server.workspaces.delete(ws)
-        self.no_content()
+    def sandboxes_list(self, _query):
+        self.send_doc(200, {"contract": self.contract,
+                            "sandboxes": [sb.doc(self.contract) for sb in self.server.sandboxes.list()]})
 
-    def files(self, _query, ws):
-        files = self.server.workspaces.list(ws)
+    def sandbox_create(self, _query):
+        job, _ = self.server.sandboxes.create(self.json_input("sandboxInput"))
+        self.start(job)
+
+    def sandbox_get(self, _query, sid):
+        self.send_doc(200, self.server.sandboxes.get(sid).doc(self.contract))
+
+    def sandbox_delete(self, _query, sid):
+        self.start(self.server.sandboxes.delete(sid))
+
+    def sandbox_reset(self, _query, sid):
+        self.start(self.server.sandboxes.reset(sid))
+
+    def sandbox_probe(self, _query, sid):
+        self.start(self.server.sandboxes.probe(sid, self.json_input("probeInput")))
+
+    def sandbox_action(self, _query, sid):
+        self.start(self.server.sandboxes.action(sid, self.json_input("actionInput")))
+
+    def workspace(self, sid):
+        """The sandbox's workspace id (its own), while it has one."""
+        sb = self.server.sandboxes.get(sid)
+        self.server.sandboxes.need(sb, "creating", "ready", "failed", "resetting")
+        return sb
+
+    def files(self, _query, sid):
+        files = self.server.workspaces.list(self.workspace(sid).id)
         self.send_doc(200, {"contract": self.contract, "files": files, "bytes": sum(f["size"] for f in files)})
 
-    def file_read(self, _query, ws, path):
-        self.send_doc(200, self.server.workspaces.read(ws, path), "application/octet-stream")
+    def file_read(self, _query, sid, path):
+        self.send_doc(200, self.server.workspaces.read(self.workspace(sid).id, path), "application/octet-stream")
 
-    def file_write(self, _query, ws, path):
-        self.server.workspaces.write(ws, path, self.body())
+    def file_write(self, _query, sid, path):
+        self.server.workspaces.write(self.workspace(sid).id, path, self.body())
         self.no_content()
 
-    def file_delete(self, _query, ws, path):
-        self.server.workspaces.remove(ws, path)
+    def file_delete(self, _query, sid, path):
+        self.server.workspaces.remove(self.workspace(sid).id, path)
         self.no_content()
 
-    def move(self, _query, ws):
+    def move(self, _query, sid):
         doc = self.json_input("moveInput")
-        self.server.workspaces.move(ws, doc["from"], doc["to"])
+        self.server.workspaces.move(self.workspace(sid).id, doc["from"], doc["to"])
         self.no_content()
 
     def no_content(self):
         self.send_response(204)
         self.end_headers()
 
-    # Terminal: RFC 6455 framing over the request's socket, bash on a pty. Client frames (text):
-    # {"t": "i", "d": input} or {"t": "r", "cols", "rows"}; server frames (binary): output; close 1000 when the
-    # shell exits. Closing the socket hangs the shell up.
-    def terminal(self, query):
+    # Terminal: RFC 6455 framing over the request's socket, bash on a pty in the sandbox's workspace. Client frames
+    # (text): {"t": "i", "d": input} or {"t": "r", "cols", "rows"}; server frames (binary): output; close 1000 when
+    # the shell exits (deleting the sandbox hangs it up). Closing the socket hangs the shell up.
+    def terminal(self, query, sid):
         def number(name, default):
             try:
                 return max(1, min(int((query.get(name) or [default])[0]), 1000))
@@ -518,11 +534,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400, "bad-input", "Bad input", f"{name} is a number") from None
 
         cols, rows = number("cols", 80), number("rows", 24)
-        workdir = None
-        if ws := (query.get("workspace") or [None])[0]:
-            workdir = self.server.workspaces.dir(ws)
-            if not workdir.is_dir() or workdir.is_symlink():
-                raise not_found(f"no workspace {ws}")
+        sb = self.workspace(sid)
+        workdir = self.server.workspaces.dir(sb.id)
         key = self.headers.get("Sec-WebSocket-Key")
         if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
             raise ApiError(400, "not-websocket", "Not a WebSocket", "expected a WebSocket upgrade")
@@ -533,9 +546,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Sec-WebSocket-Accept", accept)
         self.end_headers()
         self.close_connection = True
-        env = dict(os.environ, TERM="xterm-256color")
-        if workdir:
-            env["OPSFORGE_WORKDIR"] = str(workdir)
+        env = dict(os.environ, TERM="xterm-256color", OPSFORGE_WORKDIR=str(workdir))
+        if sb.namespace:
+            env["OPSFORGE_NAMESPACE"] = sb.namespace
         # No pty.fork: forking a threaded server may deadlock the child. setsid --ctty makes bash a session leader
         # with the pty as its controlling terminal (job control, Ctrl-C), from a plain subprocess.
         fd, child = os.openpty()
@@ -546,6 +559,7 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             os.close(child)
         pid = shell.pid
+        self.server.sandboxes.opened(sb, pid)
         lock = threading.Lock()
 
         def send(opcode, payload):
@@ -602,6 +616,7 @@ class Handler(BaseHTTPRequestHandler):
             except subprocess.TimeoutExpired:
                 os.killpg(pid, signal.SIGKILL)
                 shell.wait()
+            self.server.sandboxes.closed(sb, pid)
             os.close(fd)
 
     def read_frame(self):
@@ -621,37 +636,40 @@ class Handler(BaseHTTPRequestHandler):
         return opcode, bytes(b ^ mask[i % 4] for i, b in enumerate(data))
 
 
-_WS = r"/v1/workspaces/([a-z0-9][a-z0-9-]{0,62})"
+_SB = r"/v1/sandboxes/([a-f0-9]{8})"
 # (path pattern, method, handler, public: no token needed)
 ROUTES = [
     (r"/v1/version", "GET", Handler.version, True),
     (r"/v1/state", "GET", Handler.state, False),
     (r"/v1/steps/validate", "POST", Handler.validate_steps, False),
-    (r"/v1/runs", "POST", Handler.run, False),
-    (r"/v1/probes", "POST", Handler.probe, False),
     (r"/v1/heal", "POST", Handler.heal, False),
     (r"/v1/jobs/([a-f0-9]{16})", "GET", Handler.job, False),
-    (_WS, "PUT", Handler.workspace_create, False),
-    (_WS, "DELETE", Handler.workspace_delete, False),
-    (_WS + r"/files", "GET", Handler.files, False),
-    (_WS + r"/files/(.+)", "GET", Handler.file_read, False),
-    (_WS + r"/files/(.+)", "PUT", Handler.file_write, False),
-    (_WS + r"/files/(.+)", "DELETE", Handler.file_delete, False),
-    (_WS + r"/moves", "POST", Handler.move, False),
-    (r"/v1/terminal", "GET", Handler.terminal, False),
+    (r"/v1/sandboxes", "GET", Handler.sandboxes_list, False),
+    (r"/v1/sandboxes", "POST", Handler.sandbox_create, False),
+    (_SB, "GET", Handler.sandbox_get, False),
+    (_SB, "DELETE", Handler.sandbox_delete, False),
+    (_SB + r"/reset", "POST", Handler.sandbox_reset, False),
+    (_SB + r"/probes", "POST", Handler.sandbox_probe, False),
+    (_SB + r"/actions", "POST", Handler.sandbox_action, False),
+    (_SB + r"/files", "GET", Handler.files, False),
+    (_SB + r"/files/(.+)", "GET", Handler.file_read, False),
+    (_SB + r"/files/(.+)", "PUT", Handler.file_write, False),
+    (_SB + r"/files/(.+)", "DELETE", Handler.file_delete, False),
+    (_SB + r"/moves", "POST", Handler.move, False),
+    (_SB + r"/terminal", "GET", Handler.terminal, False),
 ]
 
 
 def make_server(cli, host, port, tls_cert=None, tls_key=None, data=None):
-    """The API server for this checkout (`cli` is the opsforge module): token, workspaces and the shell's rcfile
-    in `data` (default .opsforge/; tests and tools give their own)."""
+    """The API server for this checkout (`cli` is the opsforge module): token, sandboxes, workspaces and the shell's
+    rcfile in `data` (default .opsforge/; tests and tools give their own)."""
     data = Path(data or cli.STATE)
     data.mkdir(parents=True, exist_ok=True)
     token = load_token(data / "api-token")
     rcfile = data / "api-bashrc"
     rcfile.write_text(BASHRC.format(history=shell_quote(data / "api-history"), cli=shell_quote(cli.ROOT / "opsforge"),
                                     root=shell_quote(cli.ROOT)))
-    server = Server((host, port), cli, token, Workspaces(data / "workspaces"), rcfile)
+    server = Server((host, port), cli, token, data, rcfile)
     if tls_cert:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(tls_cert, tls_key)
@@ -661,8 +679,16 @@ def make_server(cli, host, port, tls_cert=None, tls_key=None, data=None):
 
 def serve(cli, host, port, tls_cert=None, tls_key=None, data=None):
     """Serves until SIGINT/SIGTERM; a running lab job is waited for (stopping halfway through a setup would leave
-    the lab half-changed)."""
+    the lab half-changed). Idle sandboxes expire meanwhile. While it serves, <data>/sandboxes/.serving is locked:
+    `opsforge api sandbox delete` then refuses (the server owns the records)."""
     server = make_server(cli, host, port, tls_cert, tls_key, data)
+    serving = open(server.sandboxes.dir / ".serving", "w")  # noqa: SIM115 (held until the process ends)
+    try:
+        fcntl.flock(serving, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        server.server_close()
+        raise cli.LabError(f"another opsforge api serve uses {server.sandboxes.dir.parent}") from None
+    server.sandboxes.reaper()
     scheme = "https" if tls_cert else "http"
     print(f"opsforge api on {scheme}://{host}:{server.server_address[1]}/v1/ (token: "
           f"{Path(data or cli.STATE) / 'api-token'})", flush=True)
@@ -676,5 +702,7 @@ def serve(cli, host, port, tls_cert=None, tls_key=None, data=None):
     except KeyboardInterrupt:
         pass
     finally:
+        server.sandboxes.stop.set()
         server.jobs.wait_idle()
         server.server_close()
+        serving.close()

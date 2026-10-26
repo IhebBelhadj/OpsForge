@@ -3,6 +3,7 @@
 
 import argparse
 import base64
+import fcntl
 import grp
 import itertools
 import ipaddress
@@ -27,6 +28,7 @@ sys.path.insert(0, str(ROOT / "lab"))
 import contract  # noqa: E402
 import apiserver  # noqa: E402
 import render  # noqa: E402
+import sandboxes  # noqa: E402
 import scenario  # noqa: E402
 
 # Another layout (e.g. topologies/multi-cluster.yml) with OPSFORGE_TOPOLOGY=<path>, inherited by nested ./opsforge calls
@@ -1576,7 +1578,9 @@ def cmd_kubectl(args):
         raise LabError(f"kubectl is not installed on the host (or: ./opsforge ssh {c['server']} kubectl ...)")
     if not any(f["local"] == c["api_port"] for f in active_forwards()):
         start_forward(c["server"], render.K3S_API_PORT, c["api_port"], "127.0.0.1")
-    os.execvp("kubectl", ["kubectl", "--kubeconfig", str(config), *args.kubectl_args])
+    # In a sandbox (its terminal, its steps) the default namespace is the sandbox's; -n/-A still win
+    ns = [f"--namespace={os.environ['OPSFORGE_NAMESPACE']}"] if os.environ.get("OPSFORGE_NAMESPACE") else []
+    os.execvp("kubectl", ["kubectl", "--kubeconfig", str(config), *ns, *args.kubectl_args])
 
 
 def read_pre_fault():
@@ -1696,10 +1700,13 @@ def cmd_heal(args):
 
 
 class ScenarioRun:
-    """Runs scenario steps against the lab (lab/scenario.py describes the file format) and collects metrics."""
+    """Runs scenario steps against the lab (lab/scenario.py describes the file format) and collects metrics. Host
+    commands run in `workdir` (default the repo root) with `opsforge` on the PATH (lab/bin) and `env` added."""
 
-    def __init__(self, topo):
+    def __init__(self, topo, workdir=None, env=None):
         self.topo = topo
+        self.workdir = workdir or ROOT
+        self.env = {**os.environ, "PATH": f"{ROOT / 'lab' / 'bin'}:{os.environ.get('PATH', '')}", **(env or {})}
         self.metrics = {}
         self.flapping = None  # (thread, stop event) of a background `flap` step
         self.start = time.monotonic()
@@ -1715,14 +1722,14 @@ class ScenarioRun:
         return name
 
     def shell(self, on, cmd, timeout):
-        """(exit code, stdout) of a shell command on the host (from the repo root, so ./opsforge works) or in an
+        """(exit code, stdout) of a shell command on the host (in the run's workdir, `opsforge` on the PATH) or in an
         instance."""
         cmd = scenario.substitute(cmd, self.topo)
         on = scenario.substitute(on, self.topo)
         if on == "host":
             try:
-                res = subprocess.run(["bash", "-c", cmd], cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True,
-                                     text=True, timeout=timeout)
+                res = subprocess.run(["bash", "-c", cmd], cwd=self.workdir, env=self.env, stdin=subprocess.DEVNULL,
+                                     capture_output=True, text=True, timeout=timeout)
             except subprocess.TimeoutExpired:
                 return 124, ""
         else:
@@ -1944,18 +1951,20 @@ def api_state():
 # A step that cannot run ends the run with its message; anything else is a bug and raises
 RUN_ERRORS = (LabError, subprocess.CalledProcessError, ValueError)
 API_LABEL = "app.kubernetes.io/managed-by=opsforge-api"
+SANDBOX_LABEL = "opsforge.lab/sandbox"
 
 
 def _message(e):
     return str(e).strip() or type(e).__name__
 
 
-def lab_run(steps, phase, stop=None, namespace=None, lines=None):
+def lab_run(steps, phase, stop=None, lines=None, place=None):
     """Runs scenario steps on the lab: (metrics, log lines, error message or None). `stop(step, metrics)`, called
-    after each step, ends the run early when it returns True. With a namespace, setup creates it first and teardown
-    deletes it last, even after a failing step (the next attempt starts clean). `lines`, when given, is the log
-    list to append to as the run goes (an HTTP job shows it while running)."""
+    after each step, ends the run early when it returns True. `place` (a sandbox's: {namespace, workdir}) fills
+    ${ns} and runs host commands in its workspace. `lines`, when given, is the log list to append to as the run goes
+    (an HTTP job shows it while running)."""
     lines = [] if lines is None else lines
+    place = place or {}
     try:
         topo = load_valid_topology()
     except (LabError, OSError):
@@ -1965,11 +1974,10 @@ def lab_run(steps, phase, stop=None, namespace=None, lines=None):
         def log(self, _phase, text):
             lines.append(f"{time.monotonic() - self.start:5.1f}s  {text}")
 
-    run, error = Run(topo), None
+    ns = place.get("namespace")
+    run, error = Run(topo, place.get("workdir"), {"OPSFORGE_NAMESPACE": ns} if ns else None), None
     try:
-        if namespace and phase == "setup":
-            lab_namespace(run, phase, namespace, create=True)
-        for step in contract.with_namespace(steps or [], namespace):
+        for step in contract.with_namespace(steps or [], ns):
             run.step(phase, step)
             if stop and stop(step, run.metrics):
                 break
@@ -1977,24 +1985,21 @@ def lab_run(steps, phase, stop=None, namespace=None, lines=None):
         error = _message(e)
     finally:
         run.stop_flap()
-    if namespace and phase == "teardown":
-        try:
-            lab_namespace(run, phase, namespace, create=False)
-        except RUN_ERRORS as e:
-            error = error or _message(e)
     return run.metrics, lines, error
 
 
-def lab_namespace(run, phase, namespace, create):
-    """Creates (labelled as made through the API) or deletes `namespace` on every K3s cluster."""
-    clusters = render.k3s_clusters(run.topo)
+def lab_namespace(namespace, create, log, sandbox=None):
+    """Creates (labelled as made through the API, and with its sandbox) or deletes `namespace` on every K3s
+    cluster."""
+    clusters = render.k3s_clusters(load_valid_topology())
     if not clusters:
         raise LabError(f"namespace {namespace} needs a K3s cluster")
+    labels = f"{API_LABEL} {SANDBOX_LABEL}={sandbox}" if sandbox else API_LABEL
     for c in clusters.values():
-        run.log(phase, f"{'create' if create else 'delete'} namespace {namespace} on {c['server']}")
+        log(f"{'create' if create else 'delete'} namespace {namespace} on {c['server']}")
         if create:
             cmd = (f"k3s kubectl get namespace {namespace} >/dev/null 2>&1 || k3s kubectl create namespace {namespace}"
-                   f" && k3s kubectl label --overwrite namespace {namespace} {API_LABEL}")
+                   f" && k3s kubectl label --overwrite namespace {namespace} {labels}")
         else:
             cmd = f"k3s kubectl delete namespace {namespace} --ignore-not-found --timeout=120s"
         res = run_in(c["server"], "sh", "-c", cmd)
@@ -2002,7 +2007,7 @@ def lab_namespace(run, phase, namespace, create):
             raise LabError(f"namespace {namespace} on {c['server']}: {(res.stderr or res.stdout).strip()}")
 
 
-def lab_probe(arg, namespace=None, lines=None):
+def lab_probe(arg, lines=None, place=None):
     """Runs a probe check. It stops at the first named step whose expectations fail, so a check on an unchanged
     lab answers at once instead of sitting through every later wait_until."""
     expectations = scenario.expectations(arg)
@@ -2011,7 +2016,7 @@ def lab_probe(arg, namespace=None, lines=None):
         mine = [(m, c) for m, c in expectations if m.split(".")[0] == step.get("name")]
         return any(not scenario.check(m, c, metrics)[0] for m, c in mine)
 
-    metrics, lines, error = lab_run(arg["steps"], "check", stop=failed, namespace=namespace, lines=lines)
+    metrics, lines, error = lab_run(arg["steps"], "check", stop=failed, lines=lines, place=place)
     results = []
     for metric, condition in expectations:
         ok, value, _ = scenario.check(metric, condition, metrics)
@@ -2019,6 +2024,67 @@ def lab_probe(arg, namespace=None, lines=None):
         results.append({"metric": metric, "want": condition, "got": value, "passed": ok, "checked": checked})
     return {"passed": error is None and all(r["passed"] for r in results), "results": results, "log": lines,
             "error": error}
+
+
+# Sandboxes (lab/sandboxes.py holds them; this is their lab work). A place is {sandbox, namespace, workdir}.
+
+
+def lab_facts():
+    """(lab_state(), the topology or None): what a sandbox's requirements are checked against."""
+    try:
+        topo = load_valid_topology()
+    except (LabError, OSError):
+        topo = None
+    return lab_state(), topo
+
+
+def sandbox_up(place, steps, lines):
+    """A sandbox's setup: its namespace on every cluster, then `steps` (runOutput)."""
+    error = None
+    if place.get("namespace"):
+        began = time.monotonic()
+        try:
+            lab_namespace(place["namespace"], True, lambda t: lines.append(f"{time.monotonic() - began:5.1f}s  {t}"),
+                          place["sandbox"])
+        except RUN_ERRORS as e:
+            error = _message(e)
+    if error is None:
+        metrics, lines, error = lab_run(steps, "setup", lines=lines, place=place)
+    else:
+        metrics = {}
+    return {"contract": contract.CONTRACT, "metrics": metrics, "log": list(lines), "error": error}
+
+
+def sandbox_down(place, steps, faults, lines):
+    """A sandbox's cleanup: `steps` (its teardown), its namespace, then heal when it had faults; each part runs even
+    after the one before failed (runOutput, the first error)."""
+    began = len(lines)
+    metrics, lines, error = lab_run(steps, "teardown", lines=lines, place=place)
+    start = time.monotonic()
+
+    def log(text):
+        lines.append(f"{time.monotonic() - start:5.1f}s  {text}")
+
+    if place.get("namespace"):
+        try:
+            lab_namespace(place["namespace"], False, log)
+        except RUN_ERRORS as e:
+            error = error or _message(e)
+    if faults:
+        try:
+            log("heal" + ("" if heal_links() else " (no fault)"))
+        except RUN_ERRORS as e:
+            error = error or _message(e)
+    return {"contract": contract.CONTRACT, "metrics": metrics, "log": lines[began:], "error": error}
+
+
+def sandbox_probe(place, doc, lines):
+    return {"contract": contract.CONTRACT, **lab_probe(doc, lines=lines, place=place)}
+
+
+def sandbox_action(place, steps, lines):
+    metrics, lines, error = lab_run(steps, "action", lines=lines, place=place)
+    return {"contract": contract.CONTRACT, "metrics": metrics, "log": lines, "error": error}
 
 
 def api_input(kind, text=None):
@@ -2038,13 +2104,13 @@ def api_input(kind, text=None):
 
 def api_run(doc, lines=None):
     """`opsforge api run`: a lab's setup or teardown steps."""
-    metrics, lines, error = lab_run(doc["steps"], doc["phase"], namespace=doc.get("namespace"), lines=lines)
+    metrics, lines, error = lab_run(doc["steps"], doc["phase"], lines=lines)
     return {"contract": contract.CONTRACT, "metrics": metrics, "log": lines, "error": error}
 
 
 def api_probe(doc, lines=None):
     """`opsforge api probe`: a probe check (passed, one result per expectation)."""
-    return {"contract": contract.CONTRACT, **lab_probe(doc, namespace=doc.get("namespace"), lines=lines)}
+    return {"contract": contract.CONTRACT, **lab_probe(doc, lines=lines)}
 
 
 def api_heal():
@@ -2072,11 +2138,52 @@ def cmd_api_serve(args):
     return 0
 
 
+def cmd_api_sandbox(args):
+    """`opsforge api sandbox [list | delete <id>]`: the lab owner's view of the sandboxes clients made, and cleanup
+    by hand (only while no `api serve` uses the same data folder: it owns the records then)."""
+    data = Path(args.data or STATE)
+    words = args.words or ["list"]
+    store = sandboxes.Sandboxes(sys.modules[__name__], data, apiserver.Workspaces(data / "workspaces"),
+                                apiserver.Jobs(sys.modules[__name__]))
+    if words == ["list"]:
+        docs = [sb.doc(contract.CONTRACT) for sb in store.list()]
+        if args.json:
+            print(json.dumps({"contract": contract.CONTRACT, "sandboxes": docs}, sort_keys=True))
+        for d in [] if args.json else docs:
+            print(f"{d['id']}  {d['status']:9}  {d['kind']:9}  {d['namespace'] or '-':11}  expires {d['expires_at']}  "
+                  f"{d['label']}")
+        return 0
+    if len(words) != 2 or words[0] != "delete":
+        raise LabError("usage: opsforge api sandbox [list | delete <id>]")
+    with open(store.dir / ".serving", "w") as serving:
+        try:
+            fcntl.flock(serving, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise LabError(f"opsforge api serve owns {data}'s sandboxes: DELETE /v1/sandboxes/{words[1]} through it, "
+                           "or stop it first") from None
+        try:
+            job = store.delete(words[1], touch=False)
+        except apiserver.ApiError as e:
+            raise LabError(e.detail) from None
+        job.done.wait()
+    print("\n".join(job.log))
+    if job.problem:
+        raise LabError(job.problem["detail"])
+    error = (job.output["teardown"] or {}).get("error")
+    print(f"sandbox {words[1]} deleted" + (f" (teardown: {error})" if error else ""))
+    return 0
+
+
 def cmd_api(args):
     """OpsForge's machine interface (contract/README.md), which OpsForge Academy calls: one document on stdout, exit
-    0; a problem document on stderr and exit 1 otherwise. `serve` serves the same documents over HTTP."""
+    0; a problem document on stderr and exit 1 otherwise. `serve` serves the same documents over HTTP; `sandbox`
+    lists and deletes the sandboxes clients made."""
     if args.action == "serve":
         return cmd_api_serve(args)
+    if args.action == "sandbox":
+        return cmd_api_sandbox(args)
+    if args.words:
+        raise LabError(f"api {args.action} takes no arguments")
     try:
         if args.action == "state":
             doc = api_state()
@@ -2236,15 +2343,18 @@ def main():
     p.add_argument("--list", action="store_true", help="list the scenarios")
     p.set_defaults(func=cmd_scenario)
     p = sub.add_parser("api", help="the machine interface (contract/README.md): lab state, run and probe steps, heal, "
-                       "validate steps, version; `serve` serves it over HTTP (contract/openapi.yaml)")
-    p.add_argument("action", choices=("state", "run", "probe", "heal", "validate-steps", "version", "serve"),
+                       "validate steps, version; `serve` serves it over HTTP (contract/openapi.yaml) with "
+                       "sandboxes; `sandbox [list | delete <id>]` cleans them up by hand")
+    p.add_argument("action", choices=("state", "run", "probe", "heal", "validate-steps", "version", "serve", "sandbox"),
                    help="run, probe and validate-steps read their input document on stdin")
+    p.add_argument("words", nargs="*", help="sandbox: list (default) or delete <id>")
     p.add_argument("--host", default="127.0.0.1", help="serve: address to bind (default 127.0.0.1; others need TLS)")
     p.add_argument("--port", type=int, default=apiserver.DEFAULT_PORT,
                    help=f"serve: port (default {apiserver.DEFAULT_PORT})")
     p.add_argument("--tls-cert", type=Path, help="serve: TLS certificate (PEM), with --tls-key")
     p.add_argument("--tls-key", type=Path, help="serve: TLS private key (PEM)")
-    p.add_argument("--data", type=Path, help="serve: token, workspaces and shell history here (default .opsforge/)")
+    p.add_argument("--data", type=Path, help="serve, sandbox: token, sandboxes, workspaces and shell history here "
+                   "(default .opsforge/)")
     p.add_argument("--json", action="store_true", help="print the contract document (what OpsForge Academy reads)")
     p.set_defaults(func=cmd_api)
     # argparse.REMAINDER drops leading options (`provision --check`, `kubectl -n demo get pods`), so these two take

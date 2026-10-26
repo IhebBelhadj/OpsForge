@@ -1,5 +1,5 @@
-"""OpsForge's machine interface `opsforge api` (contract/README.md): the contract version, the input checks of
-`run`/`probe`/`validate-steps` and the helpers those commands share. OpsForge Academy calls it to drive the lab.
+"""OpsForge's machine interface `opsforge api` (contract/README.md): the contract version, the input checks of its
+documents and the helpers its commands share. OpsForge Academy calls it to drive the lab.
 """
 
 import json
@@ -14,26 +14,26 @@ import scenario
 # revisions) in `api version`
 CONTRACT = 1
 CONTRACT_MINOR = 0
-# Inputs and outputs of `run`, `probe`, `heal` and `validate-steps` (OpsForge publishes it; callers keep a copy)
+# Inputs and outputs of the API's documents (OpsForge publishes it; callers keep a copy)
 TOOLCHAIN_SCHEMA = Path(__file__).resolve().parents[1] / "contract" / "toolchain.schema.json"
 
 
 def input_errors(kind, doc):
-    """Why `doc` is not a valid `kind` document (toolchain.schema.json's $defs: runInput, probeInput, stepsInput)."""
+    """Why `doc` is not a valid `kind` document (toolchain.schema.json's $defs: sandboxInput, probeInput, ...)."""
     schema = {**json.loads(TOOLCHAIN_SCHEMA.read_text()), "$ref": f"#/$defs/{kind}"}
     return [f"{'/'.join(map(str, e.absolute_path)) or 'document'}: {e.message}"
             for e in jsonschema.Draft202012Validator(schema).iter_errors(doc)]
 
 
 def with_namespace(obj, namespace):
-    """`obj` (steps, a text) with `${ns}` replaced by the attempt's namespace; ValueError if it has none."""
+    """`obj` (steps, a text) with `${ns}` replaced by the sandbox's namespace; ValueError if it has none."""
     if isinstance(obj, dict):
         return {k: with_namespace(v, namespace) for k, v in obj.items()}
     if isinstance(obj, list):
         return [with_namespace(v, namespace) for v in obj]
     if isinstance(obj, str) and "${ns}" in obj:
         if namespace is None:
-            raise ValueError(f"{obj!r} uses ${{ns}}, but the lab has no namespace (namespace: auto)")
+            raise ValueError(f"{obj!r} uses ${{ns}}, but there is no namespace (a sandbox with namespace: true)")
         return obj.replace("${ns}", namespace)
     return obj
 
