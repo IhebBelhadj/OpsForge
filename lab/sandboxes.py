@@ -63,7 +63,7 @@ class Sandbox:
     groups of its open shells (not saved: a restart ends them)."""
 
     FIELDS = ("id", "kind", "label", "requires", "namespace", "setup_steps", "teardown_steps", "expires_after",
-              "status", "setup", "teardown", "created", "used", "layout", "placeholders", "dirty")
+              "status", "setup", "teardown", "created", "used", "layout", "placeholders", "dirty", "environment")
 
     def __init__(self, **fields):
         for f in self.FIELDS:
@@ -73,10 +73,11 @@ class Sandbox:
 
     @property
     def exclusive(self):
-        return bool(self.requires.get("faults") or self.requires.get("cluster_changes"))
+        """Runs alone: it changes the lab outside its namespace (faults, cluster changes, its own environment)."""
+        return bool(self.requires.get("faults") or self.requires.get("cluster_changes") or self.environment)
 
     def place(self, workdir):
-        return {"sandbox": self.id, "namespace": self.namespace, "workdir": workdir}
+        return {"sandbox": self.id, "namespace": self.namespace, "workdir": workdir, "environment": self.environment}
 
     def doc(self, contract, status=None):
         return {"contract": contract, "id": self.id, "kind": self.kind, "label": self.label,
@@ -145,8 +146,9 @@ class Sandboxes:
                                f"sandbox {sb.id} is {sb.status}; this needs it {' or '.join(statuses)}")
 
     def steps_errors(self, sets):
-        """400 when steps would not run (fault steps where the sandbox did not declare them included)."""
-        errors = self.cli.contract.step_errors(sets)
+        """400 when steps would not run (fault steps where the sandbox did not declare them included, environment
+        steps without an environment)."""
+        errors = self.cli.contract.step_errors(sets, self.cli.topology_errors)
         if errors:
             names = {0: "setup", 1: "teardown"} if len(sets) == 2 else {0: "steps"}
             raise self.problem(400, "bad-input", "Bad input",
@@ -156,24 +158,33 @@ class Sandboxes:
 
     def create(self, doc):
         """Starts creating a sandbox from a sandboxInput: (job, sandbox)."""
-        requires, want_ns = doc.get("requires", {}), bool(doc.get("namespace"))
+        requires, want_ns, env = doc.get("requires", {}), bool(doc.get("namespace")), doc.get("environment")
         faults = bool(requires.get("faults"))
-        self.steps_errors([{"steps": doc.get("setup", []), "faults": faults},
-                           {"steps": doc.get("teardown", []), "faults": faults}])
-        state, topo = self.cli.lab_facts()
-        if not state.get("up"):
-            raise self.problem(409, "lab-down", "The lab is down", state.get("error") or "the lab is down (./opsforge up)")
+        if env is not None:
+            # Its own environment: checked here, made by the job; requirements are the document's to meet
+            if errors := self.cli.topology_errors(env):
+                raise self.problem(400, "bad-input", "Bad input", "environment: " + "; ".join(errors))
+            state = {"up": True, "layout": self.cli.scenario.layout(env), "topology": "the sandbox's environment",
+                     "placeholders": self.cli.scenario.placeholders(env)}
+            topo = env
+        sets = [{"steps": doc.get(part, []), "faults": faults} for part in ("setup", "teardown")]
+        self.steps_errors([s | ({"environment": env} if env is not None else {}) for s in sets])
+        if env is None:
+            state, topo = self.cli.lab_facts()
+            if not state.get("up"):
+                raise self.problem(409, "lab-down", "The lab is down",
+                                   state.get("error") or "the lab is down (./opsforge up)")
         if missing := unmet(requires, want_ns, state, topo):
             raise self.problem(409, "unmet-requirements", "Unmet requirements",
                                "the running lab cannot host this sandbox: " + "; ".join(missing), unmet=missing)
         with self.lock:
             others = [sb for sb in self.items.values() if sb.status in ALIVE or sb.dirty]
             alone = next((sb for sb in others if sb.exclusive), None)
-            if alone or (others and (faults or requires.get("cluster_changes"))):
+            if alone or (others and (faults or requires.get("cluster_changes") or env is not None)):
                 who = alone or others[0]
                 raise self.problem(409, "lab-busy", "The lab is busy",
                                    f"sandbox {who.id} ({who.label}) is {who.status}; a sandbox that changes the lab "
-                                   "outside its namespace (faults, cluster_changes) runs alone")
+                                   "outside its namespace (faults, cluster_changes, its own environment) runs alone")
             sid = secrets.token_hex(4)
             while sid in self.items:
                 sid = secrets.token_hex(4)
@@ -183,7 +194,8 @@ class Sandboxes:
                          setup_steps=doc.get("setup", []), teardown_steps=doc.get("teardown", []),
                          expires_after=doc.get("expires_after", DEFAULT_EXPIRY), status="creating", setup=None,
                          teardown=None, created=t, used=t, layout=state.get("layout"),
-                         placeholders={**state.get("placeholders", {}), **({"${ns}": ns} if ns else {})}, dirty=False)
+                         placeholders={**state.get("placeholders", {}), **({"${ns}": ns} if ns else {})}, dirty=False,
+                         environment=env)
             self.workspaces.create(sid)
             try:
                 for path, text in sorted(doc.get("files", {}).items()):
@@ -257,7 +269,13 @@ class Sandboxes:
                              lambda place, lines: self.cli.sandbox_action(place, doc["steps"], lines))
 
     def _observe(self, sid, kind, doc, work):
-        self.steps_errors([{"steps": doc["steps"], "expect": doc.get("expect"), "faults": False}])
+        check = {"steps": doc["steps"], "expect": doc.get("expect"), "faults": False}
+        with self.lock:
+            sb = self.get(sid)
+        if kind == "action" and sb.environment is not None:
+            # Its environment as it runs now (setup or earlier actions may have patched it): it runs alone
+            check["environment"] = self.cli.load_valid_topology()
+        self.steps_errors([check])
         with self.lock:
             sb = self.get(sid)
             self.need(sb, "ready")

@@ -1,6 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "OpsForge lab topology",
+  "$id": "https://opsforge.lab/contract/environment.schema.json",
+  "title": "OpsForge environment (topology.yml's format)",
+  "description": "An environment document: sites, WAN links, the VPN and nodes. topology.yml and topologies/*.yml are environments; a sandbox may bring its own (sandboxInput.environment) and an `environment` step patches the running one (RFC 7386 merge patch). OpsForge also checks cross-references and the address plan beyond this schema.",
   "type": "object",
   "required": ["transit", "sites", "links", "nodes"],
   "additionalProperties": false,

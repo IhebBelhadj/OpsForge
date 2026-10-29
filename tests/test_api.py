@@ -203,7 +203,7 @@ def test_validate_steps_reports_each_set():
         {"steps": [{"partition": "c"}, echo("a", 1)], "expect": {"b.value": "=> 1"}, "faults": False},
     ]}))
     assert [(e["set"], e["message"]) for e in doc["errors"]] == [
-        (1, "steps[0]: unknown step 'pign' (one of " + ", ".join(cli.scenario.STEPS) + ")"),
+        (1, "steps[0]: unknown step 'pign' (one of " + ", ".join((*cli.scenario.STEPS, *cli.scenario.ENVIRONMENT_STEPS)) + ")"),
         (1, "steps[1]: degrade needs 'link'"),
         (2, "steps[0]: partition: fault steps are not allowed here (only a lab's setup and teardown change the lab)"),
         (2, "expect: b.value: no step is named 'b'"),

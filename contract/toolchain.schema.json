@@ -74,6 +74,10 @@
           "type": "integer",
           "minimum": 60,
           "maximum": 604800
+        },
+        "environment": {
+          "description": "Minor 1. The environment the sandbox runs in (environment.schema.json's document, checked by OpsForge): creating it reshapes the lab to it first (machines, networks, VPN, K3s), then setup; `environment` steps in its setup and actions patch it. Such a sandbox runs alone; `requires` is checked against this document, not the running lab, and the lab need not be up.",
+          "type": "object"
         }
       }
     },
@@ -236,6 +240,10 @@
               "faults": {
                 "description": "false: fault steps (partition, degrade, ...) are refused, as in a check that only observes the lab",
                 "type": "boolean"
+              },
+              "environment": {
+                "description": "Minor 1. The environment document `environment` steps patch (a sandbox's sandboxInput.environment): each patch is applied in order and the result checked. Without it, environment steps are refused.",
+                "type": "object"
               }
             }
           }

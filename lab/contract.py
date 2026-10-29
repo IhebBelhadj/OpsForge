@@ -13,7 +13,7 @@ import scenario
 # The toolchain contract `opsforge api` speaks (contract/README.md): the major in every document, the minor (additive
 # revisions) in `api version`
 CONTRACT = 1
-CONTRACT_MINOR = 0
+CONTRACT_MINOR = 1
 # Inputs and outputs of the API's documents (OpsForge publishes it; callers keep a copy)
 TOOLCHAIN_SCHEMA = Path(__file__).resolve().parents[1] / "contract" / "toolchain.schema.json"
 
@@ -38,9 +38,12 @@ def with_namespace(obj, namespace):
     return obj
 
 
-def step_errors(sets):
+def step_errors(sets, document_errors=None):
     """`validate-steps`: why each set of steps (with its `expect`) would not run, as [{set, message}] in set order.
-    `faults: false` refuses fault steps (scenario.FAULT_STEPS): checks only observe the lab."""
+    `faults: false` refuses fault steps: checks only observe the lab. Environment steps need the set's `environment`
+    (the document they patch: a sandbox's, for its setup and actions; probes never get one): each patch is applied in
+    order and the result checked with `document_errors(document)` (opsforge's topology_errors), so a later patch sees
+    the earlier ones."""
     errors = []
     for n, s in enumerate(sets):
         steps = s["steps"]
@@ -50,5 +53,21 @@ def step_errors(sets):
                 and scenario.step_type(step) in scenario.FAULT_STEPS]
         msgs += [re.sub(r"^measure\[", "steps[", e)
                  for e in scenario.errors({"description": "-", "measure": steps, "expect": s.get("expect")})]
+        msgs += environment_errors(s, document_errors)
         errors += [{"set": n, "message": m} for m in msgs]
     return errors
+
+
+def environment_errors(s, document_errors):
+    """A set's environment steps: refused without an environment, else each patched document checked."""
+    patches = scenario.environment_patches(s["steps"])
+    if "environment" not in s:
+        return [f"steps[{i}]: environment: only in the setup or actions of a sandbox with an environment of its own "
+                "(sandboxInput.environment), never in a check" for i, _ in patches]
+    msgs, doc = [], s["environment"]
+    for i, patch in patches:
+        if not isinstance(patch, dict):
+            continue  # scenario.errors said so
+        doc = scenario.merge_patch(doc, patch)
+        msgs += [f"steps[{i}]: environment: the patched document: {e}" for e in (document_errors or (lambda d: []))(doc)]
+    return msgs

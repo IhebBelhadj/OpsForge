@@ -250,3 +250,61 @@ def test_opsforge_kubectl_defaults_to_the_sandboxs_namespace(monkeypatch, tmp_pa
     monkeypatch.delenv("OPSFORGE_NAMESPACE")
     cli.cmd_kubectl(args)
     assert calls == [["--namespace=sb-0123abcd", "get", "pods", "-n", "kube-system"], ["get", "pods", "-n", "kube-system"]]
+
+
+# Minor 1: a sandbox with its own environment (docs/PLAN.md Phase 12): the lab is reshaped to it, then setup
+
+
+def one_site(topo):
+    return {**topo, "sites": {"a": topo["sites"]["a"]}, "links": {}, "interconnect": "none",
+            "nodes": {"a-cp1": topo["nodes"]["a-cp1"]}} | ({} if "routing" not in topo else {"routing": "static"})
+
+
+@pytest.fixture
+def reshapes(monkeypatch):
+    """The documents the lab was reshaped to (apply_environment faked: no Incus)."""
+    done = []
+    monkeypatch.setattr(cli, "apply_environment", lambda doc, log: done.append(doc) or log("reshaped"))
+    return done
+
+
+def test_a_sandbox_brings_its_environment_and_needs_no_running_lab(api, lab, reshapes):
+    lab.state = {**lab.state, "up": False}
+    env = one_site(lab.topo)
+    sb = api.sandbox(environment=env, requires={"needs": ["k3s"]}, setup=[echo("a", 1)])
+    assert sb["status"] == "ready" and reshapes == [env] and sb["setup"]["metrics"]["a.value"] == 1
+    assert sb["layout"] == "stretched" and sb["placeholders"]["${node:a}"] == "a-cp1"
+    assert "reshaped" in " ".join(sb["setup"]["log"])
+
+
+def test_a_sandbox_environment_is_checked_and_meets_the_requirements(api, lab, reshapes):
+    env = one_site(lab.topo)
+    status, body = create(api, environment={**env, "nodes": {"a-cp1": {**env["nodes"]["a-cp1"], "site": "z"}}})
+    assert problem(status, body, "bad-input") == 400 and body["detail"].startswith("environment: ")
+    status, body = create(api, environment=env, requires={"needs": ["vpn"]})
+    assert problem(status, body, "unmet-requirements") == 409 and body["unmet"][0].startswith("vpn")
+    assert reshapes == [] and api.call("GET", "/v1/sandboxes")[2]["sandboxes"] == []
+
+
+def test_a_sandbox_with_an_environment_runs_alone(api, lab, reshapes):
+    plain = api.sandbox()
+    status, body = create(api, environment=one_site(lab.topo))
+    assert problem(status, body, "lab-busy") == 409 and plain["id"] in body["detail"]
+    delete(api, plain["id"])
+    own = api.sandbox(environment=one_site(lab.topo))
+    status, body = create(api)
+    assert problem(status, body, "lab-busy") == 409 and own["id"] in body["detail"]
+
+
+def test_environment_steps_only_in_a_sandbox_with_an_environment_and_never_in_probes(api, lab, reshapes):
+    patch = {"environment": {"nodes": {"a-w2": {"site": "a", "role": "k3s-agent"}}}}
+    status, body = create(api, setup=[patch])
+    assert problem(status, body, "bad-input") == 400 and "environment: only in the setup or actions" in body["detail"]
+    sb = api.sandbox(environment=one_site(lab.topo))
+    lab.topo = one_site(lab.topo)  # the running document once reshaped
+    status, _, body = api.call("POST", f"/v1/sandboxes/{sb['id']}/probes",
+                               {"contract": 1, "steps": [patch], "expect": {}})
+    assert problem(status, body, "bad-input") == 400
+    status, _, job = api.call("POST", f"/v1/sandboxes/{sb['id']}/actions", {"contract": 1, "steps": [patch]})
+    assert status == 202 and wait_job(api, job["id"])["output"]["error"] is None
+    assert sorted(reshapes[-1]["nodes"]) == ["a-cp1", "a-w2"], "an action patched the running document"

@@ -23,7 +23,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 # The OpsForge release (semver), reported by `opsforge api version`
-VERSION = "1.0.0"
+VERSION = "1.1.0-dev"
 sys.path.insert(0, str(ROOT / "lab"))
 import contract  # noqa: E402
 import apiserver  # noqa: E402
@@ -31,7 +31,7 @@ import render  # noqa: E402
 import sandboxes  # noqa: E402
 import scenario  # noqa: E402
 
-SCHEMA = ROOT / "lab" / "topology.schema.json"
+SCHEMA = ROOT / "contract" / "environment.schema.json"
 ANSIBLE_DIR = ROOT / "ansible"
 INVENTORY = ANSIBLE_DIR / "inventory" / "hosts.yml"
 # Controller-side lab state (gitignored): SSH client/host keys, lab CA. Survives `down` so identities are stable.
@@ -865,23 +865,31 @@ def cmd_env(args):
             print(f"  {kind}: {', '.join(names)}")
         print("  no changes" if not changes else "Apply with ./opsforge env apply " + str(args.file))
         return 0
+    apply_environment(topo, Path(args.file).read_text(), provision=not args.no_provision)
+    print("Environment applied. Next: ./opsforge verify" if not args.no_provision else
+          "Not provisioned (--no-provision). Next: ./opsforge provision, then ./opsforge verify")
+    return 0
+
+
+def apply_environment(topo, text=None, provision=True, log=print):
+    """Brings the lab to an environment document (valid: load_document or topology_errors first): records it as the
+    active environment (`text` as written, else the document dumped), `up`, removes the K3s nodes that left, then
+    `provision`. LabError when a part fails: the document stays recorded, so applying it again resumes."""
     if os.environ.get("OPSFORGE_TOPOLOGY"):
         raise LabError("OPSFORGE_TOPOLOGY is set and would win over the applied environment: unset it first")
     STATE.mkdir(mode=0o700, exist_ok=True)
     tmp = ENVIRONMENT.with_suffix(".tmp")
-    tmp.write_text(Path(args.file).read_text())
+    # Leaf mappings stay flow style: `link --save` rewrites a link's single line
+    tmp.write_text(text if text is not None else yaml.safe_dump(topo, sort_keys=False, default_flow_style=None))
     tmp.replace(ENVIRONMENT)
-    print(f"Active environment: {args.file} (recorded in {shown(ENVIRONMENT)})")
-    if code := cmd_up(args):
-        return code
+    log(f"environment recorded in {shown(ENVIRONMENT)}: {len(topo['sites'])} site(s), {len(topo['nodes'])} node(s)")
+    if cmd_up(argparse.Namespace()):
+        raise LabError("up failed")
     remove_stale_k3s_nodes(topo)
-    if args.no_provision:
-        print("Not provisioned (--no-provision). Next: ./opsforge provision, then ./opsforge verify")
-        return 0
-    if code := cmd_provision(argparse.Namespace(ansible_args=[])):
-        return code
-    print("Environment applied. Next: ./opsforge verify")
-    return 0
+    if provision:
+        log("provisioning")
+        if cmd_provision(argparse.Namespace(ansible_args=[])):
+            raise LabError("provision failed (./opsforge provision to see why)")
 
 
 def stale_images(images, instances):
@@ -1896,6 +1904,12 @@ class ScenarioRun:
             self.flapping = (thread, stop)
         elif kind == "stop_flap":
             self.stop_flap()
+        elif kind == "environment":
+            new = scenario.merge_patch(self.topo, arg)
+            if errs := topology_errors(new):
+                raise LabError("environment: the patched document is invalid: " + "; ".join(errs))
+            apply_environment(new, log=lambda text: self.log(phase, f"    {text}"))
+            self.topo = new
         elif kind == "run":
             began = time.monotonic()
             code, out = self.shell(arg.get("host", "host"), arg["cmd"], scenario.seconds(arg.get("timeout", 300)))
@@ -2168,9 +2182,17 @@ def lab_facts():
 
 
 def sandbox_up(place, steps, lines):
-    """A sandbox's setup: its namespace on every cluster, then `steps` (runOutput)."""
+    """A sandbox's setup: the lab reshaped to its environment (when it brought one), its namespace on every cluster,
+    then `steps` (runOutput)."""
     error = None
-    if place.get("namespace"):
+    if place.get("environment"):
+        began = time.monotonic()
+        try:
+            apply_environment(place["environment"],
+                              log=lambda t: lines.append(f"{time.monotonic() - began:5.1f}s  {t}"))
+        except RUN_ERRORS as e:
+            error = f"reshaping the lab to the sandbox's environment: {_message(e)}"
+    if error is None and place.get("namespace"):
         began = time.monotonic()
         try:
             lab_namespace(place["namespace"], True, lambda t: lines.append(f"{time.monotonic() - began:5.1f}s  {t}"),
@@ -2249,7 +2271,7 @@ def api_heal():
 
 def api_validate_steps(doc):
     """`opsforge api validate-steps`: why sets of scenario steps (a lab's setup, a check's probe) would not run."""
-    return {"contract": contract.CONTRACT, "errors": contract.step_errors(doc["sets"])}
+    return {"contract": contract.CONTRACT, "errors": contract.step_errors(doc["sets"], topology_errors)}
 
 
 def cmd_api_serve(args):

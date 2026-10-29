@@ -28,6 +28,11 @@ requirements and always cleaned up by OpsForge.
 - Steps run on the lab host **in the workspace**, with `opsforge` on the PATH, `${ns}` the namespace and the
   namespace as `opsforge kubectl`'s default (`-n`/`-A` still win). Fault steps (partition, degrade, ...) are allowed
   only in a sandbox that declares `requires.faults`, and never in probes or actions.
+- Minor 1, environments: a sandbox may bring its own `environment` (`environment.schema.json`: sites, links, VPN,
+  nodes). Creating it then reshapes the lab to that document first (machines and networks made or deleted, K3s nodes
+  that left removed, provisioning), with no need for the lab to be up, and `requires` is checked against the document.
+  It runs alone. `environment` steps (an RFC 7386 merge patch of the running document, e.g. `{nodes: {b-w2: {site: b,
+  role: k3s-agent}}}` or `{links: {a-c: null}}`) are allowed in its setup and actions, never in probes.
 - Under `/v1/sandboxes/{id}/`: `files/...` and `moves` (its workspace: 1 MiB per file, 10 MiB in all, paths
   confined), `terminal` (a WebSocket shell in the workspace), `probes` and `actions` (jobs, on a `ready` sandbox),
   `reset` (job: teardown then setup; the files are kept). `DELETE` (job) hangs its terminals up, runs `teardown`,
@@ -74,3 +79,4 @@ holds what this release returns for fixed inputs (written by `tests/test_api.py`
 | Minor | OpsForge | Added |
 |---|---|---|
 | 0 | 1.0.0 | `version`, `state` (with `placeholders`), `run`, `probe`, `heal`, `validate-steps`, `sandbox`; over HTTP: jobs and sandboxes (files, terminal, probes, actions, reset) |
+| 1 | 1.1.0 | Environments (docs/PLAN.md Phase 12): `environment.schema.json` (topology.yml's format, published); `sandboxInput.environment` (the sandbox reshapes the lab to it, then runs alone); the `environment` step (an RFC 7386 merge patch of it, in setup and actions only); `stepsInput` sets' `environment` (what those steps patch, checked patch by patch) |

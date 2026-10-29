@@ -37,6 +37,12 @@ STEPS = {
 SCALAR_STEPS = ("sleep", "partition", "heal", "stop_flap")
 # Steps that change the lab: allowed in a lab's setup/teardown, never in a check (checks only observe)
 FAULT_STEPS = ("partition", "heal", "degrade", "mtu", "flap", "stop_flap")
+# `environment: <merge patch>` (Phase 12) reshapes the running environment: RFC 7386 against the active document
+# (null deletes a key), e.g. {nodes: {b-w2: {site: b, role: k3s-agent}}, links: {a-c: null}}. Only where the steps'
+# owner brought an environment (a sandbox's), never in a check
+ENVIRONMENT_STEPS = ("environment",)
+# An environment document's top-level keys (contract/environment.schema.json's properties): what a patch may touch
+DOCUMENT_KEYS = ("transit", "interconnect", "routing", "sites", "links", "nodes")
 _PLACEHOLDER = re.compile(r"\$\{(ip|public):([a-z0-9-]+)\}")
 _NODE = re.compile(r"\$\{(node|server|cluster):([a-z0-9-]+)\}")
 LAYOUTS = ("stretched", "multi-cluster")
@@ -67,8 +73,17 @@ def errors(doc):
                 errs.append(f"{where}: a step is a mapping like {{sleep: 10s}}")
                 continue
             kind = step_type(step)
+            if kind in ENVIRONMENT_STEPS:
+                patch = step[kind]
+                if not isinstance(patch, dict) or not patch:
+                    errs.append(f"{where}: environment takes a merge patch of the environment document, e.g. "
+                                "{nodes: {b-w2: {site: b, role: k3s-agent}}}")
+                else:
+                    errs += [f"{where}: environment: no {k!r} in an environment document (one of "
+                             f"{', '.join(DOCUMENT_KEYS)})" for k in patch if k not in DOCUMENT_KEYS]
+                continue
             if kind not in STEPS:
-                errs.append(f"{where}: unknown step {kind!r} (one of {', '.join(STEPS)})")
+                errs.append(f"{where}: unknown step {kind!r} (one of {', '.join((*STEPS, *ENVIRONMENT_STEPS))})")
                 continue
             if "name" in step:
                 names.add(step["name"])
@@ -93,6 +108,26 @@ def errors(doc):
         except ValueError as e:
             errs.append(f"expect: {metric}: {e}")
     return errs
+
+
+def merge_patch(target, patch):
+    """RFC 7386 JSON Merge Patch: `patch`'s mappings merge into `target`'s, null deletes a key, anything else
+    replaces. `target` is left unchanged."""
+    if not isinstance(patch, dict):
+        return patch
+    out = dict(target) if isinstance(target, dict) else {}
+    for key, value in patch.items():
+        if value is None:
+            out.pop(key, None)
+        else:
+            out[key] = merge_patch(out.get(key), value)
+    return out
+
+
+def environment_patches(steps):
+    """The merge patches of `steps`' environment steps, with their index."""
+    return [(i, step[step_type(step)]) for i, step in enumerate(steps)
+            if isinstance(step, dict) and step and step_type(step) in ENVIRONMENT_STEPS]
 
 
 def expectations(doc):

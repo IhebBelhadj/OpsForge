@@ -135,7 +135,9 @@ def test_apply_stops_when_up_fails_and_can_skip_provisioning(topo, tmp_path, mon
     monkeypatch.setattr(cli, "cmd_provision", lambda a: calls.append("provision") or 0)
     doc = write(tmp_path, one_site(topo), "doc.yml")
     monkeypatch.setattr(cli, "cmd_up", lambda a: 1)
-    assert cli.cmd_env(apply_args(doc)) == 1 and calls == []
+    with pytest.raises(cli.LabError, match="up failed"):
+        cli.cmd_env(apply_args(doc))
+    assert calls == [] and cli.ENVIRONMENT.read_text() == doc.read_text(), "kept: applying it again resumes"
     monkeypatch.setattr(cli, "cmd_up", lambda a: 0)
     assert cli.cmd_env(apply_args(doc, no_provision=True)) == 0 and calls == ["clean"]
 
@@ -149,3 +151,53 @@ def test_apply_refuses_an_invalid_document_or_an_override(topo, tmp_path, monkey
     with pytest.raises(cli.LabError, match="OPSFORGE_TOPOLOGY"):
         cli.cmd_env(apply_args(ROOT / "topology.yml"))
     assert not cli.ENVIRONMENT.exists()
+
+
+# Step 3: the `environment` step (an RFC 7386 merge patch) and its checks
+
+
+def test_merge_patch_follows_rfc_7386():
+    target = {"a": "b", "c": {"d": "e", "f": "g"}}
+    assert cli.scenario.merge_patch(target, {"a": "z", "c": {"f": None}}) == {"a": "z", "c": {"d": "e"}}
+    assert cli.scenario.merge_patch(target, {"c": {"h": {"i": 1}}})["c"] == {"d": "e", "f": "g", "h": {"i": 1}}
+    assert cli.scenario.merge_patch({"a": [1, 2]}, {"a": [3]}) == {"a": [3]}, "lists are replaced, not merged"
+    assert cli.scenario.merge_patch(target, {"x": None}) == target and target["c"] == {"d": "e", "f": "g"}
+
+
+def test_an_environment_step_is_a_patch_of_the_documents_keys():
+    errs = cli.scenario.errors({"description": "-", "setup": [{"environment": {"nodes": {}}}, {"environment": []},
+                                                              {"environment": {"node": {}}}]})
+    assert errs == ["setup[1]: environment takes a merge patch of the environment document, e.g. "
+                    "{nodes: {b-w2: {site: b, role: k3s-agent}}}",
+                    "setup[2]: environment: no 'node' in an environment document (one of transit, interconnect, "
+                    "routing, sites, links, nodes)"]
+
+
+def test_the_patchable_keys_are_the_schemas():
+    schema = cli.json.loads(cli.SCHEMA.read_text())
+    assert set(cli.scenario.DOCUMENT_KEYS) == set(schema["properties"])
+
+
+AGENT = {"nodes": {"a-w2": {"site": "a", "role": "k3s-agent", "cpu": 1, "memory": "768MiB"}}}
+
+
+def test_environment_steps_need_an_environment_and_each_patch_is_checked_in_order(topo):
+    steps = [{"environment": AGENT}, {"environment": {"nodes": {"a-w2": {"site": "z"}}}}]
+    assert cli.contract.step_errors([{"steps": steps}], cli.topology_errors) == [
+        {"set": 0, "message": f"steps[{i}]: environment: only in the setup or actions of a sandbox with an environment "
+                              "of its own (sandboxInput.environment), never in a check"} for i in (0, 1)]
+    errors = cli.contract.step_errors([{"steps": steps, "environment": one_site(topo)}], cli.topology_errors)
+    assert [e["message"].split(":")[0] for e in errors] == ["steps[1]"], "the first patch is valid, the second not"
+    assert "z" in errors[0]["message"]
+
+
+def test_the_environment_step_reshapes_the_lab_and_later_steps_see_the_new_document(topo, monkeypatch):
+    applied = []
+    monkeypatch.setattr(cli, "apply_environment", lambda doc, log: applied.append(doc) or log("reshaped"))
+    run = cli.ScenarioRun(one_site(topo))
+    run.log = lambda phase, text: None
+    run.step("setup", {"environment": AGENT})
+    assert sorted(applied[0]["nodes"]) == ["a-cp1", "a-w2"] and run.topo is applied[0]
+    with pytest.raises(cli.LabError, match="patched document is invalid"):
+        run.step("setup", {"environment": {"nodes": {"a-w3": {"site": "z", "role": "k3s-agent"}}}})
+    assert len(applied) == 1

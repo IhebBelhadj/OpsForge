@@ -1007,6 +1007,10 @@ Decided with the user (2026-10-29): **one environment at a time, reshaped** (not
      and deletes what left), removes the K3s nodes whose instances left (a deleted agent otherwise stays NotReady
      forever), then `provision`. `env show` prints the active document and where it comes from. Measure: reshape
      stretched → one site without VPN and back, and adding one agent, against today's `up && provision`.
+     - **Code done (2026-10-29):** `env apply/plan/show`, `topology_path()` read per call, `stale_k3s_nodes`, one site
+       allowed by the schema, `topologies/one-site.yml`; tests without Incus. **Measurements pending:** the host had
+       2.6 GB free (the lab idles at ~2.2 GiB), and a reshape to one site deletes `ci` (Gitea's live repositories):
+       to measure after a Gitea backup, or with the agent add/remove only.
   2. **Role images**: a provisioned node of each role published as an Incus image (bumped with `NODE_BUILD` and the
      role's inputs), so a new node boots provisioned and only joins; `provision` limited to what changed. Goal: one
      agent added in < 30 s.
@@ -1014,6 +1018,13 @@ Decided with the user (2026-10-29): **one environment at a time, reshaped** (not
      job, refused while another sandbox lives on the environment), then setup. Step `environment` (a patch: add or
      remove a node, site or link) in setup and actions, never in probes; `validate-steps` checks it against the
      schema and the host budget.
+     - **Code done (2026-10-29, contract minor 1, OpsForge 1.1.0-dev):** the schema moved to
+       `contract/environment.schema.json`; `sandboxInput.environment` (checked with `topology_errors`; `requires` met by
+       the document; the lab need not be up; the sandbox runs alone; `sandbox_up` reshapes with `apply_environment`
+       before the namespace and setup); step `environment` = RFC 7386 merge patch (`scenario.merge_patch`), refused
+       unless the set carries an `environment` (`stepsInput` sets: minor 1), so never in probes; actions of such a
+       sandbox are checked against the running document. Not done: the host budget check, and the job's log shows the
+       reshape's summary only (`up`/Ansible print to the server's stdout). Not run live yet.
   4. **Pause and resume**: pausing stops the sandbox's instances and renames them `s<id>-<name>` (btrfs: only
      changed blocks cost), keeping the document and the workspace; resuming pauses or discards the current
      environment, renames them back, rebuilds the networks from the document and starts them (~15 s). Limits: paused
