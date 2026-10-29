@@ -16,7 +16,8 @@
     },
     "sites": {
       "type": "object",
-      "minProperties": 2,
+      "$comment": "one site is enough: a lab's environment holds only what it needs (Phase 12)",
+      "minProperties": 1,
       "propertyNames": { "$comment": "short: becomes part of interface names (of-<site>, max 15 chars)", "pattern": "^[a-z][a-z0-9]{0,5}$" },
       "additionalProperties": {
         "type": "object",

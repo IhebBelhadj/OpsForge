@@ -57,7 +57,7 @@ def fake_lab(monkeypatch, *, running, live=None, pre_fault=None):
                         if running else [])
     monkeypatch.setattr(cli, "read_link_state", lambda: {"links": live or topo["links"]})
     monkeypatch.setattr(cli, "read_pre_fault", lambda: pre_fault)
-    monkeypatch.setattr(cli, "TOPOLOGY", ROOT / "topology.yml")
+    monkeypatch.setattr(cli, "topology_path", lambda: ROOT / "topology.yml")
     monkeypatch.setattr(cli, "load_valid_topology", lambda: topo)
     return topo
 

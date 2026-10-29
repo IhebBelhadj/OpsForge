@@ -1,0 +1,17 @@
+# OpsForge one-site environment (docs/PLAN.md Phase 12): the smallest K3s lab, a single-node cluster in site a with no
+# VPN and no other site. An environment document: ./opsforge env plan topologies/one-site.yml, then env apply.
+
+# Simulated "internet" between site gateways (TEST-NET-3, never routed on the real internet)
+transit: 203.0.113.0/24
+
+# One site: nothing to interconnect
+interconnect: none
+
+sites:
+  a: { vpc: 10.10.0.0/24, public_ip: 203.0.113.10 }
+
+links: {}
+
+# expose: port forwards on the site gateway's public IP; 80/443 reach the node's ingress (Traefik hostPorts)
+nodes:
+  a-cp1: { site: a, role: k3s-server, cpu: 2, memory: 1536MiB, expose: ["80", "443"] }

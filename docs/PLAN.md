@@ -958,6 +958,13 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
      stays per lab).
      **Done when:** `make check`/CI green on Postgres only (no SQLite left), the six-lab run passes again, import
      twice = no write, `migrate-legacy` gives the same XP and badges as on SQLite (800 XP, 6/6 on the live data).
+     - **Done (2026-10-26, Academy's repo):** all of the above met (`make check`, e2e 16/16; 800 XP, 6/6 badges; a
+       second import and a second `migrate-legacy` write nothing; the six labs passed live, 16-174 s each). Decided on
+       the way: database/sql over the pgx/v5 driver (sqlc's database/sql output, so the repositories kept their shape)
+       rather than pgx's own API; `jsonb` for every document column, so documents are compared as JSON values
+       (`catalog.SameJSON`), never as bytes; Academy creates a missing database (`--database`, as SQLite created its
+       file); `postgres:16-alpine` (already on the host), 20 MiB idle. The only SQLite left reads Phase 10's
+       `labs.db` (`internal/legacy/labsdb`). Next: M2 (Academy's `docs/implementation.md`).
   - **Done when:** each repo's `make check` and CI are green on its own; Academy against tagged OpsForge `v1.0.0`
     (over its API, one sandbox per attempt, none left afterwards) passes the six-lab run on the live lab; OpsForge
     clones and runs with no Go/Node toolchain; Academy clones and runs (against the fake API) with no Python/Incus.
@@ -967,9 +974,9 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
     OpsForge release in `api version`. Additive (new command, optional input, output field) = minor; removed,
     renamed or changed meaning = major. Academy reads outputs leniently (its schema copy allows unknown fields; OpsForge's
     own tests stay strict), sends a new optional input only when OpsForge's minor has it, and `/readyz` names the
-    minimum OpsForge when it is too old; another major is refused. Breaking changes are free until OpsForge `v1.0.0`.
-    Academy updates its pinned contract with `make contract-update V=x.y.z`; a nightly CI job runs its contract tests
-    against OpsForge `main`.
+    minimum OpsForge when it is too old; another major is refused. OpsForge `v1.0.0` is released (2026-10-26): a breaking
+    change is a new major. Academy updates its pinned contract with `make contract-update OPSFORGE_REF=vX.Y.Z` (fetched
+    from OpsForge's git); its CI runs against the pinned tag, and a nightly run against OpsForge `master`.
   - *HTTP API*: major in the path (`/api/v1`), OpenAPI `info.version` = the Academy release; additive only within v1,
     a break is `/api/v2` next to v1 for one release. The web app ships inside the binary; a tab left open across an
     upgrade sees the server's version header differ from its build and reloads.
@@ -977,6 +984,47 @@ Python `opsforge` CLI as the lab toolchain behind a JSON contract, tests first. 
     refuses a newer major.
   - *Database*: goose, forward-only, per repo. *Releases*: semver tags + CHANGELOG.md per repo; OpsForge from
     `v1.0.0`, Academy `v0.x` until M2's parity, then `v1.0.0`; Academy's README states the OpsForge range it supports.
+
+### Phase 12: Environments as code, reshaped per lab, resumable (planned 2026-10-29)
+Today one fixed lab is always on (stretched: 3 sites, VPN, K3s, `mon`, `ci`: ~2.2 GiB idle) and a sandbox is a
+namespace on it: a lab's `needs`/`layout` are checked, never provided. The six Academy labs all need K3s, two the VPN,
+none `mon` or `ci`. Goal: **each lab brings its own infrastructure as code**, OpsForge reshapes the one environment to
+it (only what the lab needs runs), lab steps change it mid-lab, and a lab left halfway is resumed later as it was.
+Decided with the user (2026-10-29): **one environment at a time, reshaped** (not one per attempt: RAM); the shape is
+**a document each lab carries** (an intermediate format, since topologies grow across chapters); a paused lab is
+**snapshotted and kept stopped**; runtime changes come from **lab steps**.
+- **The environment document** is `topology.yml`'s format made a contract document (`environment.schema.json`, from
+  `lab/topology.schema.json`): sites, links, interconnect/routing, nodes (role, site, cpu, memory, expose, cluster).
+  Declarative: OpsForge diffs it against what runs. Not Terraform/OpenTofu: its Incus provider makes containers and
+  networks, but what OpsForge adds (netem links on wan-core, the WireGuard mesh, OSPF, nft, K3s joins) is render +
+  Ansible either way; HCL would wrap it, add a binary and a state file, and make Academy write provider code. It can
+  become an engine behind the same document later. Chapters grow a topology with `extends: <lab>` + a patch,
+  resolved by Academy's compiler: OpsForge always receives a whole document.
+- Steps, each leaving `make check` green:
+  1. **Apply a document** (`opsforge env apply FILE`): the active environment is `.opsforge/environment.yml` (kept
+     by `apply`; `OPSFORGE_TOPOLOGY` still wins, `topology.yml` when neither), so `verify`, `ssh`, `kubectl` and the
+     API follow it. `apply` validates, records the document, runs `up` (already incremental: it rebuilds what changed
+     and deletes what left), removes the K3s nodes whose instances left (a deleted agent otherwise stays NotReady
+     forever), then `provision`. `env show` prints the active document and where it comes from. Measure: reshape
+     stretched → one site without VPN and back, and adding one agent, against today's `up && provision`.
+  2. **Role images**: a provisioned node of each role published as an Incus image (bumped with `NODE_BUILD` and the
+     role's inputs), so a new node boots provisioned and only joins; `provision` limited to what changed. Goal: one
+     agent added in < 30 s.
+  3. **Sandboxes take an environment** (`sandboxInput.environment`, contract minor): creating one reshapes first (a
+     job, refused while another sandbox lives on the environment), then setup. Step `environment` (a patch: add or
+     remove a node, site or link) in setup and actions, never in probes; `validate-steps` checks it against the
+     schema and the host budget.
+  4. **Pause and resume**: pausing stops the sandbox's instances and renames them `s<id>-<name>` (btrfs: only
+     changed blocks cost), keeping the document and the workspace; resuming pauses or discards the current
+     environment, renames them back, rebuilds the networks from the document and starts them (~15 s). Limits: paused
+     sandboxes at most N or a disk budget (pool 25 GiB), a longer expiry than live ones, `reap` deletes expired ones.
+  5. **Contract minor and Academy**: packs move from `needs`/`layout` to an environment (`extends` resolved by the
+     compiler, the document checked by OpsForge), labsession and the player get **Pause** and **Resume**.
+- Consequence: no always-on lab. With nothing running the API is up but there is no environment until a lab asks
+  for one; `mon`/`ci` exist only in documents that list them.
+- **Done when:** the six labs run each on its own document (stretched ones on three sites, the others on fewer), a
+  lab paused, another run, the first resumed with its cluster state intact, nothing left after delete; reshape and
+  resume times measured and recorded here.
 
 ### Later (deferred by the user): Windows nodes
 - Windows can only be an **Incus VM** (needs its own kernel), attached to a site network like any node, so it gets

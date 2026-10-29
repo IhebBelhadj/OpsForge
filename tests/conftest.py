@@ -23,6 +23,13 @@ def _load_cli():
 cli = _load_cli()
 
 
+@pytest.fixture(autouse=True)
+def repo_topology(monkeypatch, tmp_path):
+    """Tests read the repo's topology.yml, never an environment applied on this machine or OPSFORGE_TOPOLOGY."""
+    monkeypatch.delenv("OPSFORGE_TOPOLOGY", raising=False)
+    monkeypatch.setattr(cli, "ENVIRONMENT", tmp_path / "no-environment.yml")
+
+
 @pytest.fixture
 def topo():
     """A fresh copy of the repo's topology.yml that tests may mutate."""

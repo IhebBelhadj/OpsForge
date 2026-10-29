@@ -31,8 +31,6 @@ import render  # noqa: E402
 import sandboxes  # noqa: E402
 import scenario  # noqa: E402
 
-# Another layout (e.g. topologies/multi-cluster.yml) with OPSFORGE_TOPOLOGY=<path>, inherited by nested ./opsforge calls
-TOPOLOGY = Path(os.environ.get("OPSFORGE_TOPOLOGY") or ROOT / "topology.yml").resolve()
 SCHEMA = ROOT / "lab" / "topology.schema.json"
 ANSIBLE_DIR = ROOT / "ansible"
 INVENTORY = ANSIBLE_DIR / "inventory" / "hosts.yml"
@@ -43,6 +41,8 @@ SSH_KEY = SSH_DIR / "id_ed25519"
 SSH_CONFIG = SSH_DIR / "config"
 KNOWN_HOSTS = SSH_DIR / "known_hosts"
 HOST_KEYS = SSH_DIR / "host_keys"
+# The active environment (Phase 12): the document `env apply` brought the lab to; see topology_path()
+ENVIRONMENT = STATE / "environment.yml"
 # WireGuard keys of the site gateways: <site>.pem (X25519 private key)
 WG_KEYS = STATE / "wg"
 # `opsforge forward`: one SSH control socket + JSON description per tunnel, keyed by local port
@@ -133,8 +133,17 @@ def incus(*args, check=True):
     return subprocess.run(["incus", *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, check=check)
 
 
-def load_topology(path=TOPOLOGY):
-    with open(path) as f:
+def topology_path():
+    """The topology every command works on, read at each call (a long-running `api serve` follows `env apply`):
+    OPSFORGE_TOPOLOGY (another layout, e.g. topologies/multi-cluster.yml; inherited by nested ./opsforge calls),
+    else the active environment `env apply` recorded, else topology.yml."""
+    if env := os.environ.get("OPSFORGE_TOPOLOGY"):
+        return Path(env).resolve()
+    return ENVIRONMENT if ENVIRONMENT.exists() else ROOT / "topology.yml"
+
+
+def load_topology(path=None):
+    with open(path or topology_path()) as f:
         return yaml.safe_load(f)
 
 
@@ -237,6 +246,7 @@ def topology_errors(topo):
 
 
 def cmd_validate(args):
+    args.topology = args.topology or topology_path()
     topo = load_topology(args.topology)
     errors = topology_errors(topo)
     if errors:
@@ -431,7 +441,7 @@ def load_valid_topology():
     topo = load_topology()
     errors = topology_errors(topo)
     if errors:
-        raise LabError(f"{TOPOLOGY} is invalid, run ./opsforge validate ({len(errors)} error(s))")
+        raise LabError(f"{topology_path()} is invalid, run ./opsforge validate ({len(errors)} error(s))")
     return topo
 
 
@@ -756,6 +766,124 @@ def cmd_down(args):
     return 0
 
 
+def plan_changes(instances, live, recreate):
+    """What `up` would do to bring the live instances ({name: incus instance}) to the planned ones, by instance name:
+    create, recreate (`recreate(inst, cur)`: another image, K3s role or cluster), reconfigure (wiring or files),
+    start (stopped, unchanged) and delete (not planned). Unchanged running instances are left out."""
+    plan = {"create": [], "recreate": [], "reconfigure": [], "start": [],
+            "delete": sorted(live.keys() - {inst.name for inst in instances})}
+    for inst in instances:
+        cur, spec = live.get(inst.name), desired_config(inst)[SPEC_KEY]
+        if cur is None:
+            plan["create"].append(inst.name)
+        elif recreate(inst, cur):
+            plan["recreate"].append(inst.name)
+        elif cur["config"].get(SPEC_KEY, spec) != spec:
+            plan["reconfigure"].append(inst.name)
+        elif cur["status"] != "Running":
+            plan["start"].append(inst.name)
+    return plan
+
+
+def live_recreate(inst, cur):
+    """plan_changes' `recreate` against Incus, as `up` decides it."""
+    try:
+        image = image_fingerprint(inst.image)
+    except subprocess.CalledProcessError:
+        image = None  # not built yet: `up` builds it, so an instance on another image is recreated
+    return cur["config"].get("volatile.base_image") != image or k3s_identity_changed(cur["config"], desired_config(inst))
+
+
+def stale_k3s_nodes(topo, nodes_of):
+    """{server: [node names]} of K3s nodes a cluster still lists but the topology no longer has in it: a deleted
+    agent stays NotReady forever otherwise (and `verify` fails on it). `nodes_of(server)` is the cluster's node names,
+    or None when it cannot be asked (a new or unprovisioned server: nothing joined it before)."""
+    stale = {}
+    for c in render.k3s_clusters(topo).values():
+        if (names := nodes_of(c["server"])) and (extra := sorted(set(names) - set(c["nodes"]))):
+            stale[c["server"]] = extra
+    return stale
+
+
+def remove_stale_k3s_nodes(topo):
+    def nodes_of(server):
+        nodes = kubectl_json(server, "get", "nodes")
+        return None if nodes is None else [n["metadata"]["name"] for n in nodes]
+
+    for server, names in stale_k3s_nodes(topo, nodes_of).items():
+        for name in names:
+            print(f"  {name}: no longer in the environment, removing it from {server}'s cluster")
+            res = run_in(server, "k3s", "kubectl", "delete", "node", name)
+            if res.returncode != 0:
+                raise LabError(f"{server}: kubectl delete node {name} failed: {res.stderr.strip()}")
+
+
+def shown(path):
+    """A path for people: relative to the repository when inside it."""
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
+def topology_source():
+    """Where the active topology comes from, for people."""
+    if os.environ.get("OPSFORGE_TOPOLOGY"):
+        return f"{shown(topology_path())} (OPSFORGE_TOPOLOGY)"
+    if ENVIRONMENT.exists():
+        return f"{shown(ENVIRONMENT)} (./opsforge env apply)"
+    return "topology.yml (no environment applied)"
+
+
+def load_document(path):
+    """An environment document from a file, refused with its errors when invalid."""
+    try:
+        topo = load_topology(path)
+    except (OSError, yaml.YAMLError) as e:
+        raise LabError(f"{path}: {e}") from e
+    if errors := topology_errors(topo):
+        raise LabError(f"{path}: {len(errors)} error(s)\n" + "\n".join(f"  - {e}" for e in errors))
+    return topo
+
+
+def cmd_env(args):
+    """The environment as code (docs/PLAN.md Phase 12): `show` the active document, `plan` what applying one would
+    change, `apply` it: record it as the active environment, `up`, remove the K3s nodes that left, `provision`."""
+    if args.action == "show":
+        print(f"Active environment: {topology_source()}")
+        print(topology_path().read_text().rstrip())
+        return 0
+    if not args.file:
+        raise LabError(f"env {args.action} needs a document (an environment file, topology.yml's format)")
+    topo = load_document(args.file)
+    if args.action == "plan":
+        networks, instances = lab_plan(topo)
+        plan = plan_changes(instances, {i["name"]: i for i in lab_instances()}, live_recreate)
+        current = set(lab_networks())
+        plan["create network"] = sorted(set(networks) - current)
+        plan["delete network"] = sorted(current - set(networks))
+        changes = {k: v for k, v in plan.items() if v}
+        print(f"{args.file} against the running lab ({topology_source()}):")
+        for kind, names in changes.items():
+            print(f"  {kind}: {', '.join(names)}")
+        print("  no changes" if not changes else "Apply with ./opsforge env apply " + str(args.file))
+        return 0
+    if os.environ.get("OPSFORGE_TOPOLOGY"):
+        raise LabError("OPSFORGE_TOPOLOGY is set and would win over the applied environment: unset it first")
+    STATE.mkdir(mode=0o700, exist_ok=True)
+    tmp = ENVIRONMENT.with_suffix(".tmp")
+    tmp.write_text(Path(args.file).read_text())
+    tmp.replace(ENVIRONMENT)
+    print(f"Active environment: {args.file} (recorded in {shown(ENVIRONMENT)})")
+    if code := cmd_up(args):
+        return code
+    remove_stale_k3s_nodes(topo)
+    if args.no_provision:
+        print("Not provisioned (--no-provision). Next: ./opsforge provision, then ./opsforge verify")
+        return 0
+    if code := cmd_provision(argparse.Namespace(ansible_args=[])):
+        return code
+    print("Environment applied. Next: ./opsforge verify")
+    return 0
+
+
 def stale_images(images, instances):
     """Images built by older opsforge versions: every alias is an `opsforge-*` one no longer in render.IMAGES, and no
     instance was created from it. Unaliased images are Incus' cache of remote base images, which it expires itself."""
@@ -915,8 +1043,9 @@ def apply_link_state(state):
         raise LabError(f"applying link conditions failed:\n{res.stderr.strip()}")
 
 
-def save_link(name, link, path=TOPOLOGY):
+def save_link(name, link, path=None):
     """Rewrites one `<name>: { ... }` line of topology.yml in place, keeping its comments and layout."""
+    path = path or topology_path()
     text = path.read_text()
     line = f"  {name}: {{ {', '.join(f'{k}: {link[k]}' for k in LINK_KEYS if k in link)} }}"
     text, n = re.subn(rf"^  {re.escape(name)}:.*$", line, text, count=1, flags=re.M)
@@ -1176,7 +1305,7 @@ def k3s_cluster(topo, name=None):
     """(name, cluster) from render.k3s_clusters: the named one, or the first in topology.yml."""
     clusters = render.k3s_clusters(topo)
     if not clusters:
-        raise LabError(f"{TOPOLOGY.name} has no K3s nodes")
+        raise LabError(f"{topology_path().name} has no K3s nodes")
     name = name or next(iter(clusters))
     if name not in clusters:
         raise LabError(f"no K3s cluster {name}; clusters: {', '.join(clusters)}")
@@ -1216,7 +1345,7 @@ def check_k3s_cluster(r, topo, cluster, c):
     live = {n["metadata"]["name"]: n for n in nodes}
     extra = sorted(live.keys() - set(c["nodes"]))
     if extra:
-        r.fail(f"cluster {cluster}: nodes not in {TOPOLOGY.name}: {', '.join(extra)}")
+        r.fail(f"cluster {cluster}: nodes not in {topology_path().name}: {', '.join(extra)}")
     for name in c["nodes"]:
         node = topo["nodes"][name]
         if name not in live:
@@ -1833,7 +1962,7 @@ def cmd_scenario(args):
         raise LabError(f"{files[args.name].relative_to(ROOT)}: " + "; ".join(errs))
     topo = load_valid_topology()
     if doc.get("layout", scenario.layout(topo)) != scenario.layout(topo):
-        print(f"Scenario {args.name} skipped: needs the {doc['layout']} layout, {TOPOLOGY.name} is "
+        print(f"Scenario {args.name} skipped: needs the {doc['layout']} layout, {topology_path().name} is "
               f"{scenario.layout(topo)}")
         return 0
     if read_pre_fault() is not None:
@@ -1898,10 +2027,10 @@ def lab_state():
         topo = load_valid_topology()
     except (LabError, OSError):
         topo = None
-    state = {"up": False, "error": None, "topology": TOPOLOGY.name, "layout": None, "sites": {},
+    state = {"up": False, "error": None, "topology": topology_path().name, "layout": None, "sites": {},
              "links": {}, "nodes": [], "fault": False, "placeholders": {}}
     if topo is None:
-        state["error"] = f"{TOPOLOGY.name} is invalid: run ./opsforge validate"
+        state["error"] = f"{topology_path().name} is invalid: run ./opsforge validate"
         return state
     state["layout"] = scenario.layout(topo)
     state["sites"] = {name: {"public_ip": s["public_ip"], "vpc": s["vpc"]} for name, s in topo["sites"].items()}
@@ -1968,7 +2097,7 @@ def lab_run(steps, phase, stop=None, lines=None, place=None):
     try:
         topo = load_valid_topology()
     except (LabError, OSError):
-        return {}, lines, f"{TOPOLOGY.name} is invalid"
+        return {}, lines, f"{topology_path().name} is invalid"
 
     class Run(ScenarioRun):
         def log(self, _phase, text):
@@ -2238,13 +2367,19 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("validate", help="validate topology.yml")
-    p.add_argument("topology", nargs="?", default=TOPOLOGY, type=Path)
+    p.add_argument("topology", nargs="?", type=Path, help="default: the active topology (./opsforge env show)")
     p.set_defaults(func=cmd_validate)
     sub.add_parser("preflight", help="check the host is ready to run the lab").set_defaults(func=cmd_preflight)
     sub.add_parser("smoke", help="launch a throwaway container to prove Incus networking works").set_defaults(
         func=cmd_smoke
     )
     sub.add_parser("up", help="create the lab, or apply topology.yml edits to it").set_defaults(func=cmd_up)
+    p = sub.add_parser("env", help="the environment as code: show the active document, plan or apply one "
+                       "(topology.yml's format; up, K3s node cleanup, provision)")
+    p.add_argument("action", choices=("show", "plan", "apply"))
+    p.add_argument("file", nargs="?", type=Path, help="plan, apply: the environment document")
+    p.add_argument("--no-provision", action="store_true", help="apply: stop after up and the K3s node cleanup")
+    p.set_defaults(func=cmd_env)
     p = sub.add_parser("down", help="destroy the lab")
     p.add_argument("--purge", action="store_true", help=f"also delete the cached {', '.join(render.IMAGES)} images")
     p.set_defaults(func=cmd_down)
