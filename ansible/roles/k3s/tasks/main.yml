@@ -70,6 +70,22 @@
     state: started
     enabled: true
 
+# Program runtimes (the document's `runtimes`): pulled now through the cache, so a program step starts at once
+- name: Check the program runtimes' images
+  ansible.builtin.command: crictl inspecti {{ item }}
+  loop: "{{ lab_runtime_images }}"
+  register: k3s_runtime_images
+  changed_when: false
+  failed_when: false
+
+- name: Pull the program runtimes' images
+  ansible.builtin.command: crictl pull {{ item.item }}
+  loop: "{{ k3s_runtime_images.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc != 0
+  changed_when: true
+
 - name: Fetch the kubeconfig
   ansible.builtin.include_tasks: kubeconfig.yml
   when: lab_role == 'k3s-server'

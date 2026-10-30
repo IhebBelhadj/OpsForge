@@ -19,7 +19,8 @@
       "x.exit": 0,
       "x.seconds": 0.0,
       "x.value": 42.0
-    }
+    },
+    "outputs": {}
   },
   "problem": null,
   "sandbox": "0123abcd",

@@ -40,6 +40,12 @@
         "cluster_changes": {
           "description": "setup changes the cluster outside the sandbox's namespace (teardown undoes it): no other sandbox may exist meanwhile",
           "type": "boolean"
+        },
+        "runtimes": {
+          "description": "Minor 2: program runtimes (step `program`) the lab must have provisioned (its document's `runtimes`)",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["python", "javascript", "go"] }
         }
       }
     },
@@ -164,6 +170,11 @@
       "properties": {
         "contract": { "const": 1 },
         "metrics": { "$ref": "#/$defs/metrics" },
+        "outputs": {
+          "description": "Minor 2: each named program step's output (stdout and stderr, at most 64 KiB), by step name",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
         "log": { "$ref": "#/$defs/log" },
         "error": { "$ref": "#/$defs/error" }
       }

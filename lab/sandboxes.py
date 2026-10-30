@@ -55,6 +55,10 @@ def unmet(requires, namespace, state, topo):
             missing.append(f"{need} (not in {Path(state.get('topology') or 'the topology').name})")
     if namespace and "k3s" not in have and "k3s" not in requires.get("needs", []):
         missing.append("k3s (a namespace needs a K3s cluster)")
+    runtimes = topo.get("runtimes", [])
+    for runtime in requires.get("runtimes", []):
+        if runtime not in runtimes:
+            missing.append(f"runtime {runtime} (not in the runtimes of {Path(state.get('topology') or 'the topology').name})")
     return missing
 
 

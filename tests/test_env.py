@@ -170,7 +170,7 @@ def test_an_environment_step_is_a_patch_of_the_documents_keys():
     assert errs == ["setup[1]: environment takes a merge patch of the environment document, e.g. "
                     "{nodes: {b-w2: {site: b, role: k3s-agent}}}",
                     "setup[2]: environment: no 'node' in an environment document (one of transit, interconnect, "
-                    "routing, sites, links, nodes)"]
+                    "routing, runtimes, sites, links, nodes)"]
 
 
 def test_the_patchable_keys_are_the_schemas():

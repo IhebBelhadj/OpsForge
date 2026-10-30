@@ -32,9 +32,16 @@ STEPS = {
     "transfer": (("from", "url"), ("timeout",)),
     "wait_until": ((), ("cmd", "host", "promql", "until", "timeout", "interval")),
     "promql": (("query",), ()),
+    "program": (("runtime", "files", "cmd"), ("timeout",)),
 }
 # Steps whose value is the argument itself rather than a mapping: `sleep: 30s`, `partition: c`, `heal: true`
 SCALAR_STEPS = ("sleep", "partition", "heal", "stop_flap")
+# `program` (contract minor 2) runs workspace files in a pod of the sandbox's namespace: an image of render.RUNTIMES,
+# the files (flat names) read-only in /work, `cmd` as its command, no network, no service account, limits; metrics
+# exit, seconds, timed_out, oom (value: a number on its last line) and, with `name`, its output (stdout and stderr)
+PROGRAM_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+PROGRAM_MAX_FILES = 16
+PROGRAM_MAX_TIMEOUT = 60
 # Steps that change the lab: allowed in a lab's setup/teardown, never in a check (checks only observe)
 FAULT_STEPS = ("partition", "heal", "degrade", "mtu", "flap", "stop_flap")
 # `environment: <merge patch>` (Phase 12) reshapes the running environment: RFC 7386 against the active document
@@ -42,7 +49,7 @@ FAULT_STEPS = ("partition", "heal", "degrade", "mtu", "flap", "stop_flap")
 # owner brought an environment (a sandbox's), never in a check
 ENVIRONMENT_STEPS = ("environment",)
 # An environment document's top-level keys (contract/environment.schema.json's properties): what a patch may touch
-DOCUMENT_KEYS = ("transit", "interconnect", "routing", "sites", "links", "nodes")
+DOCUMENT_KEYS = ("transit", "interconnect", "routing", "runtimes", "sites", "links", "nodes")
 _PLACEHOLDER = re.compile(r"\$\{(ip|public):([a-z0-9-]+)\}")
 _NODE = re.compile(r"\$\{(node|server|cluster):([a-z0-9-]+)\}")
 LAYOUTS = ("stretched", "multi-cluster")
@@ -100,6 +107,8 @@ def errors(doc):
                 errs.append(f"{where}: wait_until needs exactly one of 'cmd' and 'promql'")
             if kind == "wait_until" and "promql" in args and "until" not in args:
                 errs.append(f"{where}: wait_until with promql needs 'until', e.g. '> 150'")
+            if kind == "program":
+                errs += [f"{where}: program: {e}" for e in program_errors(args)]
     for metric, condition in expectations(doc):
         if metric.split(".")[0] not in names:
             errs.append(f"expect: {metric}: no step is named {metric.split('.')[0]!r}")
@@ -107,6 +116,29 @@ def errors(doc):
             parse_condition(condition)
         except ValueError as e:
             errs.append(f"expect: {metric}: {e}")
+    return errs
+
+
+def program_errors(args):
+    """A program step's arguments, beyond its keys."""
+    errs = []
+    if "runtime" in args and args["runtime"] not in render.RUNTIMES:
+        errs.append(f"runtime {args['runtime']!r} is not one of {', '.join(render.RUNTIMES)}")
+    files = args.get("files", [])
+    if not isinstance(files, list) or not 0 < len(files) <= PROGRAM_MAX_FILES:
+        errs.append(f"files is a list of 1 to {PROGRAM_MAX_FILES} workspace files")
+    else:
+        errs += [f"files: {f!r} is not a plain file name (letters, digits, '.', '_', '-'; no folders)"
+                 for f in files if not isinstance(f, str) or not PROGRAM_FILE.match(f)]
+    cmd = args.get("cmd", [])
+    if not isinstance(cmd, list) or not cmd or not all(isinstance(c, str) and c for c in cmd):
+        errs.append("cmd is the command as a list of words, e.g. [python3, judge.py]")
+    if "timeout" in args:
+        try:
+            if not 0 < seconds(args["timeout"]) <= PROGRAM_MAX_TIMEOUT:
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            errs.append(f"timeout is at most {PROGRAM_MAX_TIMEOUT}s")
     return errs
 
 

@@ -91,6 +91,16 @@ K3S_ROLES = ("k3s-server", "k3s-agent")
 # forwarded to the host on K3S_API_PORT + its index in topology order (`opsforge kubectl --cluster`).
 DEFAULT_CLUSTER = "lab"
 K3S_API_PORT = 6443
+# Program runtimes (step `program`, contract minor 2): the image a program's pod runs, its memory limit (also its
+# request: the scheduler places it where it fits) and its environment (the root filesystem is read-only, /tmp is
+# not). A document's `runtimes` has its K3s nodes pull these images when provisioned, so a program starts at once.
+RUNTIMES = {
+    "python": {"image": "docker.io/library/python:3.14-alpine", "memory": "192Mi",
+               "env": {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}},
+    "javascript": {"image": "docker.io/library/node:24-alpine", "memory": "192Mi", "env": {}},
+    "go": {"image": "docker.io/library/golang:1.27-alpine", "memory": "512Mi",
+           "env": {"GOCACHE": "/tmp/go-cache", "GOPATH": "/tmp/go", "GOTOOLCHAIN": "local", "CGO_ENABLED": "0"}},
+}
 CACHE = "opsforge-cache"
 CACHE_PORT = 5000
 CACHE_LIMITS = {"limits.cpu": "1", "limits.memory": "256MiB", "limits.memory.swap": "false"}
@@ -759,6 +769,8 @@ def render_inventory(topo, ssh_config, state_dir):
                 "lab_registry_upstreams": list(CACHE_UPSTREAMS),
                 # K3s clusters (Phase 8): server, nodes, sites, the host's API port, Skupper links to earlier clusters
                 "lab_clusters": clusters,
+                # Images K3s nodes pull ahead of time: the document's program runtimes
+                "lab_runtime_images": [RUNTIMES[r]["image"] for r in topo.get("runtimes", [])],
                 "lab_sites": {
                     name: {
                         "vpc": site["vpc"],

@@ -16,6 +16,12 @@
       "$comment": "with interconnect vpn: ospf (default) reroutes VPC traffic around a dead link through another site; static does not",
       "enum": ["ospf", "static"]
     },
+    "runtimes": {
+      "$comment": "minor 2: program runtimes (step `program`) whose images every K3s node pulls when provisioned; needs a K3s cluster",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["python", "javascript", "go"] }
+    },
     "sites": {
       "type": "object",
       "$comment": "one site is enough: a lab's environment holds only what it needs (Phase 12)",

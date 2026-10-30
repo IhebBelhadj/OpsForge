@@ -33,6 +33,13 @@ requirements and always cleaned up by OpsForge.
   that left removed, provisioning), with no need for the lab to be up, and `requires` is checked against the document.
   It runs alone. `environment` steps (an RFC 7386 merge patch of the running document, e.g. `{nodes: {b-w2: {site: b,
   role: k3s-agent}}}` or `{links: {a-c: null}}`) are allowed in its setup and actions, never in probes.
+- Minor 2, programs: the step `program: {runtime, files, cmd, timeout}` runs workspace files (plain names) in a pod
+  of the sandbox's namespace with the runtime's image (`python`, `javascript`, `go`): the files read-only in `/work`,
+  `cmd` as the command, no network, no service account, non-root, the runtime's memory, one CPU, `timeout` (default
+  10 s, at most 60 s) counted from the container's start. Metrics `exit`, `seconds`, `timed_out`, `oom` (and `value`,
+  a number on its last line); a named one's output (stdout and stderr, 64 KiB) is in `runOutput.outputs`. Allowed
+  anywhere a sandbox with a namespace runs steps, probes included (it changes nothing outside its namespace). An
+  environment's `runtimes` has its K3s nodes pull those images when provisioned; `requires.runtimes` asks for them.
 - Under `/v1/sandboxes/{id}/`: `files/...` and `moves` (its workspace: 1 MiB per file, 10 MiB in all, paths
   confined), `terminal` (a WebSocket shell in the workspace), `probes` and `actions` (jobs, on a `ready` sandbox),
   `reset` (job: teardown then setup; the files are kept). `DELETE` (job) hangs its terminals up, runs `teardown`,
@@ -80,3 +87,4 @@ holds what this release returns for fixed inputs (written by `tests/test_api.py`
 |---|---|---|
 | 0 | 1.0.0 | `version`, `state` (with `placeholders`), `run`, `probe`, `heal`, `validate-steps`, `sandbox`; over HTTP: jobs and sandboxes (files, terminal, probes, actions, reset) |
 | 1 | 1.1.0 | Environments (docs/PLAN.md Phase 12): `environment.schema.json` (topology.yml's format, published); `sandboxInput.environment` (the sandbox reshapes the lab to it, then runs alone); the `environment` step (an RFC 7386 merge patch of it, in setup and actions only); `stepsInput` sets' `environment` (what those steps patch, checked patch by patch) |
+| 2 | 1.2.0 | Programs: the `program` step (code run in a locked-down pod of the sandbox's namespace); `runOutput.outputs` (named programs' output); environments' `runtimes` (images pulled at provisioning); `requires.runtimes` |

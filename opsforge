@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,7 +24,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 # The OpsForge release (semver), reported by `opsforge api version`
-VERSION = "1.1.0-dev"
+VERSION = "1.2.0-dev"
 sys.path.insert(0, str(ROOT / "lab"))
 import contract  # noqa: E402
 import apiserver  # noqa: E402
@@ -219,6 +220,8 @@ def topology_errors(topo):
             if addr.ip not in vpc or addr.ip == vpc.broadcast_address:
                 errors.append(f"nodes/{name}: site {site} VPC {vpc} has no address left for it")
     servers = [n for n, node in topo["nodes"].items() if node["role"] == "k3s-server"]
+    if topo.get("runtimes") and not servers:
+        errors.append("runtimes: program runtimes run on K3s: the document has no k3s-server")
     for name, node in topo["nodes"].items():
         if "cluster" in node and node["role"] not in render.K3S_ROLES:
             errors.append(f"nodes/{name}: cluster is for K3s nodes only (role {node['role']})")
@@ -1836,6 +1839,125 @@ def cmd_heal(args):
     return 0
 
 
+PROGRAM_LABEL = "opsforge.lab/program"
+PROGRAM_MAX_BYTES = 512 * 1024  # the files together: a ConfigMap holds 1 MiB
+PROGRAM_OUTPUT_BYTES = 64 * 1024
+PROGRAM_START_TIMEOUT = 120  # time for a node to pull a runtime it lacks (provisioned runtimes start in ~1 s)
+
+
+def program_files(workdir, names):
+    """A program step's files from the workspace (plain names: scenario.PROGRAM_FILE), never through a symlink."""
+    files, total = {}, 0
+    for name in names:
+        try:
+            fd = os.open(Path(workdir) / name, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError as e:
+            raise LabError(f"program: {name}: {e.strerror}") from None
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                raise LabError(f"program: {name} is not a file")
+            data = f.read(PROGRAM_MAX_BYTES + 1)
+        total += len(data)
+        if total > PROGRAM_MAX_BYTES:
+            raise LabError(f"program: the files exceed {PROGRAM_MAX_BYTES // 1024} KiB")
+        try:
+            files[name] = data.decode()
+        except UnicodeDecodeError:
+            raise LabError(f"program: {name} is not UTF-8 text") from None
+    return files
+
+
+def program_manifest(name, runtime, files, cmd, timeout):
+    """The objects a program step applies in the sandbox's namespace: its files as a ConfigMap, a NetworkPolicy
+    cutting every program off the network, and the pod (non-root, read-only root filesystem but /tmp, no capabilities,
+    no service account token, the runtime's memory as limit and request, one CPU)."""
+    rt = render.RUNTIMES[runtime]
+    labels = {PROGRAM_LABEL: name}
+    pod = {
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": False,
+        "enableServiceLinks": False,
+        "terminationGracePeriodSeconds": 0,
+        # A backstop for when OpsForge dies while waiting: the kubelet ends the pod itself
+        "activeDeadlineSeconds": PROGRAM_START_TIMEOUT + int(timeout) + 10,
+        "securityContext": {"runAsNonRoot": True, "runAsUser": 65534, "runAsGroup": 65534,
+                            "seccompProfile": {"type": "RuntimeDefault"}},
+        "containers": [{
+            "name": "program", "image": rt["image"], "imagePullPolicy": "IfNotPresent", "command": cmd,
+            "workingDir": "/work",
+            "env": [{"name": k, "value": v} for k, v in ({"HOME": "/tmp"} | rt["env"]).items()],
+            "resources": {"limits": {"cpu": "1", "memory": rt["memory"]},
+                          "requests": {"cpu": "100m", "memory": rt["memory"]}},
+            "securityContext": {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+                                "capabilities": {"drop": ["ALL"]}},
+            "volumeMounts": [{"name": "work", "mountPath": "/work", "readOnly": True},
+                             {"name": "tmp", "mountPath": "/tmp"}],
+        }],
+        "volumes": [{"name": "work", "configMap": {"name": name}},
+                    {"name": "tmp", "emptyDir": {"sizeLimit": "256Mi"}}],
+    }
+    return {"apiVersion": "v1", "kind": "List", "items": [
+        {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": name, "labels": labels}, "data": files},
+        {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": {"name": "opsforge-programs"},
+         "spec": {"podSelector": {"matchExpressions": [{"key": PROGRAM_LABEL, "operator": "Exists"}]},
+                  "policyTypes": ["Ingress", "Egress"]}},
+        {"apiVersion": "v1", "kind": "Pod", "metadata": {"name": name, "labels": labels}, "spec": pod},
+    ]}
+
+
+def program_wait(server, namespace, name, timeout, clock=time.monotonic, sleep=time.sleep):
+    """Waits for a program's pod to end: {exit, seconds, timed_out, oom}. Its time counts from the container's
+    start (pulling an image is not the program's), at most `timeout`."""
+    began, started = clock(), None
+    while True:
+        res = run_in(server, "k3s", "kubectl", "get", "pod", "-n", namespace, name, "-o", "json")
+        status = json.loads(res.stdout).get("status", {}) if res.returncode == 0 else {}
+        state = (status.get("containerStatuses") or [{}])[0].get("state", {})
+        if done := state.get("terminated"):
+            seconds = clock() - started if started is not None else 0.0
+            return {"exit": done.get("exitCode", 1), "seconds": seconds, "timed_out": 0,
+                    "oom": int(done.get("reason") == "OOMKilled")}
+        if "running" in state and started is None:
+            started = clock()
+        if started is not None and clock() - started > timeout:
+            return {"exit": 124, "seconds": timeout, "timed_out": 1, "oom": 0}
+        waiting = state.get("waiting", {})
+        if waiting.get("reason") in ("CreateContainerConfigError", "CreateContainerError", "InvalidImageName"):
+            raise LabError(f"program: the pod cannot start: {waiting.get('message') or waiting['reason']}")
+        if started is None and (clock() - began > PROGRAM_START_TIMEOUT or status.get("phase") == "Failed"):
+            why = waiting.get("message") or waiting.get("reason") or status.get("reason") or "no reason given"
+            raise LabError(f"program: the pod did not start in {PROGRAM_START_TIMEOUT}s: {why}")
+        sleep(0.3)
+
+
+def run_program(topo, namespace, workdir, arg):
+    """A program step (scenario.STEPS): (metrics, output). The pod and its files are deleted afterwards."""
+    if not namespace:
+        raise LabError("program: runs in a sandbox's namespace (a sandbox with namespace: true)")
+    clusters = render.k3s_clusters(topo)
+    if not clusters:
+        raise LabError("program: needs a K3s cluster")
+    server = next(iter(clusters.values()))["server"]
+    timeout = scenario.seconds(arg.get("timeout", 10))
+    name = f"program-{os.urandom(4).hex()}"
+    doc = program_manifest(name, arg["runtime"], program_files(workdir, arg["files"]), arg["cmd"], timeout)
+    res = subprocess.run(["incus", "exec", server, "--", "k3s", "kubectl", "apply", "-n", namespace, "-f", "-"],
+                         input=json.dumps(doc), capture_output=True, text=True)
+    if res.returncode:
+        raise LabError(f"program: {(res.stderr or res.stdout).strip()}")
+    try:
+        got = program_wait(server, namespace, name, timeout)
+        output = run_in(server, "k3s", "kubectl", "logs", "-n", namespace, name,
+                        f"--limit-bytes={PROGRAM_OUTPUT_BYTES}").stdout
+    finally:
+        run_in(server, "k3s", "kubectl", "delete", "-n", namespace, "pod,configmap", name, "--ignore-not-found",
+               "--wait=false")
+    last = output.strip().splitlines()[-1] if output.strip() else ""
+    if re.fullmatch(r"-?\d+(\.\d+)?", last):
+        got["value"] = float(last)
+    return got, output
+
+
 class ScenarioRun:
     """Runs scenario steps against the lab (lab/scenario.py describes the file format) and collects metrics. Host
     commands run in `workdir` (default the repo root) with `opsforge` on the PATH (lab/bin) and `env` added."""
@@ -1845,6 +1967,7 @@ class ScenarioRun:
         self.workdir = workdir or ROOT
         self.env = {**os.environ, "PATH": f"{ROOT / 'lab' / 'bin'}:{os.environ.get('PATH', '')}", **(env or {})}
         self.metrics = {}
+        self.outputs = {}  # a named program step's output, by name
         self.flapping = None  # (thread, stop event) of a background `flap` step
         self.start = time.monotonic()
 
@@ -1947,6 +2070,10 @@ class ScenarioRun:
         elif kind == "promql":
             value = self.promql(arg["query"])
             got = {} if value is None else {"value": value}
+        elif kind == "program":
+            got, output = run_program(self.topo, self.env.get("OPSFORGE_NAMESPACE"), self.workdir, arg)
+            if name:
+                self.outputs[name] = output
         if name:
             self.metrics |= {f"{name}.{k}": v for k, v in got.items()}
             if got:
@@ -2101,11 +2228,11 @@ def _message(e):
     return str(e).strip() or type(e).__name__
 
 
-def lab_run(steps, phase, stop=None, lines=None, place=None):
+def lab_run(steps, phase, stop=None, lines=None, place=None, outputs=None):
     """Runs scenario steps on the lab: (metrics, log lines, error message or None). `stop(step, metrics)`, called
     after each step, ends the run early when it returns True. `place` (a sandbox's: {namespace, workdir}) fills
     ${ns} and runs host commands in its workspace. `lines`, when given, is the log list to append to as the run goes
-    (an HTTP job shows it while running)."""
+    (an HTTP job shows it while running); `outputs`, the dict named program steps' outputs go to."""
     lines = [] if lines is None else lines
     place = place or {}
     try:
@@ -2119,6 +2246,8 @@ def lab_run(steps, phase, stop=None, lines=None, place=None):
 
     ns = place.get("namespace")
     run, error = Run(topo, place.get("workdir"), {"OPSFORGE_NAMESPACE": ns} if ns else None), None
+    if outputs is not None:
+        run.outputs = outputs
     try:
         for step in contract.with_namespace(steps or [], ns):
             run.step(phase, step)
@@ -2234,8 +2363,9 @@ def sandbox_probe(place, doc, lines):
 
 
 def sandbox_action(place, steps, lines):
-    metrics, lines, error = lab_run(steps, "action", lines=lines, place=place)
-    return {"contract": contract.CONTRACT, "metrics": metrics, "log": lines, "error": error}
+    outputs = {}
+    metrics, lines, error = lab_run(steps, "action", lines=lines, place=place, outputs=outputs)
+    return {"contract": contract.CONTRACT, "metrics": metrics, "outputs": outputs, "log": lines, "error": error}
 
 
 def api_input(kind, text=None):
@@ -2255,8 +2385,9 @@ def api_input(kind, text=None):
 
 def api_run(doc, lines=None):
     """`opsforge api run`: a lab's setup or teardown steps."""
-    metrics, lines, error = lab_run(doc["steps"], doc["phase"], lines=lines)
-    return {"contract": contract.CONTRACT, "metrics": metrics, "log": lines, "error": error}
+    outputs = {}
+    metrics, lines, error = lab_run(doc["steps"], doc["phase"], lines=lines, outputs=outputs)
+    return {"contract": contract.CONTRACT, "metrics": metrics, "outputs": outputs, "log": lines, "error": error}
 
 
 def api_probe(doc, lines=None):

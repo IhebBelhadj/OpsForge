@@ -9,6 +9,9 @@ interconnect: vpn
 # vpn routing: ospf = reroute around a dead link through another site (cost = link rtt); static = no rerouting
 routing: ospf
 
+# Program runtimes (step `program`): every K3s node pulls their images when provisioned (coding challenges)
+runtimes: [python, javascript, go]
+
 sites:
   a: { vpc: 10.10.0.0/24, public_ip: 203.0.113.10 }
   b: { vpc: 10.20.0.0/24, public_ip: 203.0.113.20 }

@@ -13,7 +13,7 @@ import scenario
 # The toolchain contract `opsforge api` speaks (contract/README.md): the major in every document, the minor (additive
 # revisions) in `api version`
 CONTRACT = 1
-CONTRACT_MINOR = 1
+CONTRACT_MINOR = 2
 # Inputs and outputs of the API's documents (OpsForge publishes it; callers keep a copy)
 TOOLCHAIN_SCHEMA = Path(__file__).resolve().parents[1] / "contract" / "toolchain.schema.json"
 

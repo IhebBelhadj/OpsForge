@@ -2,7 +2,7 @@
   "contract": 1,
   "errors": [
     {
-      "message": "steps[0]: unknown step 'pign' (one of sleep, partition, heal, degrade, mtu, flap, stop_flap, run, ping, http, transfer, wait_until, promql, environment)",
+      "message": "steps[0]: unknown step 'pign' (one of sleep, partition, heal, degrade, mtu, flap, stop_flap, run, ping, http, transfer, wait_until, promql, program, environment)",
       "set": 1
     },
     {
